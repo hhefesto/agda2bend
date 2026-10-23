@@ -960,6 +960,111 @@ def tcp.destr(it: T.BItem, +e: TcpEnv) -> T.BItem:
     case it:
       it
 
+# Unit's eta (2026-10-22) -------------------------------------------------------
+#
+# Agda's ⊤ is a record with eta: any two of its values are equal, so
+# `⊤-irrelevant _ _ = refl` and `_ ≟ _ = yes refl` check.  Base's Unit has
+# no eta, and Bend matches an erased parameter only in a dead region ("a
+# live scrutinee"), so the translation does Agda's eta itself: a
+# value-level def whose body is one expression matches each Unit parameter
+# its header's types mention against Unit{}, which turns the goal's x into
+# Unit{} (`{p_1 == p_2 : Unit}` holds by {==} in the case).  The match is a
+# live use, so Copy makes those parameters live: Unit is Data, so a caller
+# passes `Unit{}` or a variable as before.
+
+# whether x occurs in t anywhere, dead places included (a binder of the
+# same name hides it)
+def tcp.unit.in(+x: List<&2, U32>, t: T.Bt) -> Bool:
+  match t:
+    case T.BtVar{+y}:
+      S.eq(x, y)
+    case T.BtApp{f, a}:
+      Bool.or(tcp.unit.in(x, f), tcp.unit.in(x, a))
+    case T.BtTplArg{a}:
+      tcp.unit.in(x, a)
+    case T.BtLam{m, +y, b}:
+      Bool.and(Bool.not(S.eq(x, y)), tcp.unit.in(x, b))
+    case T.BtPi{m, +y, d, a, b}:
+      Bool.or(tcp.unit.in(x, a), Bool.and(Bool.not(S.eq(x, y)), tcp.unit.in(x, b)))
+    case T.BtCon{c, a}:
+      tcp.unit.in(x, a)
+    case T.BtTyApp{n, a}:
+      tcp.unit.in(x, a)
+    case T.BtEq{ty, a, b}:
+      Bool.or(tcp.unit.in(x, ty), Bool.or(tcp.unit.in(x, a), tcp.unit.in(x, b)))
+    case T.BtSucc{a}:
+      tcp.unit.in(x, a)
+    case T.BtAnn{a, ty}:
+      Bool.or(tcp.unit.in(x, a), tcp.unit.in(x, ty))
+    case T.BtDead{a}:
+      tcp.unit.in(x, a)
+    case T.BtArgs{a, rest}:
+      Bool.or(tcp.unit.in(x, a), tcp.unit.in(x, rest))
+    case _:
+      False{}
+
+# whether x occurs in a later parameter's type
+def tcp.unit.later(+x: List<&2, U32>, ps: List<&2, T.BParam>) -> Bool:
+  match ps:
+    case Nil{}:
+      False{}
+    case T.BParam{m, y, ty} <> t:
+      Bool.or(tcp.unit.in(x, ty), tcp.unit.later(x, t))
+
+def tcp.unit.ty(t: T.Bt) -> Bool:
+  match t:
+    case T.BtVar{+x}:
+      S.eq(x, S.b("Unit"))
+    case _:
+      False{}
+
+# the Unit parameters the header's types mention, in order
+def tcp.unit.ps(ps: List<&2, T.BParam>, +ret: T.Bt) -> List<&2, List<&2, U32>>:
+  match ps:
+    case Nil{}:
+      Nil{}
+    case T.BParam{m, +x, +ty} <> +t:
+      +hit = Bool.and(tcp.unit.ty(ty), Bool.or(tcp.unit.in(x, ret), tcp.unit.later(x, t)))
+      +rest = tcp.unit.ps(t, ret)
+      Bool.pick(List<&2, List<&2, U32>>, hit, x <> rest, rest)
+
+# whether a type ends in a sort (the def is type-valued)
+def tcp.unit.sorted(t: T.Bt) -> Bool:
+  match t:
+    case T.BtPi{m, y, d, a, b}:
+      tcp.unit.sorted(b)
+    case t:
+      tcp.kind.ty(t)
+
+def tcp.unit.xs(xs: List<&2, List<&2, U32>>) -> T.Bt:
+  match xs:
+    case Nil{}:
+      T.BtANil{}
+    case x <> t:
+      T.BtArgs{T.BtVar{x}, tcp.unit.xs(t)}
+
+def tcp.unit.pats(xs: List<&2, List<&2, U32>>) -> T.Bt:
+  match xs:
+    case Nil{}:
+      T.BtANil{}
+    case x <> t:
+      T.BtArgs{T.BtCon{S.b("Unit"), T.BtANil{}}, tcp.unit.pats(t)}
+
+def tcp.unit.body(+xs: List<&2, List<&2, U32>>, +b: T.Bt) -> T.Bt:
+  match xs:
+    case Nil{}:
+      T.BtExpr{b}
+    case _:
+      T.BtMatch{tcp.unit.xs(xs), T.BtCase{tcp.unit.pats(xs), T.BtExpr{b}, T.BtCEnd{}}}
+
+def tcp.unit(it: T.BItem) -> T.BItem:
+  match it:
+    case T.BiDef{n, +ps, +ret, T.BtExpr{+b}, doc}:
+      +xs = Bool.pick(List<&2, List<&2, U32>>, tcp.unit.sorted(ret), Nil{}, tcp.unit.ps(ps, ret))
+      T.BiDef{n, ps, ret, tcp.unit.body(xs, b), doc}
+    case it:
+      it
+
 # Marking ----------------------------------------------------------------------
 
 def tcp.lam.mode(+n: Nat) -> T.BMode:
