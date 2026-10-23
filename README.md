@@ -31,6 +31,31 @@ nix run github:hhefesto/agda2bend -- report out
 resolves the standard library and agda-categories. To use other libraries, set
 `AGDA_DIR`.
 
+### Training data for ana
+
+The checked output is training data for
+[ana](https://github.com/hhefesto/ana), a small model that writes Bend. Two
+settings make an emit produce it:
+
+```sh
+# A2B_MAXLINE: an item with a line wider than this never reaches a check
+#   (the widest terms are elaborated reasoning chains, up to 1.8 MB on one line,
+#   and the slowest to check), and what uses it is dropped too
+# A2B_CORPUS_LINE: each module's corpus copy, OUT/corpus/<path>.bend, keeps the
+#   checked items no wider than this, less those that use a wider one
+A2B_MAXLINE=20000 A2B_CORPUS_LINE=2000 agda2bend emit EXPORT_DIR out
+
+# every module's corpus copy as one JSONL ({"id", "text"} a line), from the
+# first OUT that has it; ids mirror the Agda sources' paths,
+# a2b:agda-categories/src/Categories/Adjoint.bend, so ana's repository holdout
+# holds a translation out with its Agda source
+agda2bend corpus EXPORT_DIR corpus.jsonl out [out2 ...]
+```
+
+2,000 characters is ana's limit on a line of raw code. Without the caps, 85% of
+the Yoneda cone's 9 MB of output was in 187 lines past it, so those files
+couldn't go into ana's corpus at all.
+
 From another flake:
 
 ```nix

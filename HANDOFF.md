@@ -2,7 +2,25 @@
 
 Working notes, so the work can continue from another machine or agent. Newest first. Times are UTC-6. agda2bend was split out of ana (github:hhefesto/ana) on 2026-10-22. ana's HANDOFF.md, before that date, has the rest of the history.
 
-## ▶ CONTINUE HERE (2026-10-22, 18:40 UTC-6): its own repository, on upstream Bend; yoneda22 checks 2246 of 2527
+## ▶ CONTINUE HERE (2026-10-22, 21:05 UTC-6): corpus runs for ana, category theory first
+
+- **The user (10-22, evening): "work on agda2bend. we should extend the ana corpus with as much bend as advisable. Start with category theory themed code and continue with any code you think would do good for training ana."**
+- **Corpus mode** (committed with this entry): two emit settings and a command.
+  - `A2B_MAXLINE=N`: an item printed with a line wider than N never reaches a check (`G.tgt.wide`); what uses it is dropped too. The widest items were elaborated reasoning chains (yoneda22: 85% of 9 MB in 187 lines over 2,000 characters, the widest 1.8 MB) and the slowest to check (one module took 30 min). Corpus runs use 20000.
+  - `A2B_CORPUS_LINE=N`: after the gate, each module's corpus copy goes to OUT/corpus/<path>.bend: the kept items no wider than N, less those using a wider one of the module (`G.tgt.corpus`), so the copy checks against the same imports. Corpus runs use 2000, ana's raw limit (ana docs/CORPUS-V2.md, C6).
+  - `agda2bend corpus DIR JSONL OUT...`: every module's corpus copy as one JSONL line `{"id", "text"}`, from the first OUT that has it. The id mirrors the Agda source (`a2b:agda-categories/src/Categories/Adjoint.bend`, `a2b:agda-stdlib/src/Data/Bool/Base.bend`, `a2b:agda/src/data/lib/prim/Agda/Builtin/Sigma.bend`; another package keeps its name less hash and version), so ana's `bend-corpus-v2 raw` holds a translation out with its Agda source's unit. Tried on a 12-module cone: ana's raw kept 11 and held out Data.Bool.Base, the leak noted on 10-22.
+- **Names** (ToBend/Names.bend): `.` is a separator like `_` and `-`, so a generalized variable's level `A.a` is `A_a` (it was `A_u002e_a`, 13,488 times in yoneda22's short lines). New words: subscripts ₄–₉, ʸ, ᵣ, ⊢ (vdash), ⊣ (dashv), ⟪ ⟫ (llangle, rrangle). The Function.Base goldens were remade (only those names changed; 57 ok).
+- **Exports** (run/a2b, untracked; drivers /tmp/bx/a2b/export3.sh, export3b.sh, exportlib.sh, one-offs):
+  - export3: export2 (hard links) plus the standard library's other modules, all but Tactic, Reflection, IO, System, Foreign, Debug, Size, Codata.Musical, Codata.Sized, Test (770 asked, all exported; dependencies pull some of the excluded ones in). Chunks of 40 imports need `{-# OPTIONS --guardedness --sized-types #-}` (both infective).
+  - export-libsA: export3 plus agdarsec, functional-linear-algebra and generics (68 modules). export-hs: agda2hs-base (`--erasure --no-projection-like`; Haskell.Extra.Delay and Haskell.Prim.Thunk need sized types and are missing). export-prelude: agda-prelude (alone: it shares module names with the standard library). AGDA_DIR for these: run/a2b/libs/agda-dir (the nixpkgs agdaPackages, GC-rooted in run/a2b/libs). iowa-stdlib doesn't build in this nixpkgs; 1lab, cubical and cubical-mini are cubical, which agda2bend doesn't translate.
+- **Corpus runs** (user units a2b-corpus1..5, `A2B_MAXLINE=20000 A2B_CORPUS_LINE=2000`, binaries run/a2b/bin/agda2bend-O0-c1/-c2, logs run/a2b/corpusN.log):
+  - corpus1: all of export2 (agda-categories' 487 modules and their standard-library cone, 768 modules).
+  - corpus2: export3's 1102 non-Categories modules (the standard library).
+  - corpus3: export-libsA's 68 new modules. corpus4: export-hs. corpus5: export-prelude.
+  - Then: `agda2bend corpus run/a2b/export-libsA ~/src/ana/run/v5/a2b/bend.jsonl run/a2b/corpus1 run/a2b/corpus2 run/a2b/corpus3`, and the same for export-hs (corpus4) and export-prelude (corpus5) into their own JSONLs.
+- **Not done yet:** Setoids with live objects in law fields (the user's decision, below), the ⊤ pass on wip/unit-eta, Product's stuck zip. Each would add checked items to the next corpus run.
+
+## Previous (2026-10-22, 18:40 UTC-6): its own repository, on upstream Bend; yoneda22 checks 2246 of 2527
 
 - **The repository:** ~/src/agda2bend, github:hhefesto/agda2bend (public). Its history is ana's, filtered down to agda2bend's paths. ana takes `agda2bend` and `agda-export` from this flake, as its input `agda2bend`, and pins the same nixpkgs and Bend.
 - **Bend is upstream's** (bendlang/bend 2.0.38, b8664b0), with no fork. The fork's record eta (2b33b4f1) was reverted in cecf7397, then the fork was dropped altogether. agda2bend writes a type-valued function's record match as projections, and it unfolds a header's record-matching call. The fixture A2bFix covers both.

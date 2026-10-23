@@ -34,6 +34,15 @@ import ./ToBend/Qfix.bend as QF
 #   agda2bend report OUT
 #       the ledger summed up, and the causes ranked by the items they block
 #
+#   agda2bend corpus DIR JSONL OUT...
+#       the corpus copies emits wrote (OUT/corpus, with A2B_CORPUS_LINE)
+#       as one JSONL for ana's raw intake, ids by the Agda sources' paths
+#
+# An emit's environment: BEND (the checker), A2B_MAXLINE (an item with a
+# line wider than this never reaches a check; 0, the default: no cap) and
+# A2B_CORPUS_LINE (each module's corpus copy, OUT/corpus/<path>.bend: its
+# kept items no wider than this, less those using a wider one; 0: none).
+#
 #   agda2bend decode FILE.sexp...
 #       parse and decode every expression of each export file: per file the
 #       module, its definitions against the count its header announced,
@@ -44,7 +53,7 @@ import ./ToBend/Qfix.bend as QF
 # Logs go to stderr, stamped in UTC-6.  Every def is prefixed `a2b.`.
 
 def a2b.usage() -> IO(Unit):
-  IO.die(Unit, 2, "usage: agda2bend translate FILE.agda OUT | emit DIR OUT [MODULE...] | report OUT | decode FILE.sexp...")
+  IO.die(Unit, 2, "usage: agda2bend translate FILE.agda OUT | emit DIR OUT [MODULE...] | report OUT | corpus DIR JSONL OUT... | decode FILE.sexp...")
 
 # decode -----------------------------------------------------------------------
 
@@ -678,6 +687,26 @@ def a2b.gated(+out: String, +m: List<&2, U32>, +nd: Nat, +gaps: List<&2, List<&2
         Ck.log("emit " ++ S.str(m) ++ ": " ++ Nat.show(nd) ++ " definitions, " ++ Nat.show(nits) ++ " items: " ++ Nat.show(List.length(&2, T.BItem, its)) ++ " check, " ++ Nat.show(a2b.dropped.n(ds, False{})) ++ " dropped, " ++ Nat.show(a2b.dropped.n(ds, True{})) ++ " dependents (" ++ Nat.show(checks) ++ " checks); gaps " ++ Nat.show(List.length(&2, List<&2, U32>, gaps)) ++ a2b.tally.show(a2b.tally(gaps, Nil{})))
         return its
 
+# The corpus copy of a module (A2B_CORPUS_LINE = max, 0: none): its kept
+# items no wider than max, less those using a wider one
+# (G.tgt.corpus), at OUT/corpus/<path>.bend; nothing when none is left.
+# `agda2bend corpus` takes these files into a JSONL for ana.
+def a2b.corpus.items(+path: String, +head: List<&2, List<&2, U32>>, +ims: List<&2, T.BImport>, its: List<&2, T.BItem>) -> IO(Unit):
+  match its:
+    case Nil{}:
+      IO.pure(Unit, Unit{})
+    case it <> t:
+      do IO<Unit>:
+        S.mkdir(S.parent(path))
+        S.write(path, P.tpr.file(T.BFile{head, ims, it <> t}))
+
+def a2b.corpus.write(off: Bool, +path: String, +head: List<&2, List<&2, U32>>, +ims: List<&2, T.BImport>, +max: Nat, r: G.TgtRun) -> IO(Unit):
+  match off r:
+    case True{} _:
+      IO.pure(Unit, Unit{})
+    case False{} G.TgtRun{G.TgtSt{its, ds}, done, checks}:
+      a2b.corpus.items(path, head, ims, G.tgt.corpus(max, its))
+
 # A module's items through the gate: first those using another module's
 # dropped names go (G.tgt.ext), then the checks.  The file before the gate
 # is OUT/raw/<path>.bend.  The answer is the kept items, as the gate's
@@ -690,7 +719,10 @@ def a2b.em.write(+out: String, +m: List<&2, U32>, +kept: Map<&2, Bool>, +ral: Ma
     S.mkdir(S.parent(raw))
     S.write(raw, P.tpr.file(T.BFile{a2b.head.doc(m, nd), ims, its}))
     +bend : String <- S.env("BEND", "bend")
-    r : G.TgtRun <- G.tgt.gate(bend, 900, path, a2b.head.doc(m, nd), ims, G.tgt.ext(its, kept, ral), qe)
+    +maxl : Nat <- S.env.nat("A2B_MAXLINE", 0n)
+    +r : G.TgtRun <- G.tgt.gate(bend, 900, path, a2b.head.doc(m, nd), ims, G.tgt.wide(maxl, G.tgt.ext(its, kept, ral)), qe)
+    +cl : Nat <- S.env.nat("A2B_CORPUS_LINE", 0n)
+    a2b.corpus.write(Nat.is_eq(cl, 0n), out ++ "/corpus/" ++ S.str(C.act.path(m)), a2b.head.doc(m, nd), ims, cl, r)
     a2b.gated(out, m, nd, gaps, nits, r)
 
 def a2b.em.items(+out: String, +m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +kept: Map<&2, Bool>, +nd: Nat, +its: List<&2, T.BItem>, +qe: QF.TqEnv) -> IO(List<&2, T.BItem>):
@@ -1236,6 +1268,208 @@ def a2b.translate(xs: List<String>) -> IO(Unit):
     case _:
       a2b.usage()
 
+# corpus -----------------------------------------------------------------------
+#
+#   agda2bend corpus DIR JSONL OUT...
+#
+# The corpus files emits of DIR's export wrote (OUT/corpus: A2B_CORPUS_LINE
+# set) as one JSONL for ana's raw intake (`bend-corpus-v2 raw`): a line
+# {"id": ID, "text": TEXT} a module, in DIR's order, from the first OUT
+# that has it (later runs may share modules of earlier ones' cones).  ID is
+# `a2b:`, then the Agda source's library and path with .bend for its extension
+# (a2b:agda-categories/src/Categories/Adjoint.bend,
+# a2b:agda-stdlib/src/Data/Bool/Base.bend).  Mirroring the Agda file puts the
+# translation in its source's holdout unit (ana's v2.held.id: the library,
+# the file's directory), so a held-out Agda module's Bend is held out with
+# it.  The library is the store directory's package, by ana's names
+# (standard-library: agda-stdlib; Agda's own lib/prim: agda/src/data/lib/prim);
+# another package keeps its name less the store hash.
+
+type A2bCp is Data:
+  A2bCp{files: Nat, bytes: Nat}
+
+def a2b.cp.show(c: A2bCp) -> String:
+  match c:
+    case A2bCp{f, b}:
+      Nat.show(f) ++ " modules, " ++ Nat.show(b) ++ " bytes"
+
+def a2b.cp.add(c: A2bCp, +n: Nat) -> A2bCp:
+  match c:
+    case A2bCp{f, b}:
+      A2bCp{1n+f, Nat.add(b, n)}
+
+# JSON: a string's bytes escaped (UTF-8 passes through as it is)
+def a2b.js.hex(+d: U32) -> U32:
+  Bool.pick(U32, U32.is_lt(d, 10), U32.add(48, d), U32.add(87, d))
+
+def a2b.js.ctl(+c: U32) -> List<&2, U32>:
+  Bool.pick(List<&2, U32>, U32.is_eq(c, 10), [92, 110], Bool.pick(List<&2, U32>, U32.is_eq(c, 9), [92, 116], Bool.pick(List<&2, U32>, U32.is_eq(c, 13), [92, 114], [92, 117, 48, 48, a2b.js.hex(U32.div(c, 16)), a2b.js.hex(U32.mod(c, 16))])))
+
+def a2b.js.at(ctl: Bool, q: Bool, +c: U32, acc: List<&2, U32>) -> List<&2, U32>:
+  match ctl q acc:
+    case False{} False{} acc:
+      c <> acc
+    case False{} True{} acc:
+      92 <> c <> acc
+    case True{} _ acc:
+      List.append(&2, U32, a2b.js.ctl(c), acc)
+
+def a2b.js.esc(xs: List<&2, U32>) -> List<&2, U32>:
+  match xs:
+    case Nil{}:
+      Nil{}
+    case +c <> t:
+      a2b.js.at(U32.is_lt(c, 32), Bool.or(U32.is_eq(c, 34), U32.is_eq(c, 92)), c, a2b.js.esc(t))
+
+def a2b.cp.rec(+id: List<&2, U32>, +text: List<&2, U32>) -> List<&2, U32>:
+  List.append(&2, U32, S.b("{\"id\": \""), List.append(&2, U32, a2b.js.esc(id), List.append(&2, U32, S.b("\", \"text\": \""), List.append(&2, U32, a2b.js.esc(text), S.b("\"}\n")))))
+
+# the bytes after the first p in xs (none when p is not there)
+def a2b.cp.after.at(+xs: List<&2, U32>, +p: List<&2, U32>, m: Maybe<&2, Nat>) -> List<&2, U32>:
+  match m:
+    case None{}:
+      Nil{}
+    case Some{+k}:
+      List.drop(&2, U32, xs, Nat.add(k, S.len(p)))
+
+def a2b.cp.after(+xs: List<&2, U32>, +p: List<&2, U32>) -> List<&2, U32>:
+  a2b.cp.after.at(xs, p, S.find(xs, p, 0n))
+
+# the bytes before the first c (a store directory's name: short, so the
+# strict pick's walk past it costs nothing)
+def a2b.cp.before(xs: List<&2, U32>, +c: U32) -> List<&2, U32>:
+  match xs:
+    case Nil{}:
+      Nil{}
+    case +x <> +t:
+      Bool.pick(List<&2, U32>, U32.is_eq(x, c), Nil{}, x <> a2b.cp.before(t, c))
+
+def a2b.cp.digit.hd(p: List<&2, U32>) -> Bool:
+  match p:
+    case Nil{}:
+      False{}
+    case +c <> t:
+      Bool.and(U32.is_ge(c, 48), U32.is_le(c, 57))
+
+# a package's name: a store directory name's dash-separated parts, less the
+# hash (the caller's) and the version (from the first part with a digit
+# first: agdarsec-0.5.0-unstable-2025-08-05 is agdarsec)
+def a2b.cp.pname(parts: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  match parts:
+    case Nil{}:
+      Nil{}
+    case +p <> +t:
+      Bool.pick(List<&2, List<&2, U32>>, a2b.cp.digit.hd(p), Nil{}, p <> a2b.cp.pname(t))
+
+# the library's name as ana's corpus names its repository
+def a2b.cp.lib(+dir: List<&2, U32>) -> List<&2, U32>:
+  +n = S.join(a2b.cp.pname(S.split(List.drop(&2, U32, dir, 33n), 45)), 45)
+  Bool.pick(List<&2, U32>, S.eq(n, S.b("standard-library")), S.b("agda-stdlib"), n)
+
+# an Agda source file's library and path (a store path)
+def a2b.cp.where(+src: List<&2, U32>) -> List<&2, U32>:
+  +st = a2b.cp.after(src, S.b("/nix/store/"))
+  Bool.pick(List<&2, U32>, S.infix(src, S.b("/lib/prim/")), List.append(&2, U32, S.b("agda/src/data/lib/prim/"), a2b.cp.after(src, S.b("/lib/prim/"))),
+    List.append(&2, U32, a2b.cp.lib(a2b.cp.before(st, 47)), 47 <> a2b.cp.after(st, S.b("/"))))
+
+def a2b.cp.cut(+p: List<&2, U32>, +n: Nat) -> List<&2, U32>:
+  List.append(&2, U32, List.take(&2, U32, p, Nat.sub(S.len(p), n)), S.b(".bend"))
+
+# the path with .bend for its Agda extension
+def a2b.cp.bend(+p: List<&2, U32>) -> List<&2, U32>:
+  Bool.pick(List<&2, U32>, S.suffix(p, S.b(".lagda.md")), a2b.cp.cut(p, 9n),
+    Bool.pick(List<&2, U32>, S.suffix(p, S.b(".agda")), a2b.cp.cut(p, 5n), List.append(&2, U32, p, S.b(".bend"))))
+
+# a module's name and Agda source (in an A2bMod: name, source, no imports)
+def a2b.cp.hdr.of(t: A.AgTop) -> Maybe<&2, A2bMod>:
+  match t:
+    case A.AgTopMod{A.AgMod{nm, f, im, op, n}}:
+      Some{A2bMod{nm, f, Nil{}}}
+    case _:
+      None{}
+
+def a2b.cp.hdr.got(r: X.TsxRd & Maybe<&2, X.Sx>) -> IO(Maybe<&2, A2bMod>):
+  (rd, m) = r
+  match m:
+    case Some{x}:
+      do IO<Maybe<&2, A2bMod>>:
+        X.tsx.shut(rd)
+        return a2b.cp.hdr.of(A.aas.top(x))
+    case None{}:
+      do IO<Maybe<&2, A2bMod>>:
+        X.tsx.shut(rd)
+        return None{}
+
+def a2b.cp.hdr(+file: List<&2, U32>) -> IO(Maybe<&2, A2bMod>):
+  do IO<Maybe<&2, A2bMod>>:
+    rd : X.TsxRd <- X.tsx.open(S.str(file))
+    r : X.TsxRd & Maybe<&2, X.Sx> <- X.tsx.next(rd)
+    a2b.cp.hdr.got(r)
+
+# the first of the paths the module's corpus copy has, if any
+def a2b.cp.take(ps: List<String>, +jsonl: String, +src: List<&2, U32>, c: A2bCp) -> IO(A2bCp):
+  match ps c:
+    case Nil{} c:
+      IO.pure(A2bCp, c)
+    case path <> t c:
+      do IO<A2bCp>:
+        +text : List<&2, U32> <- S.read(path)
+        S.add(jsonl, a2b.cp.rec(List.append(&2, U32, S.b("a2b:"), a2b.cp.bend(a2b.cp.where(src))), text))
+        return a2b.cp.add(c, S.len(text))
+
+def a2b.cp.keep(has: Bool, +p: String, rest: List<String>) -> List<String>:
+  match has rest:
+    case True{} rest:
+      p <> rest
+    case False{} rest:
+      rest
+
+# the corpus copies of a module (rel: its path) that the OUTs have, in order
+def a2b.cp.there(outs: List<&2, List<&2, U32>>, +rel: String) -> IO(List<String>):
+  match outs:
+    case Nil{}:
+      IO.pure(List<String>, Nil{})
+    case +o <> t:
+      do IO<List<String>>:
+        +p : String = S.str(o) ++ "/corpus/" ++ rel
+        has : Bool <- S.exists(p)
+        rest : List<String> <- a2b.cp.there(t, rel)
+        return a2b.cp.keep(has, p, rest)
+
+def a2b.cp.mod(m: Maybe<&2, A2bMod>, +outs: List<&2, List<&2, U32>>, +jsonl: String, c: A2bCp) -> IO(A2bCp):
+  match m c:
+    case None{} c:
+      IO.pure(A2bCp, c)
+    case Some{A2bMod{+n, +src, im}} c:
+      do IO<A2bCp>:
+        ps : List<String> <- a2b.cp.there(outs, S.str(C.act.path(n)))
+        a2b.cp.take(ps, jsonl, src, c)
+
+def a2b.cp.go(fs: List<&2, List<&2, U32>>, +outs: List<&2, List<&2, U32>>, +jsonl: String, c: A2bCp) -> IO(A2bCp):
+  match fs c:
+    case Nil{} c:
+      IO.pure(A2bCp, c)
+    case +f <> t c:
+      do IO<A2bCp>:
+        m : Maybe<&2, A2bMod> <- a2b.cp.hdr(f)
+        c2 : A2bCp <- a2b.cp.mod(m, outs, jsonl, c)
+        a2b.cp.go(t, outs, jsonl, c2)
+
+# a module's export file (not the index, not an erasure sidecar)
+def a2b.cp.module.file(+f: List<&2, U32>) -> Bool:
+  Bool.and(a2b.not.index(f), Bool.not(S.suffix(f, S.b(".erasure.sexp"))))
+
+def a2b.corpus(xs: List<String>) -> IO(Unit):
+  match xs:
+    case dir <> +jsonl <> outs:
+      do IO<Unit>:
+        fs : List<&2, List<&2, U32>> <- S.glob(dir ++ "/*.sexp")
+        S.write(jsonl, S.b(""))
+        c : A2bCp <- a2b.cp.go(List.filter(~List<&2, U32>, ~(f => a2b.cp.module.file(f)), fs), a2b.strs(outs), jsonl, A2bCp{0n, 0n})
+        IO.print("agda2bend corpus: " ++ a2b.cp.show(c) ++ " to " ++ jsonl)
+    case _:
+      a2b.usage()
+
 # main -------------------------------------------------------------------------
 
 def a2b.args(xs: List<String>) -> IO(Unit):
@@ -1248,6 +1482,8 @@ def a2b.args(xs: List<String>) -> IO(Unit):
       a2b.decode(more)
     case "report" <> more:
       a2b.report(more)
+    case "corpus" <> more:
+      a2b.corpus(more)
     case _:
       a2b.usage()
 

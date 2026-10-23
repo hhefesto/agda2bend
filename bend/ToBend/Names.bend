@@ -317,6 +317,30 @@ def tnm.word(c: U32) -> String:
       "tick"
     case 34:
       "quote"
+    case 8324:
+      "4"
+    case 8325:
+      "5"
+    case 8326:
+      "6"
+    case 8327:
+      "7"
+    case 8328:
+      "8"
+    case 8329:
+      "9"
+    case 696:
+      "y"
+    case 7523:
+      "r"
+    case 8866:
+      "vdash"
+    case 8867:
+      "dashv"
+    case 10218:
+      "llangle"
+    case 10219:
+      "rrangle"
     case _:
       ""
 
@@ -337,8 +361,10 @@ def tnm.hex(+c: U32) -> String:
 def tnm.alnum(+c: U32) -> Bool:
   Bool.or(Bool.or(Bool.and(U32.is_ge(c, 97), U32.is_le(c, 122)), Bool.and(U32.is_ge(c, 65), U32.is_le(c, 90))), Bool.and(U32.is_ge(c, 48), U32.is_le(c, 57)))
 
+# `_`, `-` and `.` (2026-10-22: a generalized variable's level, `A.a`,
+# is `A_a`, where it was `A_u002e_a`, ana's corpus's most frequent noise)
 def tnm.sep(+c: U32) -> Bool:
-  Bool.or(U32.is_eq(c, 95), U32.is_eq(c, 45))
+  Bool.or(Bool.or(U32.is_eq(c, 95), U32.is_eq(c, 45)), U32.is_eq(c, 46))
 
 def tnm.word.or.go(none: Bool, +c: U32, w: String) -> String:
   match none:
@@ -350,8 +376,8 @@ def tnm.word.or.go(none: Bool, +c: U32, w: String) -> String:
 def tnm.word.or(+c: U32, +w: String) -> String:
   tnm.word.or.go(String.eq(w, ""), c, w)
 
-# One character, in front of acc: a letter or digit as itself, `_` and `-`
-# as `_`, a symbol as `_WORD_`.
+# One character, in front of acc: a letter or digit as itself, `_`, `-` and
+# `.` as `_`, a symbol as `_WORD_`.
 def tnm.char.go(an: Bool, sp: Bool, +c: U32, acc: String) -> String:
   match an sp:
     case True{} _:

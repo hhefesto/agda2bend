@@ -541,7 +541,7 @@ def gold.fb.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: L
       +text = D.a2b.raw.text(S.b("Function.Base"), al, ral, List.length(&2, A.AgDecl, ds), its)
       do IO<D.A2bG>:
         IO.print(verdict("translate Function.Base as its golden", S.eq(text, want)))
-        IO.print(verdict("a combinator's body is normalised: _on_ uses its points once, its A of any kind", Bool.and(S.infix(text, S.b("~A: Kind(A_u002e_a), ~x_13: A -> B, ")), S.infix(text, S.b("\n  x(x_13(x_14), x_13(x_15))\n")))))
+        IO.print(verdict("a combinator's body is normalised: _on_ uses its points once, its A of any kind", Bool.and(S.infix(text, S.b("~A: Kind(A_a), ~x_13: A -> B, ")), S.infix(text, S.b("\n  x(x_13(x_14), x_13(x_15))\n")))))
         return g
 
 def gold.fb(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, g: D.A2bG) -> IO(D.A2bG):

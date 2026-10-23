@@ -594,6 +594,68 @@ def tgt.ext(its: List<&2, T.BItem>, +kept: Map<&2, Bool>, +ral: Map<&2, List<&2,
     case +it <> t:
       tgt.ext.one(tgt.missing(tgt.refs(it), kept, ral), ral, it, tgt.ext(t, kept, ral))
 
+# Wide items (the user, 2026-10-22: "extend the ana corpus with as much
+# bend as advisable").  ana's raw filter drops a file with a line over
+# 2,000 characters (ana's docs/CORPUS-V2.md, C6), and most of agda2bend's
+# bytes are in a few such lines: reasoning chains whose implicit arguments
+# are all spelled out (yoneda22: 85% of 9 MB in 187 lines, the widest
+# 1.8 MB).  An item's width is its widest printed line.
+def tgt.widest(ls: List<&2, List<&2, U32>>, +w: Nat) -> Nat:
+  match ls:
+    case Nil{}:
+      w
+    case l <> t:
+      +n = List.length(&2, U32, l)
+      tgt.widest(t, Bool.pick(Nat, Nat.is_lt(w, n), n, w))
+
+def tgt.width(+it: T.BItem) -> Nat:
+  tgt.widest(S.split(P.tpr.item(it, Nil{}), 10), 0n)
+
+def tgt.wide.put(over: Bool, +wide: Nat, +it: T.BItem, st: TgtSt) -> TgtSt:
+  match over st:
+    case False{} TgtSt{its, ds}:
+      TgtSt{it <> its, ds}
+    case True{} TgtSt{its, ds}:
+      TgtSt{its, TgtDrop{tgt.name(it), tgt.agda(it), S.b("too wide: a line of " ++ Nat.show(wide) ++ " characters"), False{}} <> ds}
+
+def tgt.wide.one(+max: Nat, +wide: Nat, +it: T.BItem, st: TgtSt) -> TgtSt:
+  tgt.wide.put(Nat.is_lt(max, wide), wide, it, st)
+
+# the items no wider than max kept in order, the wider ones dropped after ds
+def tgt.wide.go(+max: Nat, its: List<&2, T.BItem>, ds: List<&2, TgtDrop>) -> TgtSt:
+  match its:
+    case Nil{}:
+      TgtSt{Nil{}, ds}
+    case +it <> t:
+      tgt.wide.one(max, tgt.width(it), it, tgt.wide.go(max, t, ds))
+
+def tgt.wide.at(off: Bool, +max: Nat, its: List<&2, T.BItem>, ds: List<&2, TgtDrop>) -> TgtSt:
+  match off:
+    case True{}:
+      TgtSt{its, ds}
+    case False{}:
+      tgt.wide.go(max, its, ds)
+
+# Before the gate (A2B_MAXLINE, Agda2Bend.bend): an item wider than max
+# never reaches a check, and its dependents follow it (tgt.gate).  The
+# widest terms are the slowest to check (one module took 30 min), so a
+# corpus run caps them.  max 0: no cap.
+def tgt.wide(+max: Nat, pre: TgtSt) -> TgtSt:
+  match pre:
+    case TgtSt{its, ds}:
+      tgt.wide.at(Nat.is_eq(max, 0n), max, its, ds)
+
+def tgt.st.items(st: TgtSt) -> List<&2, T.BItem>:
+  match st:
+    case TgtSt{its, ds}:
+      its
+
+# After the gate (A2B_CORPUS_LINE): the kept items a corpus takes, those no
+# wider than max and not using a wider one of the module (to a fixed point),
+# so the file they make checks against the same imports.
+def tgt.corpus(+max: Nat, its: List<&2, T.BItem>) -> List<&2, T.BItem>:
+  tgt.st.items(tgt.deps(S.b("uses a wide item"), tgt.wide(max, TgtSt{its, Nil{}})))
+
 def tgt.merge(a: TgtSt, ds: List<&2, TgtDrop>) -> TgtSt:
   match a:
     case TgtSt{its, d0}:
