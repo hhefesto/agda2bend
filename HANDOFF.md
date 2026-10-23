@@ -14,7 +14,7 @@ Working notes, so the work can continue from another machine or agent. Newest fi
   - Data.Unit.Properties: 2 checked→dependent, 1 checked→dropped (⊤ eta).
   - WellFounded: 1 checked→dropped, 1 dropped→checked.
   - Categories.Yoneda: 12 items, 0 check (3 gaps).
-- **The flake is built on ekapkgs** (6c44cef), as Telomare is: corepkgs.lib.mkFlake over corepkgs 98204de (its builds are in ekala-corepkgs.cachix.org), with the haskell-pkgs snapshot (Agda 2.8.0, GHC 9.10.3). nix/agda.nix builds standard-library 2.3 and agda-categories 0.3.0 itself, because corepkgs has no agdaPackages, and Agda is built without emacs. nix/agda-export.nix is the .cabal in cabal2nix's form. Before 6c44cef it was nixpkgs 0bb7ec5 (2a2171a, the split).
+- **The flake is on nixpkgs** (0bb7ec5). A move to ekapkgs (6c44cef, as Telomare does) was reverted on 10-22: too green yet (its standard-library build failed, and Agda and most of the Haskell harness weren't in its cache).
 - **In progress, on branch wip/unit-eta (bd8303b, FoggyOrca's, unbuilt as a binary):**
   - ToBend/Copy.bend has a new pass, `tcp.unit`, for Agda's ⊤ eta. A def whose body is one expression matches its Unit params against `Unit{}`.
   - Agda2Bend.bend has `a2b.shape = Q.tcp.unit(a2b.destr(it, te))`, which replaces `a2b.destr` in `a2b.re.items` and `a2b.finish`.
