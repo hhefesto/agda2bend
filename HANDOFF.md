@@ -25,12 +25,12 @@ Working notes, so the work can continue from another machine or agent. Newest fi
   - `tcp.unit` aims at `⊤-irrelevant`, `_≟_` and `≡-total`, which would bring back 3 items plus 3 dependents (not verified).
   - LiftSetoids: `extendedlambda1` drops on `Setoid.eq` over `Level.Lift.lower(…)`, probably Lift's missing eta.
   - WellFounded's "swap" is an artifact: `GeneralizeTel` appears twice in both ledgers, which duplicates its key in the join.
-  - **Setoids fails on "expected -D observed D".** Category's law fields erase objects and morphisms (a yoneda6 choice), but Setoids' `assoc` needs `Setoid.isEquivalence(D)` live. The user has to decide on this, for example by keeping objects live in law fields. Yoneda's 12 items depend on it through Presheaves and NT.Hom.
+  - **Setoids fails on "expected -D observed D".** Category's law fields erase objects and morphisms (a yoneda6 choice), but Setoids' `assoc` needs `Setoid.isEquivalence(D)` live. Yoneda's 12 items depend on it through Presheaves and NT.Hom. **User's decision (10-22): keep objects live in law fields if that gives better Bend output.** So try it, run it against the last yoneda run, and keep it only if more items check overall (yoneda6's erasure won 10 items, which it may lose).
   - Product: πˡ, πʳ, assocˡ and assocʳ drop because `Product_Base.zip(…)` is stuck inside refl's erased point. A planned fix: `act.inline.go` unfolds calls in projection form at arguments the callee takes erased or dropped, as headers already do.
   - Scratch from that work is in /tmp/bx/fo: the joins (l21/l22/j/m21/m22.tsv) and the probes (u/t1–t6.bend). Don't run /tmp/bx/fo/inl.pl: its regex never terminates.
 - **Next, in order:**
   1. Build and test the ⊤ pass (tools/a2b/test.sh, then `nix flake check`). Then run yoneda23 on upstream Bend and compare it with yoneda22, remembering that the Bend binary changed.
-  2. Win back the drops: Data.Unit.Properties (⊤ eta), Category.Construction.Functors, LiftSetoids (Lift's eta), Category.Product (the stuck `zip`; the planned fix is above), Setoids (waiting on the user's decision above), and Categories.Yoneda's 12.
+  2. Win back the drops: Data.Unit.Properties (⊤ eta), Category.Construction.Functors, LiftSetoids (Lift's eta), Category.Product (the stuck `zip`; the planned fix is above), Setoids (live objects in law fields, kept only if the net count rises), and Categories.Yoneda's 12.
   3. Corpus readiness: what share of the output a corpus can use. On yoneda19, 26 of 121 files with long lines held 91% of the bytes.
   4. The shell scripts in tools/a2b fail ana's shell lint (all logic belongs in Bend), so port them to Bend.
   5. The public page, agda2bend.hhefesto.dev, and a tweet, once it's ready.
