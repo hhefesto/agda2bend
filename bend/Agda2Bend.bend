@@ -726,12 +726,17 @@ def a2b.re.one(+k: String, +hdr: List<&2, T.BMode>, r: A2bRe) -> A2bRe:
 def a2b.destr(it: T.BItem, +te: Q.TcpEnv) -> T.BItem:
   it
 
+# an item as Copy counts its uses: Unit's eta done by matching (Q.tcp.unit,
+# 2026-10-22: Bend has no eta for Unit), and the unwired destructuring
+def a2b.shape(it: T.BItem, +te: Q.TcpEnv) -> T.BItem:
+  Q.tcp.unit(a2b.destr(it, te))
+
 def a2b.re.items(its: List<&2, T.BItem>, +nk: Map<&2, String>, +datas: List<&2, List<&2, U32>>, +te: Q.TcpEnv, +qe: QF.TqEnv, r: A2bRe) -> A2bRe:
   match its:
     case Nil{}:
       r
     case T.BiDef{+n, ps, ret, body, doc} <> t:
-      a2b.re.items(t, nk, datas, te, qe, a2b.re.one(a2b.nk.got(Map.get(String, "", nk, S.str(n))), Q.tcp.decide(a2b.destr(T.BiDef{n, ps, ret, body, doc}, te), datas, qe), r))
+      a2b.re.items(t, nk, datas, te, qe, a2b.re.one(a2b.nk.got(Map.get(String, "", nk, S.str(n))), Q.tcp.decide(a2b.shape(T.BiDef{n, ps, ret, body, doc}, te), datas, qe), r))
     case i <> t:
       a2b.re.items(t, nk, datas, te, qe, r)
 
@@ -761,7 +766,7 @@ def a2b.finish(its: List<&2, T.BItem>, +datas: List<&2, List<&2, U32>>, +te: Q.T
     case Nil{}:
       Nil{}
     case it <> t:
-      +d = a2b.destr(it, te)
+      +d = a2b.shape(it, te)
       Q.tcp.finish(d, Q.tcp.decide(d, datas, qe)) <> a2b.finish(t, datas, te, qe)
 
 def a2b.finish.of(+its: List<&2, T.BItem>, +te: Q.TcpEnv, +qe: QF.TqEnv) -> List<&2, T.BItem>:
