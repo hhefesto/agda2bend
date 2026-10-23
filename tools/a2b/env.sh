@@ -1,6 +1,6 @@
 # Shared settings of the tools/a2b scripts (sourced, not run; R is the repo).
-# A2B_BEND: the bend that checks: the flake's (hhefesto/bend2 ft-kernels; its bend.ts is
-#           upstream's, with no record eta, since 2026-10-22), GC-rooted at
+# A2B_BEND: the bend that checks: the flake's (upstream bendlang/bend, no record eta;
+#           until 2026-10-22 the hhefesto/bend2 fork), GC-rooted at
 #           run/a2b/gcroot-bend (`nix build .#bend -o run/a2b/gcroot-bend`; made here when
 #           missing).
 # A2B_LOCK: the lock that serialises heavy Bend compiles between agents.
