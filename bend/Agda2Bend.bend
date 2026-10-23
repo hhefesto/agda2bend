@@ -34,7 +34,7 @@ import ./ToBend/Qfix.bend as QF
 #   agda2bend report OUT
 #       the ledger summed up, and the causes ranked by the items they block
 #
-#   agda2bend corpus DIR JSONL OUT...
+#   agda2bend corpus JSONL DIR OUT... [DIR OUT...]
 #       the corpus copies emits wrote (OUT/corpus, with A2B_CORPUS_LINE)
 #       as one JSONL for ana's raw intake, ids by the Agda sources' paths
 #
@@ -53,7 +53,7 @@ import ./ToBend/Qfix.bend as QF
 # Logs go to stderr, stamped in UTC-6.  Every def is prefixed `a2b.`.
 
 def a2b.usage() -> IO(Unit):
-  IO.die(Unit, 2, "usage: agda2bend translate FILE.agda OUT | emit DIR OUT [MODULE...] | report OUT | corpus DIR JSONL OUT... | decode FILE.sexp...")
+  IO.die(Unit, 2, "usage: agda2bend translate FILE.agda OUT | emit DIR OUT [MODULE...] | report OUT | corpus JSONL DIR OUT... [DIR OUT...] | decode FILE.sexp...")
 
 # decode -----------------------------------------------------------------------
 
@@ -1270,33 +1270,42 @@ def a2b.translate(xs: List<String>) -> IO(Unit):
 
 # corpus -----------------------------------------------------------------------
 #
-#   agda2bend corpus DIR JSONL OUT...
+#   agda2bend corpus JSONL DIR OUT... [DIR OUT...]
 #
-# The corpus files emits of DIR's export wrote (OUT/corpus: A2B_CORPUS_LINE
-# set) as one JSONL for ana's raw intake (`bend-corpus-v2 raw`): a line
-# {"id": ID, "text": TEXT} a module, in DIR's order, from the first OUT
-# that has it (later runs may share modules of earlier ones' cones).  ID is
-# `a2b:`, then the Agda source's library and path with .bend for its extension
-# (a2b:agda-categories/src/Categories/Adjoint.bend,
-# a2b:agda-stdlib/src/Data/Bool/Base.bend).  Mirroring the Agda file puts the
-# translation in its source's holdout unit (ana's v2.held.id: the library,
-# the file's directory), so a held-out Agda module's Bend is held out with
-# it.  The library is the store directory's package, by ana's names
-# (standard-library: agda-stdlib; Agda's own lib/prim: agda/src/data/lib/prim);
-# another package keeps its name less the store hash.
+# The corpus copies emits wrote (OUT/corpus: A2B_CORPUS_LINE set) as one
+# JSONL for ana's raw intake (`bend-corpus-v2 raw`): a line {"id": ID,
+# "text": TEXT} a module.  The arguments are read in order: a directory
+# with no corpus/ is an export (agda-export's --export-dir), whose modules
+# the OUTs after it are read against, in its order; an OUT gives each
+# module's corpus copy it has, unless that ID was written already (so the
+# first OUT with a module wins, and a later export's copy of Agda's builtins
+# is not written twice).  ID is `a2b:`, then the Agda source's library and
+# path with .bend for its extension (a2b:agda-categories/src/Categories/
+# Adjoint.bend, a2b:agda-stdlib/src/Data/Bool/Base.bend).  Mirroring the
+# Agda file puts the translation in its source's holdout unit (ana's
+# v2.held.id: the library, the file's directory), so a held-out Agda
+# module's Bend is held out with it.  The library is the store directory's
+# package, by ana's names (standard-library: agda-stdlib; Agda's own
+# lib/prim: agda/src/data/lib/prim); another package keeps its name less
+# the store hash and the version.
 
 type A2bCp is Data:
-  A2bCp{files: Nat, bytes: Nat}
+  A2bCp{files: Nat, bytes: Nat, seen: Map<&2, Bool>}
 
 def a2b.cp.show(c: A2bCp) -> String:
   match c:
-    case A2bCp{f, b}:
+    case A2bCp{f, b, s}:
       Nat.show(f) ++ " modules, " ++ Nat.show(b) ++ " bytes"
 
-def a2b.cp.add(c: A2bCp, +n: Nat) -> A2bCp:
+def a2b.cp.add(c: A2bCp, +id: List<&2, U32>, +n: Nat) -> A2bCp:
   match c:
-    case A2bCp{f, b}:
-      A2bCp{1n+f, Nat.add(b, n)}
+    case A2bCp{f, b, s}:
+      A2bCp{1n+f, Nat.add(b, n), Map.set(&2, Bool, s, S.str(id), True{})}
+
+def a2b.cp.seen(+c: A2bCp, +id: List<&2, U32>) -> Bool:
+  match c:
+    case A2bCp{f, b, s}:
+      a2b.has(s, id)
 
 # JSON: a string's bytes escaped (UTF-8 passes through as it is)
 def a2b.js.hex(+d: U32) -> U32:
@@ -1406,67 +1415,98 @@ def a2b.cp.hdr(+file: List<&2, U32>) -> IO(Maybe<&2, A2bMod>):
     r : X.TsxRd & Maybe<&2, X.Sx> <- X.tsx.next(rd)
     a2b.cp.hdr.got(r)
 
-# the first of the paths the module's corpus copy has, if any
-def a2b.cp.take(ps: List<String>, +jsonl: String, +src: List<&2, U32>, c: A2bCp) -> IO(A2bCp):
-  match ps c:
-    case Nil{} c:
+# a module's corpus copy at path into the JSONL, unless skip
+def a2b.cp.write(skip: Bool, +path: String, +jsonl: String, +id: List<&2, U32>, +c: A2bCp) -> IO(A2bCp):
+  match skip:
+    case True{}:
       IO.pure(A2bCp, c)
-    case path <> t c:
+    case False{}:
       do IO<A2bCp>:
         +text : List<&2, U32> <- S.read(path)
-        S.add(jsonl, a2b.cp.rec(List.append(&2, U32, S.b("a2b:"), a2b.cp.bend(a2b.cp.where(src))), text))
-        return a2b.cp.add(c, S.len(text))
+        S.add(jsonl, a2b.cp.rec(id, text))
+        return a2b.cp.add(c, id, S.len(text))
 
-def a2b.cp.keep(has: Bool, +p: String, rest: List<String>) -> List<String>:
-  match has rest:
-    case True{} rest:
-      p <> rest
-    case False{} rest:
+def a2b.cp.take(has: Bool, +path: String, +jsonl: String, +src: List<&2, U32>, +c: A2bCp) -> IO(A2bCp):
+  +id = List.append(&2, U32, S.b("a2b:"), a2b.cp.bend(a2b.cp.where(src)))
+  a2b.cp.write(Bool.or(Bool.not(has), a2b.cp.seen(c, id)), path, jsonl, id, c)
+
+def a2b.cp.cons(m: Maybe<&2, A2bMod>, rest: List<&2, A2bMod>) -> List<&2, A2bMod>:
+  match m rest:
+    case None{} rest:
       rest
+    case Some{x} rest:
+      x <> rest
 
-# the corpus copies of a module (rel: its path) that the OUTs have, in order
-def a2b.cp.there(outs: List<&2, List<&2, U32>>, +rel: String) -> IO(List<String>):
-  match outs:
+# an export's modules (each an A2bMod of its name and Agda source), in order
+def a2b.cp.load(fs: List<&2, List<&2, U32>>) -> IO(List<&2, A2bMod>):
+  match fs:
     case Nil{}:
-      IO.pure(List<String>, Nil{})
-    case +o <> t:
-      do IO<List<String>>:
-        +p : String = S.str(o) ++ "/corpus/" ++ rel
-        has : Bool <- S.exists(p)
-        rest : List<String> <- a2b.cp.there(t, rel)
-        return a2b.cp.keep(has, p, rest)
-
-def a2b.cp.mod(m: Maybe<&2, A2bMod>, +outs: List<&2, List<&2, U32>>, +jsonl: String, c: A2bCp) -> IO(A2bCp):
-  match m c:
-    case None{} c:
-      IO.pure(A2bCp, c)
-    case Some{A2bMod{+n, +src, im}} c:
-      do IO<A2bCp>:
-        ps : List<String> <- a2b.cp.there(outs, S.str(C.act.path(n)))
-        a2b.cp.take(ps, jsonl, src, c)
-
-def a2b.cp.go(fs: List<&2, List<&2, U32>>, +outs: List<&2, List<&2, U32>>, +jsonl: String, c: A2bCp) -> IO(A2bCp):
-  match fs c:
-    case Nil{} c:
-      IO.pure(A2bCp, c)
-    case +f <> t c:
-      do IO<A2bCp>:
+      IO.pure(List<&2, A2bMod>, Nil{})
+    case +f <> t:
+      do IO<List<&2, A2bMod>>:
         m : Maybe<&2, A2bMod> <- a2b.cp.hdr(f)
-        c2 : A2bCp <- a2b.cp.mod(m, outs, jsonl, c)
-        a2b.cp.go(t, outs, jsonl, c2)
+        rest : List<&2, A2bMod> <- a2b.cp.load(t)
+        return a2b.cp.cons(m, rest)
+
+# one OUT read against an export's modules
+def a2b.cp.out(ms: List<&2, A2bMod>, +out: String, +jsonl: String, +c: A2bCp) -> IO(A2bCp):
+  match ms:
+    case Nil{}:
+      IO.pure(A2bCp, c)
+    case A2bMod{+n, +src, im} <> t:
+      +path = out ++ "/corpus/" ++ S.str(C.act.path(n))
+      do IO<A2bCp>:
+        has : Bool <- S.exists(path)
+        c2 : A2bCp <- a2b.cp.take(has, path, jsonl, src, c)
+        a2b.cp.out(t, out, jsonl, c2)
 
 # a module's export file (not the index, not an erasure sidecar)
 def a2b.cp.module.file(+f: List<&2, U32>) -> Bool:
   Bool.and(a2b.not.index(f), Bool.not(S.suffix(f, S.b(".erasure.sexp"))))
 
+# the state between arguments: the last export's modules, the count
+type A2bCs is Data:
+  A2bCs{mods: List<&2, A2bMod>, cp: A2bCp}
+
+def a2b.cs.mods(s: A2bCs) -> List<&2, A2bMod>:
+  match s:
+    case A2bCs{m, c}:
+      m
+
+def a2b.cs.cp(s: A2bCs) -> A2bCp:
+  match s:
+    case A2bCs{m, c}:
+      c
+
+def a2b.cp.step(isout: Bool, +a: String, +s: A2bCs, +jsonl: String) -> IO(A2bCs):
+  match isout:
+    case True{}:
+      do IO<A2bCs>:
+        c : A2bCp <- a2b.cp.out(a2b.cs.mods(s), a, jsonl, a2b.cs.cp(s))
+        return A2bCs{a2b.cs.mods(s), c}
+    case False{}:
+      do IO<A2bCs>:
+        fs : List<&2, List<&2, U32>> <- S.glob(a ++ "/*.sexp")
+        ms : List<&2, A2bMod> <- a2b.cp.load(List.filter(~List<&2, U32>, ~(f => a2b.cp.module.file(f)), fs))
+        return A2bCs{ms, a2b.cs.cp(s)}
+
+def a2b.cp.args(as: List<String>, +jsonl: String, +s: A2bCs) -> IO(A2bCs):
+  match as:
+    case Nil{}:
+      IO.pure(A2bCs, s)
+    case +a <> t:
+      do IO<A2bCs>:
+        isout : Bool <- S.exists(a ++ "/corpus")
+        s2 : A2bCs <- a2b.cp.step(isout, a, s, jsonl)
+        a2b.cp.args(t, jsonl, s2)
+
 def a2b.corpus(xs: List<String>) -> IO(Unit):
   match xs:
-    case dir <> +jsonl <> outs:
+    case +jsonl <> args:
       do IO<Unit>:
-        fs : List<&2, List<&2, U32>> <- S.glob(dir ++ "/*.sexp")
         S.write(jsonl, S.b(""))
-        c : A2bCp <- a2b.cp.go(List.filter(~List<&2, U32>, ~(f => a2b.cp.module.file(f)), fs), a2b.strs(outs), jsonl, A2bCp{0n, 0n})
-        IO.print("agda2bend corpus: " ++ a2b.cp.show(c) ++ " to " ++ jsonl)
+        s : A2bCs <- a2b.cp.args(args, jsonl, A2bCs{Nil{}, A2bCp{0n, 0n, Map.new(&2, Bool)}})
+        IO.print("agda2bend corpus: " ++ a2b.cp.show(a2b.cs.cp(s)) ++ " to " ++ jsonl)
     case _:
       a2b.usage()
 

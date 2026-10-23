@@ -45,11 +45,11 @@ settings make an emit produce it:
 #   checked items no wider than this, less those that use a wider one
 A2B_MAXLINE=20000 A2B_CORPUS_LINE=2000 agda2bend emit EXPORT_DIR out
 
-# every module's corpus copy as one JSONL ({"id", "text"} a line), from the
-# first OUT that has it; ids mirror the Agda sources' paths,
-# a2b:agda-categories/src/Categories/Adjoint.bend, so ana's repository holdout
-# holds a translation out with its Agda source
-agda2bend corpus EXPORT_DIR corpus.jsonl out [out2 ...]
+# every module's corpus copy as one JSONL ({"id", "text"} a line): each export
+# dir is followed by the runs made from it, and the first run with a module wins;
+# ids mirror the Agda sources' paths, a2b:agda-categories/src/Categories/Adjoint.bend,
+# so ana's repository holdout holds a translation out with its Agda source
+agda2bend corpus corpus.jsonl EXPORT_DIR out [out2 ...] [EXPORT_DIR2 out3 ...]
 ```
 
 2,000 characters is ana's limit on a line of raw code. Without the caps, 85% of
