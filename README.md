@@ -86,6 +86,12 @@ tools/a2b/build.sh             # a quick -O0 dev binary at run/a2b/bin/agda2bend
 tools/a2b/test.sh              # the tests with the dev build
 ```
 
+The flake is built on ekapkgs, the Ekala package set, the way Telomare is: it uses
+corepkgs and the haskell-pkgs snapshot (Agda 2.8.0 on GHC 9.10.3), and its own
+small builder for the Agda libraries (`nix/agda.nix`). The binary cache is
+`ekala-corepkgs.cachix.org`, which the flake's `nixConfig` names. `default.nix`
+and `shell.nix` build the same derivations without flakes.
+
 `tools/a2b/README.md` describes the dev loop. `bend/Sys.bend`, `Nul.bend`,
 `Tokenizer.bend`, `Sha256.bend`, `Num.bend` and `Clock.bend` are small libraries
 shared with [ana](https://github.com/hhefesto/ana), which agda2bend was split out
