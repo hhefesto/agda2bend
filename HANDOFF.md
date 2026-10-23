@@ -14,13 +14,23 @@ Working notes, so the work can continue from another machine or agent. Newest fi
   - Data.Unit.Properties: 2 checked→dependent, 1 checked→dropped (⊤ eta).
   - WellFounded: 1 checked→dropped, 1 dropped→checked.
   - Categories.Yoneda: 12 items, 0 check (3 gaps).
-- **In progress (uncommitted, unbuilt, by FoggyOrca):**
+- **The flake is built on ekapkgs** (6c44cef), as Telomare is: corepkgs.lib.mkFlake over corepkgs 98204de (its builds are in ekala-corepkgs.cachix.org), with the haskell-pkgs snapshot (Agda 2.8.0, GHC 9.10.3). nix/agda.nix builds standard-library 2.3 and agda-categories 0.3.0 itself, because corepkgs has no agdaPackages, and Agda is built without emacs. nix/agda-export.nix is the .cabal in cabal2nix's form. Before 6c44cef it was nixpkgs 0bb7ec5 (2a2171a, the split).
+- **In progress, on branch wip/unit-eta (bd8303b, FoggyOrca's, unbuilt as a binary):**
   - ToBend/Copy.bend has a new pass, `tcp.unit`, for Agda's ⊤ eta. A def whose body is one expression matches its Unit params against `Unit{}`.
   - Agda2Bend.bend has `a2b.shape = Q.tcp.unit(a2b.destr(it, te))`, which replaces `a2b.destr` in `a2b.re.items` and `a2b.finish`.
+  - The flake check `tests` passed with it applied (57 ok, 18:53), but no run used it.
   - `Q.tcp.destr` is still unwired (a2b.destr has been a stub since 10-20).
+- **FoggyOrca's last findings (10-22 18:4x):**
+  - Data.Unit.Properties lost `≡-isPreorder` and 2 dependents. Agda's eta filled implicit points with `tt`, so `trans(&2, Unit, Unit{}, Unit{}, Unit{}, eta1, eta2)` has `eta1 : {i == j}`.
+  - `tcp.unit` aims at `⊤-irrelevant`, `_≟_` and `≡-total`, which would bring back 3 items plus 3 dependents (not verified).
+  - LiftSetoids: `extendedlambda1` drops on `Setoid.eq` over `Level.Lift.lower(…)`, probably Lift's missing eta.
+  - WellFounded's "swap" is an artifact: `GeneralizeTel` appears twice in both ledgers, which duplicates its key in the join.
+  - **Setoids fails on "expected -D observed D".** Category's law fields erase objects and morphisms (a yoneda6 choice), but Setoids' `assoc` needs `Setoid.isEquivalence(D)` live. The user has to decide on this, for example by keeping objects live in law fields. Yoneda's 12 items depend on it through Presheaves and NT.Hom.
+  - Product: πˡ, πʳ, assocˡ and assocʳ drop because `Product_Base.zip(…)` is stuck inside refl's erased point. A planned fix: `act.inline.go` unfolds calls in projection form at arguments the callee takes erased or dropped, as headers already do.
+  - Scratch from that work is in /tmp/bx/fo: the joins (l21/l22/j/m21/m22.tsv) and the probes (u/t1–t6.bend). Don't run /tmp/bx/fo/inl.pl: its regex never terminates.
 - **Next, in order:**
   1. Build and test the ⊤ pass (tools/a2b/test.sh, then `nix flake check`). Then run yoneda23 on upstream Bend and compare it with yoneda22, remembering that the Bend binary changed.
-  2. Win back the drops: Data.Unit.Properties (⊤ eta), Category.Construction.Functors, LiftSetoids, Category.Product and Setoids (both need record eta), and Categories.Yoneda's 12.
+  2. Win back the drops: Data.Unit.Properties (⊤ eta), Category.Construction.Functors, LiftSetoids (Lift's eta), Category.Product (the stuck `zip`; the planned fix is above), Setoids (waiting on the user's decision above), and Categories.Yoneda's 12.
   3. Corpus readiness: what share of the output a corpus can use. On yoneda19, 26 of 121 files with long lines held 91% of the bytes.
   4. The shell scripts in tools/a2b fail ana's shell lint (all logic belongs in Bend), so port them to Bend.
   5. The public page, agda2bend.hhefesto.dev, and a tweet, once it's ready.

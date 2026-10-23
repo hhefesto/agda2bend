@@ -73,7 +73,9 @@ Top reasons items are dropped on the Yoneda cone:
   kind.
 - a polymorphic value used twice (Bend copies only `Data`);
 - an erased binder used live;
-- record eta, where a proof relies on it (`Category.Product`, `Setoids`).
+- eta for records and for `⊤`, where a proof relies on it;
+- what gets erased: Category's law fields erase their objects and morphisms,
+  but the proofs in `Setoids` need them live, and Yoneda depends on those.
 
 `HANDOFF.md` has the working notes and the current plan.
 
