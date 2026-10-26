@@ -2,7 +2,33 @@
 
 Working notes, so the work can continue from another machine or agent. Newest first. Times are UTC-6. agda2bend was split out of ana (github:hhefesto/ana) on 2026-10-22. ana's HANDOFF.md, before that date, has the rest of the history.
 
-## ▶ CONTINUE HERE (2026-10-22, 21:05 UTC-6): corpus runs for ana, category theory first
+## ▶ CONTINUE HERE (2026-10-25, 18:40 UTC-6): ⊤ eta and dead arguments, on branch unit-eta
+
+- **The user (10-25): "continue the agda2bend effort".** Work is on the local branch `unit-eta` (master b05bb3c plus two commits, unpushed):
+  - ad671d1: FoggyOrca's ⊤ pass (wip/unit-eta bd8303b), built and tested. Data.Unit.Properties checks 6 of 12 (was 2): `_≟_`, `⊤-irrelevant`, `≡-total`, `≡-decSetoid`. `≡-isPreorder` still drops (Agda's implicit points are `tt`).
+  - 68db2ed: dead arguments. An argument the callee takes erased or dropped (past its modes: a hidden, instance, irrelevant or @0 one) is inlined as a header's place is, so a call there that has an eta unfolding takes it (Cata.bend act.inline.go carries the callee's modes, `ms`). Category.Product checks 13 of 16 (was 8): πˡ, πʳ, assocˡ, assocʳ, Swap. Refl's point `proj₁ (zip _∘_ _∘_ g f)` was stuck on the pairs g f.
+  - Tests: 57 ok with both.
+- **Runs** (run/a2b, Categories.Yoneda's cone unless said; compare with `sh /tmp/bx/a2b/ue/ledcmp.sh OLD/ledger.tsv NEW/ledger.tsv`, an awk join on module and Agda name):
+  - yoneda22u: master's translator (bin/agda2bend-O0-c1r) on upstream Bend 2.0.38, the baseline. Up to module 111 it equals yoneda22 item for item.
+  - yoneda23: + the ⊤ pass (bin/agda2bend-O0-y23). Up to module 111: +4 checked, no losses.
+  - prod-dead: + dead arguments (bin/agda2bend-O0-dead), Category.Product's cone only (94 modules): +5 checked, no losses against yoneda23.
+  - yoneda24: + dead arguments, the whole cone. Not finished when this was written.
+- **The old corpus runs (corpus1–5, 10-22) were checked by a different Bend:** gcroot-bend then pointed at /nix/store/js8k6x6…-bend, the fork's Bend 2.0.37 run by bun. Its checker (bend2/bend.ts) is the same file as upstream 2.0.38's; base.bend, comp.ts, main.ts and safe.ts differ. gcroot-bend has been upstream's since 10-25 15:48. corpus1r (unit a2b-corpus1r, the category run again, 1G stack) runs on upstream.
+- **Speed:** corpus1r spent 73 min on Categories.Category.Monoidal.Properties (16:49 to 18:03) and checked none of its 38 items: all are dependents of earlier drops. Its translation (one core, no bend child) is the cost. Skipping items whose dependencies already dropped, before translating them, would save hours per corpus run. The dependencies would have to come from the Agda side.
+- **Setoids, the user's decision (live objects in law fields): not tried, it looks like a net loss.** Setoids needs its objects live in three fields, not one:
+  - `assoc` uses `D` (`IsEquivalence.refl(…, Setoid.isEquivalence(D))`).
+  - `equiv` uses `A` (`Setoid.isEquivalence(setoid(~B, A))`).
+  - `∘-resp-≈` uses `C`.
+  - `Category.equiv` appears 3576 times in yoneda22/src (24 files). Live objects there would make every hom-setoid step use its objects live, and an object (Kind(o)) can't be copied. The other law fields together appear 184 times.
+  - So Yoneda's 12 items stay blocked by Setoids unless its objects get another encoding.
+- **LiftSetoids** (`_..extendedlambda1`, Bend name anon.anon.extendedlambda1_2): its header keeps `extendedlambda0_2(…, x)`, a match on Lift, stuck on the variable x. Headers do unfold calls that have an eta unfolding, so extendedlambda0_2 seems to get none. Lift has one field, so its projection form would use x once. Not debugged yet.
+- **Next:**
+  1. Read yoneda23 and yoneda24 against yoneda22u. If the gains hold with no losses, merge unit-eta into master and ask the user before pushing.
+  2. LiftSetoids: why extendedlambda0_2 has no eta unfolding.
+  3. Category.Construction.Functors: several drops have `uncurry` stuck (see yoneda24 for what dead arguments fixed).
+  4. The top causes in `agda2bend report run/a2b/yoneda22` (/tmp/bx/a2b/ue/y22.report): an erased binder used live (56 blocked, 18 roots, mostly eta-expanded binders in Function.Bundles), Data vs Type (27), Dinatural's `Category<C.o, &2, &2>` (23), dependent J (19).
+
+## Previous (2026-10-22, 21:05 UTC-6): corpus runs for ana, category theory first
 
 - **The user (10-22, evening): "work on agda2bend. we should extend the ana corpus with as much bend as advisable. Start with category theory themed code and continue with any code you think would do good for training ana."**
 - **Corpus mode** (committed with this entry): two emit settings and a command.
