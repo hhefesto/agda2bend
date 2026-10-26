@@ -2,9 +2,10 @@
 
 Working notes, so the work can continue from another machine or agent. Newest first. Times are UTC-6. agda2bend was split out of ana (github:hhefesto/ana) on 2026-10-22. ana's HANDOFF.md, before that date, has the rest of the history.
 
-## ▶ CONTINUE HERE (2026-10-25, 18:40 UTC-6): ⊤ eta and dead arguments, on branch unit-eta
+## ▶ CONTINUE HERE (2026-10-25, 20:15 UTC-6): ⊤ eta, dead arguments and Nat's primitives, merged into master
 
-- **The user (10-25): "continue the agda2bend effort".** Work is on the local branch `unit-eta` (master b05bb3c plus these commits and HANDOFF notes, unpushed):
+- **Merged and pushed (10-25 20:15).** The user said to merge `unit-eta` into master and push once yoneda24 showed no losses. It showed none (below), so master is unit-eta, fast-forwarded and pushed.
+- **The user (10-25): "continue the agda2bend effort".** The work was on the local branch `unit-eta` (master b05bb3c plus these commits and HANDOFF notes):
   - ad671d1: FoggyOrca's ⊤ pass (wip/unit-eta bd8303b), built and tested. Data.Unit.Properties checks 6 of 12 (was 2): `_≟_`, `⊤-irrelevant`, `≡-total`, `≡-decSetoid`. `≡-isPreorder` still drops (Agda's implicit points are `tt`).
   - 68db2ed: dead arguments. An argument the callee takes erased or dropped (past its modes: a hidden, instance, irrelevant or @0 one) is inlined as a header's place is, so a call there that has an eta unfolding takes it (Cata.bend act.inline.go carries the callee's modes, `ms`). Category.Product checks 13 of 16 (was 8): πˡ, πʳ, assocˡ, assocʳ, Swap. Refl's point `proj₁ (zip _∘_ _∘_ g f)` was stuck on the pairs g f.
   - 3174c1e: a primitive with clauses is the function its clauses define. Agda.Builtin.Nat's `_+_`, `_-_`, `_*_`, `_==_`, `_<_` had no item, and every user dropped (corpus1r: 247 items blocked by "uses plus in Agda.Builtin.Nat"). agda-export writes a primitive's clauses in stored form (`noparams`), which for a primitive is the explicit form. Data.Nat.Base's cone (run/a2b/nat-prim2): +31 checked (5 in Agda.Builtin.Nat, 26 dependents in Data.Nat.Base), no losses. div-helper and mod-helper still drop: Bend's termination reads arguments left to right, and their first argument grows.
@@ -14,8 +15,8 @@ Working notes, so the work can continue from another machine or agent. Newest fi
   - yoneda22u: master's translator (bin/agda2bend-O0-c1r) on upstream Bend 2.0.38, the baseline. Up to module 111 it equals yoneda22 item for item.
   - yoneda23: + the ⊤ pass (bin/agda2bend-O0-y23). Up to module 111: +4 checked, no losses.
   - prod-dead: + dead arguments (bin/agda2bend-O0-dead), Category.Product's cone only (94 modules): +5 checked, no losses against yoneda23.
-  - yoneda24: + dead arguments, the whole cone. Not finished when this was written.
-  - nat-prim3: + primitives (bin/agda2bend-O0-prim2), Data.Nat.Properties' cone (126 modules) in corpus mode, to compare with corpus1r's ledger. Not finished.
+  - yoneda24: + dead arguments, the whole cone (bin/agda2bend-O0-dead, finished 20:11). Against yoneda22u: +10 checked (8 dropped→checked, 2 dependent→checked: the 4 Data.Unit.Properties items, Product's πˡ, πʳ, assocˡ, assocʳ, Swap, and Bifunctor.flip), no checked item lost. 2 dependent→dropped: NaturalTransformation.Properties' `F′` and `G′`, no longer blocked, now drop on their own (expected `Category<anon.F_p~C_o, &2, &2>`). Categories.Yoneda: still 0 of 12.
+  - nat-prim3: + primitives (bin/agda2bend-O0-prim2), Data.Nat.Properties' cone (126 modules) in corpus mode (finished). Against corpus1r on the modules both have: +60 checked (dependent→checked), no checked item lost, 72 dependent→dropped (unblocked, now dropping on their own). Totals 2707 checked, 682 dependent, 317 dropped.
 - **The old corpus runs (corpus1–5, 10-22) were checked by a different Bend:** gcroot-bend then pointed at /nix/store/js8k6x6…-bend, the fork's Bend 2.0.37 run by bun. Its checker (bend2/bend.ts) is the same file as upstream 2.0.38's; base.bend, comp.ts, main.ts and safe.ts differ. gcroot-bend has been upstream's since 10-25 15:48. corpus1r (unit a2b-corpus1r, the category run again, 1G stack) runs on upstream.
 - **Speed:** corpus1r spent 73 min on Categories.Category.Monoidal.Properties (16:49 to 18:03) and checked none of its 38 items: all are dependents of earlier drops. Its translation (one core, no bend child) is the cost. Skipping items whose dependencies already dropped, before translating them, would save hours per corpus run. The dependencies would have to come from the Agda side.
 - **Setoids, the user's decision (live objects in law fields): not tried, it looks like a net loss.** Setoids needs its objects live in three fields, not one:
@@ -26,7 +27,7 @@ Working notes, so the work can continue from another machine or agent. Newest fi
   - So Yoneda's 12 items stay blocked by Setoids unless its objects get another encoding.
 - **LiftSetoids** (`_..extendedlambda1`, Bend name anon.anon.extendedlambda1_2): its header keeps `extendedlambda0_2(…, x)`, a match on Lift, stuck on the variable x. Headers do unfold calls that have an eta unfolding, so extendedlambda0_2 seems to get none. Lift has one field, so its projection form would use x once. Not debugged yet.
 - **Next:**
-  1. Read yoneda23 and yoneda24 against yoneda22u. If the gains hold with no losses, merge unit-eta into master and ask the user before pushing.
+  1. Done: yoneda23 and yoneda24 against yoneda22u showed no losses; unit-eta merged and pushed (10-25 20:15).
   2. LiftSetoids: why extendedlambda0_2 has no eta unfolding.
   3. Category.Construction.Functors: several drops have `uncurry` stuck (see yoneda24 for what dead arguments fixed).
   4. The top causes in `agda2bend report run/a2b/yoneda22` (/tmp/bx/a2b/ue/y22.report): an erased binder used live (56 blocked, 18 roots, mostly eta-expanded binders in Function.Bundles), Data vs Type (27), Dinatural's `Category<C.o, &2, &2>` (23), dependent J (19).
