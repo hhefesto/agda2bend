@@ -1053,44 +1053,85 @@ def act.cop.at(+env: ActEnv, +q: A.AgQ, +es: A.Ag) -> A.Ag:
     case ActEnv{mod, +tab, al, +unf}:
       act.cop.split(act.split(act.sym.arity(act.sym.got(Map.get(ActSym, act.sym0(), tab, act.key(q)))), es), q, unf)
 
+# Dead arguments (2026-10-25) ---------------------------------------------------
+#
+# An argument the callee takes erased or dropped is dead, as a header's
+# places are, so a call there that has an eta unfolding takes it.  Product's
+# πˡ has `homomorphism = refl`, whose point is `proj₁ (zip _∘_ _∘_ g f)`,
+# stuck in Bend (no record eta) on the pairs g f; in projection form it is
+# `proj₁ g ∘ proj₁ f`, the goal's.  Past the callee's modes (the Pis of a
+# type-valued result: refl's {x} under `Reflexive _≈_`) the argument's own
+# information decides (hidden, instance, irrelevant or @0).  The inlining
+# carries the modes left of a callee's spine (None{}: not a callee's).
+def act.m.dead(m: ActM) -> Bool:
+  match m:
+    case AmErased{}:
+      True{}
+    case AmDrop{}:
+      True{}
+    case _:
+      False{}
+
+def act.sym.ms(s: ActSym) -> List<&2, ActM>:
+  match s:
+    case ActSym{m, n, k, ms, ar, b, fs, c, cp}:
+      ms
+
+# whether the spine's next argument is dead
+def act.ms.dead(ms: Maybe<&2, List<&2, ActM>>, +i: A.AgI) -> Bool:
+  match ms:
+    case Some{m <> t}:
+      act.m.dead(m)
+    case Some{Nil{}}:
+      act.info.erased(i)
+    case None{}:
+      False{}
+
+def act.ms.tail(ms: Maybe<&2, List<&2, ActM>>) -> Maybe<&2, List<&2, ActM>>:
+  match ms:
+    case Some{m <> t}:
+      Some{t}
+    case ms:
+      ms
+
 # Every copy in a term inlined, through chains of copies of copies, and
 # the lambda redexes substitution leaves reduced.  Each expansion or
 # reduction spends one unit of fuel (a resolved definition too), and the
 # fuel bounds the nesting: what is left when it runs out stays as it is
 # and fails at the translation as an unknown copy.
-def act.inline.go(+fuel: Nat, a: A.Ag, +at: Bool, +ty: Bool, +env: ActEnv) -> A.Ag:
+def act.inline.go(+fuel: Nat, a: A.Ag, +at: Bool, +ty: Bool, +ms: Maybe<&2, List<&2, ActM>>, +env: ActEnv) -> A.Ag:
   match fuel a:
     case 1n+p A.AgBeta{A.AgLam{i, x, d, b}, A.AgEApp{i2, v, rest}}:
-      act.inline.go(p, asb.push(act.beta1(d, b, v), rest), False{}, ty, env)
+      act.inline.go(p, asb.push(act.beta1(d, b, v), rest), False{}, ty, None{}, env)
     case f A.AgBeta{g, A.AgENil{}}:
-      act.inline.go(f, g, at, ty, env)
+      act.inline.go(f, g, at, ty, None{}, env)
     case 1n+p A.AgDef{+q, +es}:
-      act.inline.go(p, act.cmb.try(act.etu.try(act.expand(act.sym(env, q), q, es), q, es, at, ty, env), q, es, env), False{}, ty, env)
+      act.inline.go(p, act.cmb.try(act.etu.try(act.expand(act.sym(env, q), q, es), q, es, at, ty, env), q, es, env), False{}, ty, None{}, env)
     case 1n+p A.AgDefX{+q, es}:
-      +es2 = act.inline.go(p, es, False{}, ty, env)
+      +es2 = act.inline.go(p, es, False{}, ty, Some{act.sym.ms(act.sym(env, q))}, env)
       +r = act.cop.at(env, q, es2)
-      Bool.pick(A.Ag, act.ag.none(r), A.AgDef{q, es2}, act.inline.go(p, r, False{}, ty, env))
+      Bool.pick(A.Ag, act.ag.none(r), A.AgDef{q, es2}, act.inline.go(p, r, False{}, ty, None{}, env))
     case f A.AgVar{i, x, es}:
-      A.AgVar{i, x, act.inline.go(f, es, False{}, ty, env)}
+      A.AgVar{i, x, act.inline.go(f, es, False{}, ty, None{}, env)}
     case f A.AgCon{q, o, es}:
-      A.AgCon{q, o, act.inline.go(f, es, True{}, ty, env)}
+      A.AgCon{q, o, act.inline.go(f, es, True{}, ty, None{}, env)}
     case f A.AgLam{i, x, d, b}:
-      A.AgLam{i, x, d, act.inline.go(f, b, at, ty, env)}
+      A.AgLam{i, x, d, act.inline.go(f, b, at, ty, None{}, env)}
     case f A.AgPi{i, x, a2, d, b}:
-      A.AgPi{i, x, act.inline.go(f, a2, False{}, ty, env), d, act.inline.go(f, b, False{}, ty, env)}
+      A.AgPi{i, x, act.inline.go(f, a2, False{}, ty, None{}, env), d, act.inline.go(f, b, False{}, ty, None{}, env)}
     case f A.AgEl{s, t}:
-      A.AgEl{s, act.inline.go(f, t, False{}, ty, env)}
+      A.AgEl{s, act.inline.go(f, t, False{}, ty, None{}, env)}
     case f A.AgDontCare{t}:
-      A.AgDontCare{act.inline.go(f, t, False{}, ty, env)}
-    case f A.AgEApp{i, t, rest}:
-      A.AgEApp{i, act.inline.go(f, t, at, ty, env), act.inline.go(f, rest, at, ty, env)}
+      A.AgDontCare{act.inline.go(f, t, False{}, ty, None{}, env)}
+    case f A.AgEApp{+i, t, rest}:
+      A.AgEApp{i, act.inline.go(f, t, at, Bool.or(ty, act.ms.dead(ms, i)), None{}, env), act.inline.go(f, rest, at, ty, act.ms.tail(ms), env)}
     case f A.AgEProj{q, rest}:
-      A.AgEProj{q, act.inline.go(f, rest, False{}, ty, env)}
+      A.AgEProj{q, act.inline.go(f, rest, False{}, ty, None{}, env)}
     case f a2:
       a2
 
 def act.inline(+fuel: Nat, a: A.Ag, +env: ActEnv) -> A.Ag:
-  act.inline.go(fuel, a, False{}, False{}, env)
+  act.inline.go(fuel, a, False{}, False{}, None{}, env)
 
 # A header's type inlined: every place in it is dead, so a call of a
 # function with an eta unfolding is unfolded there (2026-10-22, upstream
@@ -1098,7 +1139,7 @@ def act.inline(+fuel: Nat, a: A.Ag, +env: ActEnv) -> A.Ag:
 # uncurry's match of x, where its body's type has `Q (proj₂ x (proj₁ x))`;
 # Product's `map f g X` likewise).
 def act.inline.hdr(+fuel: Nat, a: A.Ag, +env: ActEnv) -> A.Ag:
-  act.inline.go(fuel, a, False{}, True{}, env)
+  act.inline.go(fuel, a, False{}, True{}, None{}, env)
 
 # Applications ----------------------------------------------------------------
 
