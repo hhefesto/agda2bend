@@ -3461,6 +3461,42 @@ def act.item.data(s: ActSym, d: A.AgD, ty: A.Ag, +env: ActEnv, +decls: Map<&2, A
     case _ _:
       Nil{}
 
+# A primitive with clauses is the function its clauses define (2026-10-25):
+# Agda.Builtin.Nat's `_+_`, `_*_`, `_-_`, `_==_`, `_<_`, div-helper and
+# mod-helper keep their definitions under BUILTIN NATPLUS and the rest, and
+# with no item for them every user dropped (corpus1r: 247 items, "uses plus
+# in Agda.Builtin.Nat, which dropped it").  One without clauses (a string
+# or float primitive) has no item, as before.  agda-export writes a
+# primitive's clauses and tree in stored form (`noparams`); a primitive is
+# no projection, so its stored form is its explicit form.
+def act.unstore(t: A.Ag) -> A.Ag:
+  match t:
+    case A.AgStored{x}:
+      x
+    case t:
+      t
+
+def act.prim.cls(cls: A.Ag) -> A.Ag:
+  match cls:
+    case A.AgCl{tel, ps, body, ty, ca, rest}:
+      A.AgCl{act.unstore(tel), ps, act.unstore(body), act.unstore(ty), ca, act.prim.cls(rest)}
+    case cls:
+      cls
+
+def act.prim.fun(d: A.AgD) -> A.AgD:
+  match d:
+    case A.AgDPrim{n, cls, tree}:
+      A.AgDFun{A.AgPrNone{}, 0n, None{}, False{}, A.AkNone{}, A.AgQEnd{}, act.prim.cls(cls), act.unstore(tree)}
+    case d:
+      d
+
+def act.item.prim(s: ActSym, d: A.AgD, +key: String, +ty: A.Ag, +env: ActEnv, doc: List<&2, List<&2, U32>>) -> List<&2, T.BItem>:
+  match d:
+    case A.AgDPrim{n, A.AgClEnd{}, tree}:
+      Nil{}
+    case d:
+      act.item.fun(s, act.prim.fun(d), key, ty, env, doc)
+
 # The items of one definition: a function's def, a record's or data
 # type's type; nothing for a constructor (its type has it), a copy (it is
 # inlined where used), a Level name or a builtin (Base has it), or one of
@@ -3473,6 +3509,8 @@ def act.items.of(s: ActSym, k: A.AgKw, cp: Bool, nc: Bool, d: A.AgD, +key: Strin
       Nil{}
     case ActSym{m, n, k2, ms, ar, AbNone{}, fs, c, cop} A.AkFunction{} False{} False{}:
       act.item.fun(ActSym{m, n, k2, ms, ar, AbNone{}, fs, c, cop}, d, key, ty, env, doc)
+    case ActSym{m, n, k2, ms, ar, AbNone{}, fs, c, cop} A.AkPrimitive{} False{} False{}:
+      act.item.prim(ActSym{m, n, k2, ms, ar, AbNone{}, fs, c, cop}, d, key, ty, env, doc)
     case ActSym{m, n, k2, ms, ar, AbNone{}, fs, c, cop} A.AkRecord{} False{} False{}:
       act.item.rec(ActSym{m, n, k2, ms, ar, AbNone{}, fs, c, cop}, d, env, doc)
     case ActSym{m, n, k2, ms, ar, AbNone{}, fs, c, cop} A.AkData{} False{} False{}:
