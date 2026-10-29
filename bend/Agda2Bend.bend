@@ -725,7 +725,23 @@ def a2b.em.write(+out: String, +m: List<&2, U32>, +kept: Map<&2, Bool>, +ral: Ma
     a2b.corpus.write(Nat.is_eq(cl, 0n), out ++ "/corpus/" ++ S.str(C.act.path(m)), a2b.head.doc(m, nd), ims, cl, r)
     a2b.gated(out, m, nd, gaps, nits, r)
 
-def a2b.em.items(+out: String, +m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +kept: Map<&2, Bool>, +nd: Nat, +its: List<&2, T.BItem>, +qe: QF.TqEnv) -> IO(List<&2, T.BItem>):
+# Helpers a module gets when its items use them: a2b_pred, Nat's
+# predecessor (Cata.bend act.ds: suc's injectivity for a dotted field)
+def a2b.pred.item() -> T.BItem:
+  T.BiDef{S.b("a2b_pred"), [T.BParam{T.BmLive{}, S.b("n"), T.BtVar{S.b("Nat")}}], T.BtVar{S.b("Nat")}, T.BtMatch{T.tba.args([T.BtVar{S.b("n")}]), T.BtCase{T.tba.args([T.BtNat{S.b("0")}]), T.BtExpr{T.BtNat{S.b("0")}}, T.BtCase{T.tba.args([T.BtSucc{T.BtPv{T.BmLive{}, S.b("p")}}]), T.BtExpr{T.BtVar{S.b("p")}}, T.BtCEnd{}}}}, [S.b("agda2bend: Nat's predecessor, for the index equations of dotted constructor fields")]}
+
+def a2b.uses(ns: List<&2, List<&2, U32>>, +x: List<&2, U32>) -> Bool:
+  match ns:
+    case Nil{}:
+      False{}
+    case n <> t:
+      Bool.or(S.eq(n, x), a2b.uses(t, x))
+
+def a2b.helpers(+its: List<&2, T.BItem>) -> List<&2, T.BItem>:
+  Bool.pick(List<&2, T.BItem>, a2b.uses(a2b.fold.items(its, False{}, Nil{}), S.b("a2b_pred")), a2b.pred.item() <> its, its)
+
+def a2b.em.items(+out: String, +m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +kept: Map<&2, Bool>, +nd: Nat, its0: List<&2, T.BItem>, +qe: QF.TqEnv) -> IO(List<&2, T.BItem>):
+  +its = a2b.helpers(its0)
   a2b.em.write(out, m, kept, ral, its, a2b.imports(a2b.snd(a2b.imps(a2b.fold.items(its, False{}, Nil{}), ral, (Map.new(&2, Bool), Nil{}))), m, al), nd, a2b.fold.items(its, True{}, Nil{}), a2b.defs.n(its), qe)
 
 # The quantity rounds (ToBend/Copy.bend): the module is translated, each
