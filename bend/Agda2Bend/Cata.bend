@@ -400,11 +400,21 @@ def act.mode.of(lv: Bool, er: Bool) -> ActM:
     case False{} False{}:
       AmLive{}
 
+def act.info.hid(i: A.AgI) -> Bool:
+  match i:
+    case A.AgI{+h, r, m}:
+      Bool.or(A.aas.kw.eq(h, A.AkHidden{}), A.aas.kw.eq(h, A.AkInstance{}))
+
 # a Pi-as-a-term binder's mode (act.mode, hidden live: act.info.erased.v);
 # a type family's (`C : {x : A} → B x → Set c`, _∘_'s) keeps act.mode, its
-# binders being read by types only (live, Qfix lost _∘_'s quantities)
-def act.mode.v(i: A.AgI, +a: A.Ag, tylevel: Bool) -> ActM:
-  act.mode.of(act.ty.level(a), Bool.or(Bool.or(act.info.erased.v(i), act.ends.sort(a)), tylevel))
+# binders being read by types only (live, Qfix lost _∘_'s quantities).
+# A hidden binder over an opaque type stays live (2026-10-29): the Pi is
+# Congruent's or _⇒_'s body inlined at Setoid's Carrier or a module's
+# opaque A, and Bend, opening Congruent or _⇒_ itself, gives the binder
+# the definition's own mode, live (Function.Bundles' Func.isCongruent:
+# "expected @x observed @-x"; Consequences' total⇒refl, wlog)
+def act.mode.v(+i: A.AgI, +a: A.Ag, tylevel: Bool) -> ActM:
+  act.mode.of(act.ty.level(a), Bool.or(Bool.or(act.info.erased.v(i), act.ends.sort(a)), Bool.and(tylevel, Bool.not(act.info.hid(i)))))
 
 # a Pi binder's mode: a Level is dropped; it is erased when hidden,
 # instance, irrelevant or @0, when it is a type or a type family, or when
@@ -893,6 +903,19 @@ def act.sig.when(p: A.AgProj, env: ActEnv) -> ActEnv:
       env
     case _:
       act.sig.env(env)
+
+# a `with` helper's header is no such signature either (2026-10-29): Agda
+# gives its parameters' types opened (total⇒refl's helper takes
+# `{x y} → x ≈ y → x ≤ y` where total⇒refl took `_≈_ ⇒ _≤_`), and its
+# caller passes values whose types Bend opens from those definitions, with
+# their own (live) hidden binders (Consequences' total⇒refl,
+# total∧dec⇒dec, trans∧tri⇒resp: "expected @-x observed @x")
+def act.sig.with(w: Maybe<&2, A.AgQ>, p: A.AgProj, env: ActEnv) -> ActEnv:
+  match w:
+    case Some{q}:
+      env
+    case None{}:
+      act.sig.when(p, env)
 
 def act.sig.on(+env: ActEnv) -> Bool:
   match env:
@@ -6875,7 +6898,7 @@ def act.item.fun(s: ActSym, d: A.AgD, +key: String, +ty: A.Ag, +env: ActEnv, doc
   match s d:
     case ActSym{m, +n, k, +ms, +ar, b, fs, c, cp} A.AgDFun{+p, r, w, e, te, mu, +cls, tree}:
       +t = act.proj.sorts(act.quant.on(), p, act.inline.hdr(100000n, ty, env), env)
-      act.unkind.when(act.quant.on(), p, act.tylevel.env(p, ty, env), act.fun.with(n, ms, ar, p, cls, key, t, env, doc, act.params.s(64n, ar, t, ms, Nil{}, act.sig.when(p, env), env)))
+      act.unkind.when(act.quant.on(), p, act.tylevel.env(p, ty, env), act.fun.with(n, ms, ar, p, cls, key, t, env, doc, act.params.s(64n, ar, t, ms, Nil{}, act.sig.with(w, p, env), env)))
     case _ _:
       Nil{}
 
