@@ -242,6 +242,9 @@ type ActB is Data:
   AbLevel{}
   AbUnit{}
   AbTt{}
+  # Agda.Builtin.String's postulated String (BUILTIN STRING): Bend's String
+  # (2026-10-29: PLFA's `Id = String`, 95 dependents)
+  AbString{}
 
 # a copy's case-tree leaf: its variable count and term
 type ActCopy is Data:
@@ -427,9 +430,9 @@ def act.builtin(+s: List<&2, U32>) -> ActB:
   act.bi(s, "Agda.Builtin.Nat.Nat", AbNat{}, act.bi(s, "Agda.Builtin.Nat.Nat.zero", AbZero{}, act.bi(s, "Agda.Builtin.Nat.Nat.suc", AbSuc{},
   act.bi(s, "Agda.Builtin.Bool.Bool", AbBool{}, act.bi(s, "Agda.Builtin.Bool.Bool.true", AbTrue{}, act.bi(s, "Agda.Builtin.Bool.Bool.false", AbFalse{},
   act.bi(s, "Agda.Builtin.Equality._≡_", AbEq{}, act.bi(s, "Agda.Builtin.Equality._≡_.refl", AbRefl{},
-  act.bi(s, "Agda.Builtin.Unit.⊤", AbUnit{}, act.bi(s, "Agda.Builtin.Unit.tt", AbTt{},
+  act.bi(s, "Agda.Builtin.Unit.⊤", AbUnit{}, act.bi(s, "Agda.Builtin.Unit.tt", AbTt{}, act.bi(s, "Agda.Builtin.String.String", AbString{},
   act.bi(s, "Agda.Primitive.Level", AbQuant{}, act.bi(s, "Agda.Primitive.lzero", AbQone{}, act.bi(s, "Agda.Primitive.lsuc", AbQone{},
-  act.bi(s, "Agda.Primitive._⊔_", AbQmin{}, act.builtin.um(s)))))))))))))))
+  act.bi(s, "Agda.Primitive._⊔_", AbQmin{}, act.builtin.um(s))))))))))))))))
 
 # Terms ------------------------------------------------------------------------
 
@@ -1441,6 +1444,8 @@ def act.app.def(s: ActSym, +env: ActEnv, args: T.Bt) -> T.Bt:
       T.BtVar{S.b("Bool")}
     case ActSym{m, n, k, ms, ar, AbUnit{}, fs, c, cp}:
       T.BtVar{S.b("Unit")}
+    case ActSym{m, n, k, ms, ar, AbString{}, fs, c, cp}:
+      T.BtVar{S.b("String")}
     case ActSym{m, n, k, ms, ar, AbEq{}, fs, c, cp}:
       act.eq(act.eq.noq(act.quant.on(), act.keep(args, ms)))
     case ActSym{+m, +n, k, ms, ar, b, fs, c, cp}:
