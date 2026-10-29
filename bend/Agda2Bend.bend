@@ -12,6 +12,7 @@ import ./ToBend/Gate.bend as G
 import ./ToBend/Copy.bend as Q
 import ./ToBend/Qfix.bend as QF
 import ./ToBend/Winl.bend as WL
+import ./ToBend/Rord.bend as RO
 
 # agda2bend: Agda in, Bend 2 out.  Agda elaborates (agda-export writes its
 # elaborated definitions as S-expressions, tools/agda-export/FORMAT.md);
@@ -893,9 +894,10 @@ def a2b.finish(its: List<&2, T.BItem>, +datas: List<&2, List<&2, U32>>, +te: Q.T
       +d = a2b.shape(it, te)
       Q.tcp.finish(d, Q.tcp.decide(d, datas, qe)) <> a2b.finish(t, datas, te, qe)
 
-# (a mutual with-function's cycle broken first: WL.twl.items)
+# (a mutual with-function's cycle broken first, WL.twl.items, and a
+# recursion on a later parameter split, RO.tro.items)
 def a2b.finish.of(+its: List<&2, T.BItem>, +te: Q.TcpEnv, +qe: QF.TqEnv) -> List<&2, T.BItem>:
-  a2b.finish(WL.twl.items(its), Q.tcp.datas(its), te, qe)
+  a2b.finish(RO.tro.items(WL.twl.items(its)), Q.tcp.datas(its), te, qe)
 
 # Qfix (ToBend/Qfix.bend) over a module's finished items, in Bend's order, when
 # levels are quantities (C.act.quant.on): each quantity argument solved
