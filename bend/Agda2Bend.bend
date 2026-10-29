@@ -947,7 +947,7 @@ def a2b.cop.go(+out: String, +m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +ra
   match t:
     case A2bTabs{+tab, +unf, dm, used, nk, pj, qs}:
       +hs = C.act.cop.hs(ds, unf, tab)
-      a2b.em.tabs(out, m, al, ral, List.append(&2, A.AgDecl, ds, hs), kept, a2b.syms(hs, m, al, A2bTabs{tab, unf, dm, used, nk, pj, qs}))
+      a2b.em.tabs(out, m, al, ral, List.append(&2, A.AgDecl, ds, hs), kept, a2b.syms(hs, m, al, A2bTabs{tab, C.act.cop.ue.put(C.act.cop.ues(ds, unf, tab), unf), dm, used, nk, pj, qs}))
 
 # A module's translation without the gate, the tests' entry: its items in
 # Bend's order and the state the modules after it see (the kept names as
@@ -970,7 +970,7 @@ def a2b.cop.items(+m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +ds: List<&2, 
   match t:
     case A2bTabs{+tab, +unf, dm, used, nk, pj, qs}:
       +hs = C.act.cop.hs(ds, unf, tab)
-      a2b.mod.items.of(m, al, List.append(&2, A.AgDecl, ds, hs), kept, a2b.syms(hs, m, al, A2bTabs{tab, unf, dm, used, nk, pj, qs}))
+      a2b.mod.items.of(m, al, List.append(&2, A.AgDecl, ds, hs), kept, a2b.syms(hs, m, al, A2bTabs{tab, C.act.cop.ue.put(C.act.cop.ues(ds, unf, tab), unf), dm, used, nk, pj, qs}))
 
 def a2b.mod.items(+m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, g: A2bG) -> A2bTr:
   match g:
