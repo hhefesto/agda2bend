@@ -417,8 +417,24 @@ def a2b.count(+x: List<&2, U32>, xs: List<&2, List<&2, U32>>) -> Nat:
 def a2b.uniq.of(+n: Nat, +b: List<&2, U32>) -> List<&2, U32>:
   Bool.pick(List<&2, U32>, Nat.is_eq(n, 0n), b, List.append(&2, U32, b, 95 <> S.b(Nat.show(1n+n))))
 
+# used holds each def's own name and, for a renamed one, its base too, so
+# the third `.absurdlambda` of a module counts two before it and is _3 (it
+# was _2 again, and the module's later λ() replaced its earlier ones:
+# Triple's IsEquality? called IsStrict?'s, 166 dependents); a candidate
+# some def already has (a natural `x_2`) moves on to the next number
+def a2b.uniq.go(fuel: Nat, +n: Nat, +b: List<&2, U32>, +used: List<&2, List<&2, U32>>) -> List<&2, U32>:
+  match fuel:
+    case 0n:
+      a2b.uniq.of(n, b)
+    case 1n+f:
+      +c = a2b.uniq.of(n, b)
+      Bool.pick(List<&2, U32>, Bool.and(Bool.not(Nat.is_eq(n, 0n)), Bool.not(Nat.is_eq(a2b.count(c, used), 0n))), a2b.uniq.go(f, 1n+n, b, used), c)
+
 def a2b.uniq(+b: List<&2, U32>, +used: List<&2, List<&2, U32>>) -> List<&2, U32>:
-  a2b.uniq.of(a2b.count(b, used), b)
+  a2b.uniq.go(64n, a2b.count(b, used), b, used)
+
+def a2b.used.put(+b: List<&2, U32>, +nm: List<&2, U32>, +used: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  Bool.pick(List<&2, List<&2, U32>>, S.eq(b, nm), used, b <> used)
 
 def a2b.dq(d: A.AgDecl) -> A.AgQ:
   match d:
@@ -502,12 +518,18 @@ def a2b.syms.one(+top: List<&2, U32>, +d: A.AgDecl, +nm: List<&2, U32>, +al: Map
     case A2bTabs{+tab, +unf, +dm, used, nk, pj, qs}:
       A2bTabs{a2b.rec.fix(d, nm, Map.set(&2, C.ActSym, tab, C.act.key(a2b.dq(d)), a2b.sym.for(top, nm, d, tab, unf))), C.act.cop.add(d, a2b.unf.put(C.act.rft.of(d), C.act.rft.key(a2b.dq(d)), a2b.unf.put(C.act.tcl.of(d, unf), C.act.tcl.key(a2b.dq(d)), a2b.unf.put(C.act.cmb.of(d, unf), C.act.cmb.key(a2b.dq(d)), a2b.unf.put(C.act.etu.of(d, unf, tab), C.act.etu.key(a2b.dq(d)), a2b.unf.put(C.act.unf.of(d, unf), C.act.key(a2b.dq(d)), a2b.unf.put(C.act.fty.of(d), C.act.fty.key(C.act.key(a2b.dq(d))), unf))))))), Map.set(&2, A.AgDecl, dm, C.act.key(a2b.dq(d)), d), nm <> used, Map.set(&2, String, nk, S.str(nm), C.act.key(a2b.dq(d))), a2b.pj.put(C.act.pj.of(d, tab), a2b.qual(al, top, nm), al, pj), qs}
 
+def a2b.syms.nm(+top: List<&2, U32>, +d: A.AgDecl, +b: List<&2, U32>, +nm: List<&2, U32>, +al: Map<&2, List<&2, U32>>, t: A2bTabs) -> A2bTabs:
+  match t:
+    case A2bTabs{tab, unf, dm, used, nk, pj, qs}:
+      a2b.syms.one(top, d, nm, al, A2bTabs{tab, unf, dm, a2b.used.put(b, nm, used), nk, pj, qs})
+
 def a2b.syms(ds: List<&2, A.AgDecl>, +top: List<&2, U32>, +al: Map<&2, List<&2, U32>>, t: A2bTabs) -> A2bTabs:
   match ds t:
     case Nil{} t:
       t
     case +d <> rest A2bTabs{tab, unf, dm, +used, nk, pj, qs}:
-      a2b.syms(rest, top, al, a2b.syms.one(top, d, a2b.uniq(C.act.local(top, C.act.qs(a2b.dq(d))), used), al, A2bTabs{tab, unf, dm, used, nk, pj, qs}))
+      +b = C.act.local(top, C.act.qs(a2b.dq(d)))
+      a2b.syms(rest, top, al, a2b.syms.nm(top, d, b, a2b.uniq(b, used), al, A2bTabs{tab, unf, dm, used, nk, pj, qs}))
 
 def a2b.items(ds: List<&2, A.AgDecl>, +env: C.ActEnv, +dm: Map<&2, A.AgDecl>) -> List<&2, T.BItem>:
   match ds:
