@@ -378,6 +378,19 @@ def act.info.erased(i: A.AgI) -> Bool:
     case A.AgI{+h, r, m}:
       Bool.or(Bool.or(A.aas.kw.eq(h, A.AkHidden{}), A.aas.kw.eq(h, A.AkInstance{})), Bool.or(A.aas.kw.eq(r, A.AkIrrelevant{}), A.aas.kw.eq(m, A.AkQ0{})))
 
+# irrelevant or @0: erased wherever it is; a hidden or instance binder of
+# a Pi written as a term (a record's field, Reflexive's body, a function
+# value's type) is live (2026-10-29): Agda's implicit arguments are
+# relevant, and a def that matches on one (≤-refl {suc n}, ≤-reflexive)
+# takes it live, so a field erasing it could hold no such def (≤-isPreorder:
+# "expected -eta1 observed eta1", 79 dependents in the stdlib cone).  A
+# def's own hidden parameters stay erased until the quantity pass sees a
+# live use.
+def act.info.erased.v(i: A.AgI) -> Bool:
+  match i:
+    case A.AgI{h, +r, +m}:
+      Bool.or(A.aas.kw.eq(r, A.AkIrrelevant{}), A.aas.kw.eq(m, A.AkQ0{}))
+
 def act.mode.of(lv: Bool, er: Bool) -> ActM:
   match lv er:
     case True{} _:
@@ -386,6 +399,12 @@ def act.mode.of(lv: Bool, er: Bool) -> ActM:
       AmErased{}
     case False{} False{}:
       AmLive{}
+
+# a Pi-as-a-term binder's mode (act.mode, hidden live: act.info.erased.v);
+# a type family's (`C : {x : A} → B x → Set c`, _∘_'s) keeps act.mode, its
+# binders being read by types only (live, Qfix lost _∘_'s quantities)
+def act.mode.v(i: A.AgI, +a: A.Ag, tylevel: Bool) -> ActM:
+  act.mode.of(act.ty.level(a), Bool.or(Bool.or(act.info.erased.v(i), act.ends.sort(a)), tylevel))
 
 # a Pi binder's mode: a Level is dropped; it is erased when hidden,
 # instance, irrelevant or @0, when it is a type or a type family, or when
@@ -854,6 +873,31 @@ def act.etu.at(c: ActCopy, +es: A.Ag) -> A.Ag:
 def act.unf.has.got(r: Map<&2, ActCopy> & Bool) -> Bool:
   (m, b) = r
   b
+
+# A function definition's own parameters' types (act.params at
+# act.item.fun) are read under "sig!": a Pi there (_∘_'s `f : ∀ {x} (y :
+# B x) → C x y`, λ-'s) keeps its hidden binders erased, as a def's own
+# hidden parameters are, so `f {x} (g x)` does not use x twice and need
+# not make A Data (Relation.Unary's ⟨·⟩, Function.Base's golden).  A
+# record's fields, a constructor's arguments and a type-valued def's body
+# (Reflexive, _⇒_) keep them live.
+def act.sig.env(env: ActEnv) -> ActEnv:
+  match env:
+    case ActEnv{mod, tab, al, unf}:
+      ActEnv{mod, tab, al, Map.set(&2, ActCopy, unf, "sig!", ActCopy{0n, A.AgNone{}})}
+
+# a record's projection is no such signature: its type is its field's
+def act.sig.when(p: A.AgProj, env: ActEnv) -> ActEnv:
+  match p:
+    case A.AgPrOf{Some{r}, o, ix}:
+      env
+    case _:
+      act.sig.env(env)
+
+def act.sig.on(+env: ActEnv) -> Bool:
+  match env:
+    case ActEnv{mod, tab, al, +unf}:
+      act.unf.has.got(Map.has(&2, ActCopy, unf, "sig!"))
 
 def act.kind.type(s: ActSym) -> Bool:
   match s:
@@ -1541,10 +1585,10 @@ def act.t(a: A.Ag, +ctx: List<&2, T.Bt>, +env: ActEnv) -> T.Bt:
     case A.AgLam{i, +x, d, b}:
       +nm = act.fresh(x, ctx)
       T.BtLam{T.BmLive{}, nm, act.t(b, act.bind(d, T.BtVar{nm}, ctx), env)}
-    case A.AgPi{i, +x, +a2, +d, b}:
+    case A.AgPi{+i, +x, +a2, +d, +b}:
       +lv = act.ty.level(a2)
       +nm = act.fresh(x, ctx)
-      act.pi(lv, act.mode(i, a2, act.opaque.env(d, a2, env)), nm, d, act.t(a2, ctx, env), act.t(b, act.bind(d, Bool.pick(T.Bt, Bool.and(lv, Bool.not(act.quant.on())), act.level(), T.BtVar{nm}), ctx), env))
+      act.pi(lv, Bool.pick(ActM, Bool.or(act.ends.sort(b), act.sig.on(env)), act.mode(i, a2, act.opaque.env(d, a2, env)), act.mode.v(i, a2, act.opaque.env(d, a2, env))), nm, d, act.t(a2, ctx, env), act.t(b, act.bind(d, Bool.pick(T.Bt, Bool.and(lv, Bool.not(act.quant.on())), act.level(), T.BtVar{nm}), ctx), env))
     case A.AgSort{s}:
       Bool.pick(T.Bt, act.quant.on(), act.sort(s, ctx, env), T.BtType{})
     case A.AgEl{s, t}:
@@ -2075,26 +2119,32 @@ def act.sym.of(+mo: List<&2, U32>, +nm: List<&2, U32>, d: A.AgDecl, +tab: Map<&2
 
 # seen: the names this header has given so far (a non-dependent Pi's
 # parameter is in no context, but its name is taken)
-def act.params.go(fuel: Nat, n: Nat, t: A.Ag, ms: List<&2, ActM>, +ctx: List<&2, T.Bt>, +seen: List<&2, List<&2, U32>>, +env: ActEnv) -> ActPs:
+def act.params.go(fuel: Nat, n: Nat, t: A.Ag, ms: List<&2, ActM>, +ctx: List<&2, T.Bt>, +seen: List<&2, List<&2, U32>>, +env: ActEnv, +renv: ActEnv) -> ActPs:
   match fuel n t ms:
     case f 0n t ms:
-      ActPs{Nil{}, act.t(t, ctx, env), ctx, Nil{}, True{}}
+      ActPs{Nil{}, act.t(t, ctx, renv), ctx, Nil{}, True{}}
     case f 1n+p A.AgEl{s, A.AgPi{i, +x, a, d, b}} +m <> mt:
       +nm = act.fresh.in(x, ctx, seen)
-      act.params.put(m, nm, act.t(a, ctx, env), act.params.go(f, p, b, mt, act.bind(d, act.entry(m, nm), ctx), nm <> seen, env))
+      act.params.put(m, nm, act.t(a, ctx, env), act.params.go(f, p, b, mt, act.bind(d, act.entry(m, nm), ctx), nm <> seen, env, renv))
     case f 1n+p A.AgEl{s, A.AgPi{i, +x, +a, +d, b}} Nil{}:
       +nm = act.fresh.in(x, ctx, seen)
       +m = act.mode(i, a, act.opaque.env(d, a, env))
-      act.params.put(m, nm, act.t(a, ctx, env), act.params.go(f, p, b, Nil{}, act.bind(d, act.entry(m, nm), ctx), nm <> seen, env))
+      act.params.put(m, nm, act.t(a, ctx, env), act.params.go(f, p, b, Nil{}, act.bind(d, act.entry(m, nm), ctx), nm <> seen, env, renv))
     case 1n+g 1n+p A.AgEl{s, A.AgDef{+q, +es}} ms:
-      act.params.go(g, 1n+p, A.AgEl{s, act.inline(1024n, act.unfold(env, q, es), env)}, ms, ctx, seen, env)
+      act.params.go(g, 1n+p, A.AgEl{s, act.inline(1024n, act.unfold(env, q, es), env)}, ms, ctx, seen, env, renv)
     case f 1n+p t ms:
       ActPs{Nil{}, act.todo("a type with fewer Pis than its clauses take parameters"), ctx, Nil{}, False{}}
 
 # The fuel bounds the unfoldings a header may take (each a type-valued
 # definition opened to reach the Pis the clauses take).
 def act.params(fuel: Nat, n: Nat, t: A.Ag, ms: List<&2, ActM>, +ctx: List<&2, T.Bt>, +env: ActEnv) -> ActPs:
-  act.params.go(fuel, n, t, ms, ctx, Nil{}, env)
+  act.params.go(fuel, n, t, ms, ctx, Nil{}, env, env)
+
+# a function's header: its parameters' types read under "sig!" (act.sig.env),
+# its result type (what the clauses return, Pis the clauses do not take
+# included: Consequences' anon.total⇒refl) in the plain environment
+def act.params.s(fuel: Nat, n: Nat, t: A.Ag, ms: List<&2, ActM>, +ctx: List<&2, T.Bt>, +env: ActEnv, +renv: ActEnv) -> ActPs:
+  act.params.go(fuel, n, t, ms, ctx, Nil{}, env, renv)
 
 # Clauses ------------------------------------------------------------------------
 
@@ -2532,6 +2582,37 @@ def act.var.name.or(t: T.Bt) -> List<&2, U32>:
     case _:
       Nil{}
 
+# A step whose goal mentions neither side still rewrites when a parameter's
+# type mentions the dotted side (`cast refl v i = v i`, v : Ar g → C at
+# i : Ar f; agda-algebras' EqArgs): the motive is the goal, and the step
+# generalizes those parameters (act.gen.ps), their types with the hole
+# (2026-10-29).  ps.ment2: a parameter other than x and the evidence en
+# whose type mentions x.
+# another pattern's index evidence is not a parameter to generalize: its own
+# step rewrites it (Fn.lookup's Fin.zero evidence under Vec.cons's)
+def act.is.bteq(ty: T.Bt) -> Bool:
+  match ty:
+    case T.BtEq{t, a, b}:
+      True{}
+    case _:
+      False{}
+
+def act.ps.ment2(ps: List<&2, T.BParam>, +x: List<&2, U32>, +en: List<&2, U32>) -> Bool:
+  match ps:
+    case Nil{}:
+      False{}
+    case T.BParam{m, +y, +ty} <> t:
+      Bool.or(Bool.and(Bool.and(Bool.and(Bool.not(S.eq(y, x)), Bool.not(S.eq(y, en))), Bool.not(act.is.bteq(ty))), act.occurs(x, ty)), act.ps.ment2(t, x, en))
+
+def act.mark.p(k: Nat, rb: Bool, ra: Bool, pb: Bool, pa: Bool) -> Nat:
+  match k rb ra pb pa:
+    case 0n True{} _ True{} _:
+      1n
+    case 0n False{} True{} _ True{}:
+      2n
+    case k _ _ _ _:
+      k
+
 # with e a variable the rewrite is J (%e@e), so the goal it leaves has
 # {==} for e as well as a for b
 def act.step.k(k: Nat, +t: T.Bt, +a: T.Bt, +b: T.Bt, +e: T.Bt, +goal: T.Bt) -> ActStep:
@@ -2543,13 +2624,14 @@ def act.step.k(k: Nat, +t: T.Bt, +a: T.Bt, +b: T.Bt, +e: T.Bt, +goal: T.Bt) -> A
     case _:
       ActStep{0n, T.BtWild{}, goal, T.BtWild{}, Nil{}}
 
-def act.step.dir(rb: Bool, ra: Bool, +t: T.Bt, +a: T.Bt, +b: T.Bt, +e: T.Bt, +goal: T.Bt) -> ActStep:
-  act.step.k(act.mark.b(rb, ra, act.occurs(act.var.name(b), goal), act.occurs(act.var.name(a), goal)), t, a, b, e, goal)
+def act.step.dir(+rb: Bool, +ra: Bool, +t: T.Bt, +a: T.Bt, +b: T.Bt, +e: T.Bt, +goal: T.Bt, +hps: List<&2, T.BParam>) -> ActStep:
+  +en = act.var.name.or(e)
+  act.step.k(act.mark.p(act.mark.b(rb, ra, act.occurs(act.var.name(b), goal), act.occurs(act.var.name(a), goal)), rb, ra, act.ps.ment2(hps, act.var.name(b), en), act.ps.ment2(hps, act.var.name(a), en)), t, a, b, e, goal)
 
-def act.step(ty: T.Bt, +e: T.Bt, +ds: List<&2, List<&2, U32>>, +goal: T.Bt) -> ActStep:
+def act.step(ty: T.Bt, +e: T.Bt, +ds: List<&2, List<&2, U32>>, +goal: T.Bt, +hps: List<&2, T.BParam>) -> ActStep:
   match ty:
     case T.BtEq{+t, +a, +b}:
-      act.step.dir(act.dotted(b, ds), act.dotted(a, ds), t, a, b, e, goal)
+      act.step.dir(act.dotted(b, ds), act.dotted(a, ds), t, a, b, e, goal, hps)
     case _:
       ActStep{0n, T.BtWild{}, goal, T.BtWild{}, Nil{}}
 
@@ -2869,16 +2951,25 @@ def act.step.kp(k: Nat, +j: Nat, +t: T.Bt, +a: T.Bt, +b: T.Bt, +a1: T.Bt, +b1: T
     case _:
       ActStep{0n, T.BtWild{}, goal, T.BtWild{}, Nil{}}
 
-def act.step.pk(pk: Nat, +ty: T.Bt, +e: T.Bt, +ds: List<&2, List<&2, U32>>, +goal: T.Bt) -> ActStep:
+def act.step.pk(pk: Nat, +ty: T.Bt, +e: T.Bt, +ds: List<&2, List<&2, U32>>, +goal: T.Bt, +hps: List<&2, T.BParam>) -> ActStep:
   match pk ty:
     case 0n ty:
-      act.step(ty, e, ds, goal)
+      act.step(ty, e, ds, goal, hps)
     case 1n+q T.BtEq{+t, +a, +b}:
       +a1 = act.sucs.peel(a)
       +b1 = act.sucs.peel(b)
       act.step.kp(act.mark.b(act.dotted(b1, ds), act.dotted(a1, ds), act.occurs(act.var.name(b1), goal), act.occurs(act.var.name(a1), goal)), 1n+q, t, a, b, a1, b1, e, goal)
     case _ _:
       ActStep{0n, T.BtWild{}, goal, T.BtWild{}, Nil{}}
+
+# the parameters but the split ones (a step's ps.ment2 asks only those a
+# rewrite could generalize: lookup's x : Vec A n is matched, not moved)
+def act.ps.minus(ps: List<&2, T.BParam>, +skip: List<&2, List<&2, U32>>) -> List<&2, T.BParam>:
+  match ps:
+    case Nil{}:
+      Nil{}
+    case T.BParam{+m, +x, +ty} <> t:
+      List.append(&2, T.BParam, Bool.pick(List<&2, T.BParam>, act.used(x, skip), Nil{}, [T.BParam{m, x, ty}]), act.ps.minus(t, skip))
 
 # the clause's rewrites, in order, before its body (svs: the split
 # parameters, which a rewrite does not generalize)
@@ -2888,7 +2979,7 @@ def act.rws(fuel: Nat, es: List<&2, T.Bt>, +ds: List<&2, List<&2, U32>>, +goal: 
       +ety0 = act.param.ty(hps, act.var.name(e))
       +pk = act.eq.pk(ety0)
       +ety = act.eq.pty(pk, ety0)
-      +s0 = act.step.pk(pk, ety0, e, ds, goal)
+      +s0 = act.step.pk(pk, ety0, e, ds, goal, act.ps.minus(hps, svs))
       +s = Bool.pick(ActStep, Nat.is_eq(pk, 0n), act.step.j(s0, ety, act.var.name.or(e), goal, hps), s0)
       +k = act.step.kind(s)
       +bn = act.step.hole(k, ety)
@@ -3678,14 +3769,38 @@ def act.abs.fam.lm(m: Maybe<&2, T.Bt>, +x: List<&2, U32>, +goal: T.Bt, rest: T.B
     case None{}:
       rest
 
-def act.abs.fam.pick(fs: List<&2, String>, ixs: List<&2, T.Bt>, +tys: List<&2, T.Bt>, +x: List<&2, U32>, +i: Nat, +goal: T.Bt, +why: String, +env: ActEnv) -> T.Bt:
+# A family's index the fold cannot read the head of, a call (`pred 0`, `0
+# ∸ suc n`, as Agda's case tree leaves it), against a zero/suc or
+# true/false: Bend computes the call, so the refutation through disc(_)
+# checks when the call's value clashes (pred-cancel-<, m≮m∸n; 2026-10-29).
+# Tried only when no index refutes at its head, the first such equation.
+def act.abs.unk(t: T.Bt) -> Bool:
+  match t:
+    case T.BtApp{T.BtVar{f}, a}:
+      True{}
+    case _:
+      False{}
+
+def act.abs.known.tag(+h: String) -> Bool:
+  Bool.or(Bool.or(String.eq(h, "ix_eqz"), String.eq(h, "ix_eqs")), Bool.or(String.eq(h, "ix_eqt"), String.eq(h, "ix_eqf")))
+
+def act.abs.fam.unk(fs: List<&2, String>, ixs: List<&2, T.Bt>, +x: List<&2, U32>, +i: Nat, +goal: T.Bt, +why: String) -> T.Bt:
   match fs ixs:
     case +h0 <> ft a <> at:
       +h = act.tag.base(h0)
       +u = act.undead(a)
-      Bool.pick(T.Bt, act.abs.clashes(h, u), act.abs.refute(act.abs.disc(act.abs.tagty(h), u), act.at(x, i), goal), act.abs.fam.lm(act.abs.lm.ix(act.abs.hd(u), h0, act.abs.ty.hd(tys), env), act.at(x, i), goal, act.abs.fam.pick(ft, at, act.abs.ty.tl(tys), x, 1n+i, goal, why, env)))
+      Bool.pick(T.Bt, Bool.and(act.abs.known.tag(h), act.abs.unk(act.abs.hd(u))), act.abs.refute(act.abs.disc(act.abs.tagty(h), u), act.at(x, i), goal), act.abs.fam.unk(ft, at, x, 1n+i, goal, why))
     case _ _:
       T.BtExpr{T.BtTodo{S.b("an absurd pattern on a family a constructor of which no index equation refutes at the head (" ++ why ++ ")")}}
+
+def act.abs.fam.pick(fs: List<&2, String>, ixs: List<&2, T.Bt>, +tys: List<&2, T.Bt>, +x: List<&2, U32>, +i: Nat, +goal: T.Bt, +why: String, +env: ActEnv, fb: T.Bt) -> T.Bt:
+  match fs ixs:
+    case +h0 <> ft a <> at:
+      +h = act.tag.base(h0)
+      +u = act.undead(a)
+      Bool.pick(T.Bt, act.abs.clashes(h, u), act.abs.refute(act.abs.disc(act.abs.tagty(h), u), act.at(x, i), goal), act.abs.fam.lm(act.abs.lm.ix(act.abs.hd(u), h0, act.abs.ty.hd(tys), env), act.at(x, i), goal, act.abs.fam.pick(ft, at, act.abs.ty.tl(tys), x, 1n+i, goal, why, env, fb)))
+    case _ _:
+      fb
 
 def act.abs.tags(fs: List<&2, String>, +n: Nat) -> String:
   match fs:
@@ -3712,7 +3827,9 @@ def act.abs.fam.c(s: ActSym, +ixs: List<&2, T.Bt>, +tys: List<&2, T.Bt>, +x: Lis
   match s:
     case ActSym{+m, +n, A.AkConstructor{}, ms, ar, b, +fs, c, cp}:
       +y = List.append(&2, U32, x, S.b("_ix"))
-      T.BtCase{T.tba.args([T.BtCon{act.ref.of(act.is.here(env, m), env, m, n), T.tba.args(List.append(&2, T.Bt, act.abs.wilds(ar), act.abs.eqpvs(fs, y, 1n)))}]), act.abs.fam.pick(fs, act.list.last(List.length(&2, String, fs), ixs), act.list.last(List.length(&2, String, fs), tys), y, 1n, goal, act.abs.tags(fs, List.length(&2, T.Bt, ixs)), env), rest}
+      +lix = act.list.last(List.length(&2, String, fs), ixs)
+      +why = act.abs.tags(fs, List.length(&2, T.Bt, ixs))
+      T.BtCase{T.tba.args([T.BtCon{act.ref.of(act.is.here(env, m), env, m, n), T.tba.args(List.append(&2, T.Bt, act.abs.wilds(ar), act.abs.eqpvs(fs, y, 1n)))}]), act.abs.fam.pick(fs, lix, act.list.last(List.length(&2, String, fs), tys), y, 1n, goal, why, env, act.abs.fam.unk(fs, lix, y, 1n, goal, why)), rest}
     case _:
       T.BtCase{T.tba.args([T.BtWild{}]), T.BtExpr{act.todo("an absurd pattern on a family whose constructor the symbol table does not have")}, rest}
 
@@ -6758,7 +6875,7 @@ def act.item.fun(s: ActSym, d: A.AgD, +key: String, +ty: A.Ag, +env: ActEnv, doc
   match s d:
     case ActSym{m, +n, k, +ms, +ar, b, fs, c, cp} A.AgDFun{+p, r, w, e, te, mu, +cls, tree}:
       +t = act.proj.sorts(act.quant.on(), p, act.inline.hdr(100000n, ty, env), env)
-      act.unkind.when(act.quant.on(), p, act.tylevel.env(p, ty, env), act.fun.with(n, ms, ar, p, cls, key, t, env, doc, act.params(64n, ar, t, ms, Nil{}, env)))
+      act.unkind.when(act.quant.on(), p, act.tylevel.env(p, ty, env), act.fun.with(n, ms, ar, p, cls, key, t, env, doc, act.params.s(64n, ar, t, ms, Nil{}, act.sig.when(p, env), env)))
     case _ _:
       Nil{}
 
