@@ -464,6 +464,24 @@ def qf.u() -> T.BItem:
 def qf.sj() -> T.BItem:
   T.BiDef{S.b("sj"), [qf.q("a"), T.BParam{T.BmErased{}, S.b("A"), qf.kind("a")}], T.BtType{}, T.BtExpr{T.BtApp{app("ex", [T.BtDead{v("a")}, T.BtDead{v("q")}, T.BtDead{v("A")}]), T.tba.args([T.BtLam{T.BmLive{}, S.b("x"), qf.pi(v("A"), v("Nat"))}])}}, Nil{}}
 
+# type RA<-f, -g, -F: @-x:Kind(f) -> Kind(g)>: RA{ap: @-A:Kind(f) -> @-B:Kind(f) -> F(A -> B) -> F(B)}
+# (F applied to a function type: its domain widens to Type); then
+# def pr(-f, -g, -F: @-x:Kind(f) -> Kind(g), r: RA<f, g, F>) -> Nat: 0n
+# (F passed where RA's F is of Type domain: it widens too)
+def qf.tc(+d: T.Bt) -> T.Bt:
+  T.BtPi{T.BmErased{}, S.b("x"), True{}, d, qf.kind("g")}
+
+def qf.ra() -> T.BItem:
+  +ap : T.Bt = T.BtPi{T.BmErased{}, S.b("A"), True{}, qf.kind("f"), T.BtPi{T.BmErased{}, S.b("B"), True{}, qf.kind("f"), qf.pi(app("F", [T.BtDead{qf.pi(v("A"), v("B"))}]), app("F", [T.BtDead{v("B")}]))}}
+  T.BiType{S.b("RA"), [qf.q("f"), qf.q("g"), T.BParam{T.BmErased{}, S.b("F"), qf.tc(qf.kind("f"))}], T.BtType{}, [T.BCtor{S.b("RA"), [T.BField{S.b("ap"), ap}]}], Nil{}}
+
+def qf.env.ra() -> QF.TqEnv:
+  +ra : QF.TqSig = QF.TqType{[qf.q("f"), qf.q("g"), T.BParam{T.BmErased{}, S.b("F"), qf.tc(T.BtType{})}], T.BtType{}, Nil{}}
+  QF.TqEnv{Map.set(&2, QF.TqSig, Map.new(&2, QF.TqSig), "RA", ra), S.b("N.")}
+
+def qf.pr() -> T.BItem:
+  T.BiDef{S.b("pr"), [qf.q("f"), qf.q("g"), T.BParam{T.BmErased{}, S.b("F"), qf.tc(qf.kind("f"))}, T.BParam{T.BmLive{}, S.b("r"), T.BtTyApp{S.b("RA"), qf.dead(["f", "g", "F"])}}], v("Nat"), T.BtExpr{T.BtNat{S.b("0")}}, Nil{}}
+
 # def top(-a: Quant) -> Kind(a): Nat
 def qf.top() -> T.BItem:
   T.BiDef{S.b("top"), [qf.q("a")], qf.kind("a"), T.BtExpr{v("Nat")}, Nil{}}
@@ -499,6 +517,8 @@ def gate.laws() -> IO(Unit):
     IO.print(verdict("a def's leading lambdas are typed by its return type", S.eq(gt.pr(QF.tqf.item(qf.sx(), qf.env2())), S.b("import Base\n\ndef sx(-a: Quant, -b: Quant) -> @-A:Kind(a) -> @-B:Kind(b) -> Kind((a <&> b)):\n  x => y => Pr<a, b, x, y>\n"))))
     IO.print(verdict("a def returning a call takes its quantities from the call's type", S.eq(gt.pr(QF.tqf.item(qf.u(), qf.env2())), S.b("import Base\n\ndef u(-a: Quant) -> Pr<a, &2, Nat, Nat>:\n  mk(a)\n"))))
     IO.print(verdict("a curried call's quantity is solved from its later argument", S.eq(gt.pr(QF.tqf.item(qf.sj(), qf.env2())), S.b("import Base\n\ndef sj(-a: Quant, -A: Kind(a)) -> Type:\n  ex(a, &1, A)(x => A -> Nat)\n"))))
+    IO.print(verdict("a type constructor parameter applied to a function type takes Type", S.eq(gt.pr(QF.tqf.item(qf.ra(), qf.env2())), S.b("import Base\n\ntype RA<-f: Quant, -g: Quant, -F: @-x:Type -> Kind(g)> is Type:\n  RA{ap: @-A:Kind(f) -> @-B:Kind(f) -> F(A -> B) -> F(B)}\n"))))
+    IO.print(verdict("a type constructor parameter passed where a widened one is expected widens", S.eq(gt.pr(QF.tqf.item(qf.pr(), qf.env.ra())), S.b("import Base\n\ndef pr(-f: Quant, -g: Quant, -F: @-x:Type -> Kind(g), r: RA<f, g, F>) -> Nat:\n  0n\n"))))
     IO.print(verdict("a type-valued def whose body is Data is Data", S.eq(gt.pr(QF.tqf.item(qf.top(), qf.env2())), S.b("import Base\n\ndef top(-a: Quant) -> Data:\n  Nat\n"))))
     IO.print(verdict("a def returning a type-valued call whose body is a Type returns the call opened, Type", S.eq(gt.pr(QF.tqf.item(qf.rel.ret("nrel", "a", qf.pi(v("x"), v("Nat"))), qf.env2())), S.b("import Base\n\ndef nrel(-a: Quant, -A: Kind(a)) -> A -> A -> Type:\n  x => y => x -> Nat\n"))))
     IO.print(verdict("a def returning a type-valued call keeps it when its body is of its kind", S.eq(gt.pr(QF.tqf.item(qf.rel.ret("erel", "&2", v("Nat")), qf.env2())), S.b("import Base\n\ndef erel(-a: Quant, -A: Kind(a)) -> Rel(a, A, &2):\n  x => y => Nat\n"))))
@@ -603,6 +623,44 @@ def gold.fix.laws() -> IO(Unit):
     g3 : D.A2bG <- gold.fix(al, ral, g2)
     return Unit{}
 
+# fixtures/agda2bend/src/A2bAbs.agda (its export A2bAbs.sexp, after
+# Agda.Primitive and Agda.Builtin.Equality): a constructor applied to fewer
+# than its fields (`map just`), eta-expanded as a call is, and absurd
+# patterns on constructors of types other than Bool and Nat (the stdlib's
+# IsStrict (nonstrict _), NonEmpty [], x ∷ xs ≡ []), refuted through a
+# lambda-match motive; the gate keeps all 12 items (Bend 2.0.39).
+def abs.g(tr: D.A2bTr) -> D.A2bG:
+  match tr:
+    case D.A2bTr{its, g}:
+      g
+
+def abs.mod(+m: String, +al: Map<&2, List<&2, U32>>, g: D.A2bG) -> IO(D.A2bG):
+  do IO<D.A2bG>:
+    +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/" ++ m ++ ".sexp"))
+    return abs.g(D.a2b.mod.items(S.b(m), al, ds, g))
+
+def abs.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, tr: D.A2bTr) -> IO(D.A2bG):
+  match tr:
+    case D.A2bTr{its, g}:
+      +text = D.a2b.raw.text(S.b("A2bAbs"), al, ral, List.length(&2, A.AgDecl, ds), its)
+      do IO<D.A2bG>:
+        IO.print(verdict("a constructor applied to fewer than its fields is eta-expanded", S.infix(text, S.b("~eta1 => Maybe_.just{eta1}"))))
+        IO.print(verdict("an absurd pattern on a family refutes two constructors' clash through a lambda-match", S.infix(text, S.b("(%x_4_ix_1 : {\\{Rel.nonstrict: (_ => Unit); (_ => Empty)} : Rel<A> -> Type}(_); Unit{})"))))
+        IO.print(verdict("a nullary constructor's arm is Unit itself", S.infix(text, S.b("{\\{List_.lb_rb: (Unit); (_ => Empty)} : List_<A> -> Type}(_)"))))
+        IO.print(verdict("an absurd pattern on an equation of two constructors refutes it the same way", S.infix(text, S.b("(%x_6 : {\\{List_.cons: (_ => _ => Unit); (_ => Empty)} : List_<A> -> Type}(_); Unit{})"))))
+        return g
+
+def abs.laws() -> IO(Unit):
+  +order : List<&2, List<&2, U32>> = [S.b("Agda.Primitive"), S.b("Agda.Builtin.Equality"), S.b("A2bAbs")]
+  +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
+  +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
+  do IO<Unit>:
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
+    +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bAbs.sexp"))
+    g3 : D.A2bG <- abs.of(al, ral, ds, D.a2b.mod.items(S.b("A2bAbs"), al, ds, g2))
+    return Unit{}
+
 def main() -> IO(Unit):
   do IO<Unit>:
     +bool : List<&2, U32> <- S.read("fixtures/agda2bend/Agda.Builtin.Bool.sexp")
@@ -613,3 +671,4 @@ def main() -> IO(Unit):
     gate.laws()
     gold.laws()
     gold.fix.laws()
+    abs.laws()

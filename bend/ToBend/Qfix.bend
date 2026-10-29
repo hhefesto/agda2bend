@@ -890,6 +890,216 @@ def tqf.ret.kind(+ret: T.Bt, body: T.Bt, +ctx: List<&2, T.BParam>, +e: TqEnv) ->
     case _:
       ret
 
+# Widened type-constructor parameters (2026-10-29) ----------------------------
+#
+# Bend's function type is Type at any quantity, so a parameter
+# `-F: @-x:Kind(f) -> Kind(g)` that the item applies to `A -> B`
+# (RawApplicative's `_<*>_ : F (A → B) → F A → F B`) failed at "expected
+# Kind(f), observed Type"; its Kind domains become Type, which still takes
+# each A: Kind(f) (tested on Bend 2.0.39, /tmp/bx/kq: Maybe's applicative
+# checks).  Bend does not pass an F of the narrower domain where the wider
+# is expected, so a parameter passed in a callee's slot of Type domain
+# (RawApplicative<f, g, F> in a projection's header, RawMonad's field)
+# widens too; the wider F passes where the narrower is expected
+# (RawFunctor<f, g, F> in RawApplicative's field).
+
+def tqf.wd.cat(a: List<&2, List<&2, U32>>, b: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  List.append(&2, List<&2, U32>, a, b)
+
+def tqf.wd.names(ps: List<&2, T.BParam>) -> List<&2, List<&2, U32>>:
+  match ps:
+    case Nil{}:
+      Nil{}
+    case T.BParam{m, x, ty} <> t:
+      x <> tqf.wd.names(t)
+
+def tqf.wd.arg(a: T.Bt) -> T.Bt:
+  match a:
+    case T.BtDead{x}:
+      tqf.wd.arg(x)
+    case T.BtTplArg{x}:
+      tqf.wd.arg(x)
+    case a:
+      a
+
+def tqf.wd.is.pi(t: T.Bt) -> Bool:
+  match t:
+    case T.BtPi{m, y, d, x, b}:
+      True{}
+    case _:
+      False{}
+
+# an argument list holding a function type (an argument at a variable is
+# dead, BtDead{BtDead{A -> B}} in a field)
+def tqf.wd.pi(a: T.Bt) -> Bool:
+  match a:
+    case T.BtArgs{x, rest}:
+      Bool.or(tqf.wd.is.pi(tqf.wd.arg(x)), tqf.wd.pi(rest))
+    case _:
+      False{}
+
+# a parameter type: a function one of whose domains is Type
+def tqf.wd.slot(ty: T.Bt) -> Bool:
+  match ty:
+    case T.BtPi{m, y, d, T.BtType{}, b}:
+      True{}
+    case T.BtPi{m, y, d, a, b}:
+      tqf.wd.slot(b)
+    case T.BtDead{a}:
+      tqf.wd.slot(a)
+    case _:
+      False{}
+
+def tqf.wd.one(hit: Bool, v: T.Bt, r: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  match hit v:
+    case True{} T.BtVar{n}:
+      n <> r
+    case _ _:
+      r
+
+def tqf.wd.slots(ps: List<&2, T.BParam>, a: T.Bt) -> List<&2, List<&2, U32>>:
+  match ps a:
+    case T.BParam{m, x, ty} <> pt T.BtArgs{v, rest}:
+      tqf.wd.one(tqf.wd.slot(ty), tqf.wd.arg(v), tqf.wd.slots(pt, rest))
+    case _ _:
+      Nil{}
+
+def tqf.wd.callee(s: TqSig, a: T.Bt) -> List<&2, List<&2, U32>>:
+  match s:
+    case TqDef{ps, ret, b}:
+      tqf.wd.slots(ps, a)
+    case TqType{ps, k, cs}:
+      tqf.wd.slots(ps, a)
+    case TqNone{}:
+      Nil{}
+
+def tqf.wd.fn(+fn: List<&2, U32>, +a: T.Bt, +bound: List<&2, List<&2, U32>>, +e: TqEnv) -> List<&2, List<&2, U32>>:
+  +own = Bool.pick(List<&2, List<&2, U32>>, tqf.wd.pi(a), fn <> Nil{}, Nil{})
+  Bool.pick(List<&2, List<&2, U32>>, tqf.mem(fn, bound), own, tqf.wd.cat(own, tqf.wd.callee(tqf.sig(e, fn), a)))
+
+# the names the term applies to a function type or passes in a slot of Type domain
+def tqf.wd.need(t: T.Bt, +bound: List<&2, List<&2, U32>>, +e: TqEnv) -> List<&2, List<&2, U32>>:
+  match t:
+    case T.BtApp{T.BtVar{+fn}, +a}:
+      tqf.wd.cat(tqf.wd.fn(fn, a, bound, e), tqf.wd.need(a, bound, e))
+    case T.BtApp{f, a}:
+      tqf.wd.cat(tqf.wd.need(f, bound, e), tqf.wd.need(a, bound, e))
+    case T.BtTyApp{+n, +a}:
+      tqf.wd.cat(tqf.wd.callee(tqf.sig(e, n), a), tqf.wd.need(a, bound, e))
+    case T.BtArgs{a, rest}:
+      tqf.wd.cat(tqf.wd.need(a, bound, e), tqf.wd.need(rest, bound, e))
+    case T.BtTplArg{a}:
+      tqf.wd.need(a, bound, e)
+    case T.BtLam{m, y, b}:
+      tqf.wd.need(b, bound, e)
+    case T.BtPi{m, y, d, a, b}:
+      tqf.wd.cat(tqf.wd.need(a, bound, e), tqf.wd.need(b, bound, e))
+    case T.BtCon{c, a}:
+      tqf.wd.need(a, bound, e)
+    case T.BtEq{ty, a, b}:
+      tqf.wd.cat(tqf.wd.need(ty, bound, e), tqf.wd.cat(tqf.wd.need(a, bound, e), tqf.wd.need(b, bound, e)))
+    case T.BtSucc{a}:
+      tqf.wd.need(a, bound, e)
+    case T.BtAnn{a, ty}:
+      tqf.wd.cat(tqf.wd.need(a, bound, e), tqf.wd.need(ty, bound, e))
+    case T.BtDead{a}:
+      tqf.wd.need(a, bound, e)
+    case T.BtMatch{xs, cs}:
+      tqf.wd.cat(tqf.wd.need(xs, bound, e), tqf.wd.need(cs, bound, e))
+    case T.BtCase{p, b, rest}:
+      tqf.wd.cat(tqf.wd.need(b, bound, e), tqf.wd.need(rest, bound, e))
+    case T.BtExpr{b}:
+      tqf.wd.need(b, bound, e)
+    case T.BtRw{r, p, b}:
+      tqf.wd.cat(tqf.wd.need(r, bound, e), tqf.wd.cat(tqf.wd.need(p, bound, e), tqf.wd.need(b, bound, e)))
+    case T.BtLet{y, v, b}:
+      tqf.wd.cat(tqf.wd.need(v, bound, e), tqf.wd.need(b, bound, e))
+    case _:
+      Nil{}
+
+def tqf.wd.need.ps(ps: List<&2, T.BParam>, +bound: List<&2, List<&2, U32>>, +e: TqEnv) -> List<&2, List<&2, U32>>:
+  match ps:
+    case Nil{}:
+      Nil{}
+    case T.BParam{m, x, ty} <> t:
+      tqf.wd.cat(tqf.wd.need(ty, bound, e), tqf.wd.need.ps(t, bound, e))
+
+def tqf.wd.need.fs(fs: List<&2, T.BField>, +bound: List<&2, List<&2, U32>>, +e: TqEnv) -> List<&2, List<&2, U32>>:
+  match fs:
+    case Nil{}:
+      Nil{}
+    case T.BField{x, ty} <> t:
+      tqf.wd.cat(tqf.wd.need(ty, bound, e), tqf.wd.need.fs(t, bound, e))
+
+def tqf.wd.need.cs(cs: List<&2, T.BCtor>, +bound: List<&2, List<&2, U32>>, +e: TqEnv) -> List<&2, List<&2, U32>>:
+  match cs:
+    case Nil{}:
+      Nil{}
+    case T.BCtor{c, fs} <> t:
+      tqf.wd.cat(tqf.wd.need.fs(fs, bound, e), tqf.wd.need.cs(t, bound, e))
+
+# a kind domain as Type
+def tqf.wd.kd(a: T.Bt) -> T.Bt:
+  match a:
+    case T.BtApp{T.BtVar{+k}, T.BtArgs{+q, T.BtANil{}}}:
+      Bool.pick(T.Bt, S.eq(k, S.b("Kind")), T.BtType{}, T.BtApp{T.BtVar{k}, T.BtArgs{q, T.BtANil{}}})
+    case T.BtVar{+d}:
+      Bool.pick(T.Bt, S.eq(d, S.b("Data")), T.BtType{}, T.BtVar{d})
+    case a:
+      a
+
+def tqf.wd.dom(t: T.Bt) -> T.Bt:
+  match t:
+    case T.BtPi{m, y, d, a, b}:
+      T.BtPi{m, y, d, tqf.wd.kd(a), tqf.wd.dom(b)}
+    case T.BtDead{a}:
+      T.BtDead{tqf.wd.dom(a)}
+    case t:
+      t
+
+def tqf.wd.end(t: T.Bt) -> Bool:
+  match t:
+    case T.BtPi{m, y, d, a, b}:
+      tqf.wd.end(b)
+    case T.BtApp{T.BtVar{+k}, T.BtArgs{q, T.BtANil{}}}:
+      S.eq(k, S.b("Kind"))
+    case T.BtType{}:
+      True{}
+    case T.BtVar{+d}:
+      S.eq(d, S.b("Data"))
+    case _:
+      False{}
+
+# a type constructor's type: Pis ending in a kind
+def tqf.wd.tc(t: T.Bt) -> Bool:
+  match t:
+    case T.BtPi{m, y, d, a, b}:
+      tqf.wd.end(b)
+    case T.BtDead{a}:
+      tqf.wd.tc(a)
+    case _:
+      False{}
+
+def tqf.wd.ps(ps: List<&2, T.BParam>, +ns: List<&2, List<&2, U32>>) -> List<&2, T.BParam>:
+  match ps:
+    case Nil{}:
+      Nil{}
+    case T.BParam{m, +x, +ty} <> t:
+      T.BParam{m, x, Bool.pick(T.Bt, Bool.and(tqf.mem(x, ns), tqf.wd.tc(ty)), tqf.wd.dom(ty), ty)} <> tqf.wd.ps(t, ns)
+
+def tqf.wd.item(it: T.BItem, +e: TqEnv) -> T.BItem:
+  match it:
+    case T.BiDef{n, +ps, +ret, +body, doc}:
+      +bound = tqf.wd.names(ps)
+      +ns = tqf.wd.cat(tqf.wd.need.ps(ps, bound, e), tqf.wd.cat(tqf.wd.need(ret, bound, e), tqf.wd.need(body, bound, e)))
+      T.BiDef{n, tqf.wd.ps(ps, ns), ret, body, doc}
+    case T.BiType{n, +ps, k, +cs, doc}:
+      +bound = tqf.wd.names(ps)
+      +ns = tqf.wd.cat(tqf.wd.need.ps(ps, bound, e), tqf.wd.need.cs(cs, bound, e))
+      T.BiType{n, tqf.wd.ps(ps, ns), k, cs, doc}
+    case it:
+      it
+
 def tqf.item(it: T.BItem, +e: TqEnv) -> T.BItem:
   match it:
     case T.BiDef{n, ps, ret, body, doc}:
@@ -897,10 +1107,10 @@ def tqf.item(it: T.BItem, +e: TqEnv) -> T.BItem:
       +ctx = tqf.ctx.of(ps2, Nil{})
       +ret1 = tqf.fix(ret, ctx, e)
       +body2 = tqf.fix.body(body, ret1, ctx, e)
-      T.BiDef{n, ps2, tqf.ret.kind(tqf.ret.fix(ret1, body2, ctx, e), body2, ctx, e), body2, doc}
+      tqf.wd.item(T.BiDef{n, ps2, tqf.ret.kind(tqf.ret.fix(ret1, body2, ctx, e), body2, ctx, e), body2, doc}, e)
     case T.BiType{n, ps, k, cs, doc}:
       +ps2 = tqf.fix.ps(ps, Nil{}, e)
-      T.BiType{n, ps2, k, tqf.fix.cs(cs, tqf.ctx.of(ps2, Nil{}), e), doc}
+      tqf.wd.item(T.BiType{n, ps2, k, tqf.fix.cs(cs, tqf.ctx.of(ps2, Nil{}), e), doc}, e)
     case it:
       it
 

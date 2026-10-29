@@ -489,6 +489,17 @@ def tcp.q.spec1(+it: T.BItem, +why: List<&2, U32>) -> Maybe<&2, T.BItem>:
     case _:
       None{}
 
+# a caller passing its own quantity where a callee specialised to &1 now
+# expects Type (`zip` passing f to `zipWith` at &1, which applies F to a
+# function type): specialised to &1 in the quantities the observed type
+# names and the expected does not
+def tcp.q.spec1o(+it: T.BItem, +why: List<&2, U32>) -> Maybe<&2, T.BItem>:
+  match it:
+    case T.BiDef{n, +ps, ret, body, doc}:
+      tcp.q.done(tcp.q.cands(tcp.q.params(ps), tcp.exp.of(S.find(why, S.b("observed : "), 0n), why), tcp.obs(why)), it, S.b("&1"))
+    case _:
+      None{}
+
 # the gate's Data repair, then the quantity one
 def tcp.data.or.q(m: Maybe<&2, T.BItem>, +it: T.BItem, +why: List<&2, U32>) -> Maybe<&2, T.BItem>:
   match m:
