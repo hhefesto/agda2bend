@@ -323,7 +323,9 @@ type Ag is Data:
   AgPEnd{}
   AgPVar{x: List<&2, U32>, n: Nat, o: AgKw}
   AgPDot{t: Ag}
-  AgPCon{q: AgQ, rec: Bool, ps: Ag}
+  # fo: forced, Agda's own split of an argument another pattern's
+  # constructor determines (origin system, lazy yes: toℕ {suc n} (suc i))
+  AgPCon{q: AgQ, rec: Bool, fo: Bool, ps: Ag}
   AgPLit{l: Ag}
   AgPProj{q: AgQ}
   # Case trees (Agda's funCompiled): split argument n; a leaf with its
@@ -1168,6 +1170,148 @@ def aas.dep(k: AgKw) -> Bool:
     case _:
       False{}
 
+# Forced constructor patterns -------------------------------------------------
+# Agda's elaborated clause splits a hidden argument whose constructor another
+# pattern forces (toℕ {suc n} (suc i): the `suc n` is Agda's, origin system,
+# lazy), and the forcing constructor's field is the dot pattern .n.  Bend has
+# no index unifier: the split leaves the field a wildcard of another type
+# (i : Fin<_> where Fin<n> is wanted), and a split index is live, so the
+# recursive call no longer shrinks its first argument.  So the binding goes
+# back where the source has it: the forced argument becomes the dot pattern
+# of its constructor term (Bend leaves it unsplit, an erased index) and each
+# of its variables is bound at its first dot pattern, when every variable of
+# the forced pattern has one (a twice-dotted variable keeps its other dots).
+
+def aas.lazy(lz: AgX) -> Bool:
+  match lz:
+    case AxCons{lk, AxCons{v, AxNil{}}}:
+      aas.yes(aas.k(v))
+    case _:
+      False{}
+
+def aas.forced(o: AgX, lz: AgX) -> Bool:
+  match o:
+    case AxKw{AkSystem{}}:
+      aas.lazy(lz)
+    case _:
+      False{}
+
+def aas.uf.has(ks: List<&2, Nat>, +k: Nat) -> Bool:
+  match ks:
+    case Nil{}:
+      False{}
+    case j <> t:
+      Bool.or(Nat.is_eq(j, k), aas.uf.has(t, k))
+
+def aas.uf.keep(b: Bool, j: Nat, t: List<&2, Nat>) -> List<&2, Nat>:
+  match b:
+    case True{}:
+      j <> t
+    case False{}:
+      t
+
+# ks without the ones in ds
+def aas.uf.minus(ks: List<&2, Nat>, +ds: List<&2, Nat>) -> List<&2, Nat>:
+  match ks:
+    case Nil{}:
+      Nil{}
+    case +j <> t:
+      aas.uf.keep(Bool.not(aas.uf.has(ds, j)), j, aas.uf.minus(t, ds))
+
+# the variables a pattern (or spine) has as dot patterns `.x`, in order
+def aas.uf.dots(p: Ag) -> List<&2, Nat>:
+  match p:
+    case AgPArg{i, x, q, rest}:
+      List.append(&2, Nat, aas.uf.dots(q), aas.uf.dots(rest))
+    case AgPDot{AgVar{k, x, AgENil{}}}:
+      k <> Nil{}
+    case AgPCon{q, r, f, ps}:
+      aas.uf.dots(ps)
+    case _:
+      Nil{}
+
+# whether each field of a forced pattern is a variable some dot mentions
+def aas.uf.ok(ps: Ag, +ds: List<&2, Nat>) -> Bool:
+  match ps:
+    case AgPArg{i, x, AgPVar{v, k, o}, rest}:
+      Bool.and(aas.uf.has(ds, k), aas.uf.ok(rest, ds))
+    case AgPEnd{}:
+      True{}
+    case _:
+      False{}
+
+def aas.uf.ks(ps: Ag) -> List<&2, Nat>:
+  match ps:
+    case AgPArg{i, x, AgPVar{v, k, o}, rest}:
+      k <> aas.uf.ks(rest)
+    case _:
+      Nil{}
+
+def aas.uf.kif(b: Bool, ps: Ag) -> List<&2, Nat>:
+  match b:
+    case True{}:
+      aas.uf.ks(ps)
+    case False{}:
+      Nil{}
+
+# the constructor term a forced pattern stands for
+def aas.uf.es(ps: Ag) -> Ag:
+  match ps:
+    case AgPArg{i, x, AgPVar{v, k, o}, rest}:
+      AgEApp{i, AgVar{k, v, AgENil{}}, aas.uf.es(rest)}
+    case _:
+      AgENil{}
+
+def aas.uf.con(b: Bool, q: AgQ, r: Bool, +ps: Ag) -> Ag:
+  match b:
+    case True{}:
+      AgPDot{AgCon{q, AkSystem{}, aas.uf.es(ps)}}
+    case False{}:
+      AgPCon{q, r, True{}, ps}
+
+# the variables the clause's forced patterns give up
+def aas.uf.kall(ps: Ag, +ds: List<&2, Nat>) -> List<&2, Nat>:
+  match ps:
+    case AgPArg{i, x, AgPCon{q, r, True{}, +sub}, rest}:
+      List.append(&2, Nat, aas.uf.kif(aas.uf.ok(sub, ds), sub), aas.uf.kall(rest, ds))
+    case AgPArg{i, x, p, rest}:
+      aas.uf.kall(rest, ds)
+    case _:
+      Nil{}
+
+def aas.uf.top(ps: Ag, +ds: List<&2, Nat>) -> Ag:
+  match ps:
+    case AgPArg{i, x, AgPCon{q, r, True{}, +sub}, rest}:
+      AgPArg{i, x, aas.uf.con(aas.uf.ok(sub, ds), q, r, sub), aas.uf.top(rest, ds)}
+    case AgPArg{i, x, p, rest}:
+      AgPArg{i, x, p, aas.uf.top(rest, ds)}
+    case AgPEnd{}:
+      AgPEnd{}
+    case _:
+      AgPEnd{}
+
+def aas.uf.dotvar(b: Bool, +k: Nat, +x: List<&2, U32>) -> Ag:
+  match b:
+    case True{}:
+      AgPVar{x, k, AkSystem{}}
+    case False{}:
+      AgPDot{AgVar{k, x, AgENil{}}}
+
+# each of ks bound at its first dot pattern
+def aas.uf.bind(+p: Ag, +ks: List<&2, Nat>) -> Ag:
+  match p:
+    case AgPArg{i, x, +q, rest}:
+      AgPArg{i, x, aas.uf.bind(q, ks), aas.uf.bind(rest, aas.uf.minus(ks, aas.uf.dots(q)))}
+    case AgPDot{AgVar{+k, x, AgENil{}}}:
+      aas.uf.dotvar(aas.uf.has(ks, k), k, x)
+    case AgPCon{q, r, f, ps}:
+      AgPCon{q, r, f, aas.uf.bind(ps, ks)}
+    case _:
+      p
+
+def aas.unforce(+ps: Ag) -> Ag:
+  aas.uf.bind(aas.uf.top(ps, aas.uf.dots(ps)), aas.uf.kall(ps, aas.uf.dots(ps)))
+
 # The decoder ----------------------------------------------------------------
 
 # x read as category c (FORMAT.md's grammar, form by form).
@@ -1266,7 +1410,7 @@ def aas.dec(x: AgX, c: AgCat) -> Ag:
     case AxNil{} AcClauses{}:
       AgClEnd{}
     case AxCons{AxCons{AxKw{AkClause{}}, AxCons{rng, AxCons{tel, AxCons{AxCons{pk, ps}, AxCons{AxCons{bk, AxCons{body, AxNil{}}}, AxCons{ty, AxCons{AxCons{ck, AxCons{ca, AxNil{}}}, more}}}}}}}, rest} AcClauses{}:
-      AgCl{aas.dec(tel, AcTel{}), aas.dec(ps, AcPats{}), aas.dec(body, AcTerm{}), aas.dec(ty, AcClTy{}), aas.yes(aas.k(ca)), aas.dec(rest, AcClauses{})}
+      AgCl{aas.dec(tel, AcTel{}), aas.unforce(aas.dec(ps, AcPats{})), aas.dec(body, AcTerm{}), aas.dec(ty, AcClTy{}), aas.yes(aas.k(ca)), aas.dec(rest, AcClauses{})}
     case AxCons{AxKw{AkType{}}, AxCons{AxCons{ok, AxCons{h, AxCons{r, AxCons{m, AxCons{t, AxNil{}}}}}}, AxNil{}}} AcClTy{}:
       aas.dec(t, AcType{})
     # PAT*
@@ -1280,7 +1424,7 @@ def aas.dec(x: AgX, c: AgCat) -> Ag:
     case AxCons{AxKw{AkPdot{}}, AxCons{o, AxCons{t, AxNil{}}}} AcPat{}:
       AgPDot{aas.dec(t, AcTerm{})}
     case AxCons{AxKw{AkPcon{}}, AxCons{q, AxCons{o, AxCons{AxCons{rk, AxCons{rec, AxNil{}}}, AxCons{lz, AxCons{ft, AxCons{ty, ps}}}}}}} AcPat{}:
-      AgPCon{aas.q(q), aas.yes(aas.k(rec)), aas.dec(ps, AcPats{})}
+      AgPCon{aas.q(q), aas.yes(aas.k(rec)), aas.forced(o, lz), aas.dec(ps, AcPats{})}
     case AxCons{AxKw{AkPlit{}}, AxCons{o, AxCons{l, AxNil{}}}} AcPat{}:
       AgPLit{aas.dec(l, AcLit{})}
     case AxCons{AxKw{AkPproj{}}, AxCons{how, AxCons{q, AxNil{}}}} AcPat{}:
@@ -1616,7 +1760,7 @@ def aas.raws(a: Ag) -> Nat:
       Nat.add(aas.raws(p), aas.raws(rest))
     case AgPDot{t}:
       aas.raws(t)
-    case AgPCon{q, r, ps}:
+    case AgPCon{q, r, f, ps}:
       aas.raws(ps)
     case AgPLit{l}:
       aas.raws(l)

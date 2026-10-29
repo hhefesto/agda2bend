@@ -472,10 +472,33 @@ def a2b.pj.put(p: C.ActPj, +key: List<&2, U32>, +al: Map<&2, List<&2, U32>>, pj:
 def a2b.te(+pj: Map<&2, Q.TcpProj>, +al: Map<&2, List<&2, U32>>, +m: List<&2, U32>) -> Q.TcpEnv:
   Q.TcpEnv{pj, a2b.qual(al, m, Nil{})}
 
+# A record's constructor is printed by the record's entry (its type's
+# constructor, its matches) and by its own (a construction): the record's
+# takes the constructor's unique name when that comes (two records' `_,_`
+# in one module, Algebra.Definitions.RawMagma's _∣ˡ_ and _∣ʳ_, were both
+# `comma`: "duplicate declaration").
+def a2b.rec.fix3(s: C.ActSym, tab: Map<&2, C.ActSym>, +key: String, +cn: List<&2, U32>) -> Map<&2, C.ActSym>:
+  match s:
+    case C.ActSym{mo, n, A.AkRecord{}, ms, ar, b, fs, c, cp}:
+      Map.set(&2, C.ActSym, tab, key, C.ActSym{mo, n, A.AkRecord{}, ms, ar, b, fs, cn, cp})
+    case _:
+      tab
+
+def a2b.rec.fix2(r: Map<&2, C.ActSym> & C.ActSym, +key: String, +cn: List<&2, U32>) -> Map<&2, C.ActSym>:
+  (tab, s) = r
+  a2b.rec.fix3(s, tab, key, cn)
+
+def a2b.rec.fix(+d: A.AgDecl, +nm: List<&2, U32>, tab: Map<&2, C.ActSym>) -> Map<&2, C.ActSym>:
+  match d:
+    case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, fl, lang, ty, A.AgDCon{+dq, pars, ar, ck, src}}:
+      a2b.rec.fix2(Map.get(C.ActSym, C.act.sym0(), tab, C.act.key(dq)), C.act.key(dq), C.act.con.name(nm))
+    case _:
+      tab
+
 def a2b.syms.one(+top: List<&2, U32>, +d: A.AgDecl, +nm: List<&2, U32>, +al: Map<&2, List<&2, U32>>, t: A2bTabs) -> A2bTabs:
   match t:
     case A2bTabs{+tab, +unf, +dm, used, nk, pj, qs}:
-      A2bTabs{Map.set(&2, C.ActSym, tab, C.act.key(a2b.dq(d)), a2b.sym.for(top, nm, d, tab, unf)), C.act.cop.add(d, a2b.unf.put(C.act.tcl.of(d, unf), C.act.tcl.key(a2b.dq(d)), a2b.unf.put(C.act.cmb.of(d, unf), C.act.cmb.key(a2b.dq(d)), a2b.unf.put(C.act.etu.of(d, unf, tab), C.act.etu.key(a2b.dq(d)), a2b.unf.put(C.act.unf.of(d, unf), C.act.key(a2b.dq(d)), unf))))), Map.set(&2, A.AgDecl, dm, C.act.key(a2b.dq(d)), d), nm <> used, Map.set(&2, String, nk, S.str(nm), C.act.key(a2b.dq(d))), a2b.pj.put(C.act.pj.of(d, tab), a2b.qual(al, top, nm), al, pj), qs}
+      A2bTabs{a2b.rec.fix(d, nm, Map.set(&2, C.ActSym, tab, C.act.key(a2b.dq(d)), a2b.sym.for(top, nm, d, tab, unf))), C.act.cop.add(d, a2b.unf.put(C.act.tcl.of(d, unf), C.act.tcl.key(a2b.dq(d)), a2b.unf.put(C.act.cmb.of(d, unf), C.act.cmb.key(a2b.dq(d)), a2b.unf.put(C.act.etu.of(d, unf, tab), C.act.etu.key(a2b.dq(d)), a2b.unf.put(C.act.unf.of(d, unf), C.act.key(a2b.dq(d)), unf))))), Map.set(&2, A.AgDecl, dm, C.act.key(a2b.dq(d)), d), nm <> used, Map.set(&2, String, nk, S.str(nm), C.act.key(a2b.dq(d))), a2b.pj.put(C.act.pj.of(d, tab), a2b.qual(al, top, nm), al, pj), qs}
 
 def a2b.syms(ds: List<&2, A.AgDecl>, +top: List<&2, U32>, +al: Map<&2, List<&2, U32>>, t: A2bTabs) -> A2bTabs:
   match ds t:
@@ -737,8 +760,17 @@ def a2b.uses(ns: List<&2, List<&2, U32>>, +x: List<&2, U32>) -> Bool:
     case n <> t:
       Bool.or(S.eq(n, x), a2b.uses(t, x))
 
+# a2b_cast: F(a) to F(b) by e : {a == b} (Cata.bend act.sd: a dotted
+# field at another pattern's variable casts the fields whose types have it)
+def a2b.cast.item() -> T.BItem:
+  +ty : T.Bt = T.BtVar{S.b("T")}
+  +f : T.Bt = T.BtVar{S.b("F")}
+  T.BiDef{S.b("a2b_cast"), [T.BParam{T.BmErased{}, S.b("T"), T.BtType{}}, T.BParam{T.BmErased{}, S.b("F"), T.BtPi{T.BmLive{}, S.b("_"), False{}, ty, T.BtType{}}}, T.BParam{T.BmErased{}, S.b("a"), ty}, T.BParam{T.BmErased{}, S.b("b"), ty}, T.BParam{T.BmLive{}, S.b("e"), T.BtEq{ty, T.BtVar{S.b("a")}, T.BtVar{S.b("b")}}}, T.BParam{T.BmLive{}, S.b("x"), T.BtApp{f, T.tba.args([T.BtVar{S.b("a")}])}}], T.BtApp{f, T.tba.args([T.BtVar{S.b("b")}])}, T.BtRw{T.BtVar{S.b("e")}, T.BtApp{f, T.tba.args([T.BtWild{}])}, T.BtExpr{T.BtVar{S.b("x")}}}, [S.b("agda2bend: a value of F(a) as one of F(b), for the fields of a dotted constructor field at another pattern's variable")]}
+
 def a2b.helpers(+its: List<&2, T.BItem>) -> List<&2, T.BItem>:
-  Bool.pick(List<&2, T.BItem>, a2b.uses(a2b.fold.items(its, False{}, Nil{}), S.b("a2b_pred")), a2b.pred.item() <> its, its)
+  +ns = a2b.fold.items(its, False{}, Nil{})
+  +its2 = Bool.pick(List<&2, T.BItem>, a2b.uses(ns, S.b("a2b_pred")), a2b.pred.item() <> its, its)
+  Bool.pick(List<&2, T.BItem>, a2b.uses(ns, S.b("a2b_cast")), a2b.cast.item() <> its2, its2)
 
 # Agda.Builtin.Nat's div-helper and mod-helper recurse on n with k
 # changed first, which Bend's termination check (arguments read left to
