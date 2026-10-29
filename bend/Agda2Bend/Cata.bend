@@ -1819,15 +1819,54 @@ def act.ixs.of(d: A.AgD, t: A.Ag) -> Nat:
     case _:
       0n
 
-# a constructor's equation fields, by name (only their number matters)
-def act.ix.names(n: Nat) -> List<&2, String>:
-  match n:
-    case 0n:
-      Nil{}
-    case 1n+p:
-      "ix_eq" <> act.ix.names(p)
+# a constructor's equation fields, by name: their number, and the head of
+# the index each equates (ix_eqz, ix_eqs: zero, suc; ix_eqt, ix_eqf: true,
+# false; ix_eq: another term), which an absurd pattern on the family reads
+# (act.abs.fam)
+def act.ix.tag(b: ActB) -> String:
+  match b:
+    case AbZero{}:
+      "ix_eqz"
+    case AbSuc{}:
+      "ix_eqs"
+    case AbTrue{}:
+      "ix_eqt"
+    case AbFalse{}:
+      "ix_eqf"
+    case _:
+      "ix_eq"
 
-def act.sym.d(d: A.AgD, cp: Bool, srt: Bool, tl: Bool, +mo: List<&2, U32>, +nm: List<&2, U32>, +ms: List<&2, ActM>, b: ActB, ix: Nat) -> ActSym:
+def act.ix.head(t: A.Ag) -> String:
+  match t:
+    case A.AgCon{q, o, es}:
+      act.ix.tag(act.builtin(act.qs(q)))
+    case A.AgLit{A.AgLNat{s}}:
+      Bool.pick(String, S.eq(s, S.b("0")), "ix_eqz", "ix_eqs")
+    case _:
+      "ix_eq"
+
+def act.ix.heads(es: A.Ag) -> List<&2, String>:
+  match es:
+    case A.AgEApp{i, t, rest}:
+      act.ix.head(t) <> act.ix.heads(rest)
+    case _:
+      Nil{}
+
+def act.ixs.heads.target(+pars: Nat, t: A.Ag) -> List<&2, String>:
+  match t:
+    case A.AgEl{s, A.AgDef{q, es}}:
+      act.ix.heads(act.es.after(pars, es))
+    case _:
+      Nil{}
+
+def act.ixs.heads(d: A.AgD, t: A.Ag) -> List<&2, String>:
+  match d:
+    case A.AgDCon{dq, +pars, ar, ck, src}:
+      act.ixs.heads.target(pars, act.target(t))
+    case _:
+      Nil{}
+
+def act.sym.d(d: A.AgD, cp: Bool, srt: Bool, tl: Bool, +mo: List<&2, U32>, +nm: List<&2, U32>, +ms: List<&2, ActM>, b: ActB, ixh: List<&2, String>) -> ActSym:
   match d:
     case A.AgDFun{p, r, w, e, t, mu, cls, tree}:
       act.sym.fun(cp, srt, tl, p, cls, tree, mo, nm, ms, b)
@@ -1836,7 +1875,7 @@ def act.sym.d(d: A.AgD, cp: Bool, srt: Bool, tl: Bool, +mo: List<&2, U32>, +nm: 
     case A.AgDData{+pars, +ixs, cs, s, dcl}:
       ActSym{mo, nm, A.AkData{}, ms, Nat.add(pars, ixs), b, act.keys(cs), Nil{}, act.copy.cl(cp, dcl)}
     case A.AgDCon{dq, +pars, ar, ck, src}:
-      ActSym{mo, act.con.name(nm), A.AkConstructor{}, act.ms.live(act.drop.n(pars, ms)), ar, b, act.ix.names(ix), Nil{}, None{}}
+      ActSym{mo, act.con.name(nm), A.AkConstructor{}, act.ms.live(act.drop.n(pars, ms)), ar, b, ixh, Nil{}, None{}}
     case A.AgDPost{}:
       ActSym{mo, nm, A.AkPostulate{}, ms, 0n, b, Nil{}, Nil{}, None{}}
     case A.AgDPrim{n, cls, tree}:
@@ -1946,7 +1985,7 @@ def act.tylevel(d: A.AgD, +ty: A.Ag, +unf: Map<&2, ActCopy>) -> Bool:
 def act.sym.of(+mo: List<&2, U32>, +nm: List<&2, U32>, d: A.AgDecl, +tab: Map<&2, ActSym>, +unf: Map<&2, ActCopy>) -> ActSym:
   match d:
     case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, +fl, lang, +ty, +dd}:
-      act.sym.d(dd, Bool.or(act.flag(A.AkCopy{}, fl), act.inl.d(act.ends.sort(ty), dd)), act.ends.sort(ty), act.tylevel(dd, ty, unf), mo, nm, act.modes.u(8n, ty, act.tylevel(dd, ty, unf), tab, unf), act.role(act.qs(q), act.ends.level(ty)), act.ixs.of(dd, ty))
+      act.sym.d(dd, Bool.or(act.flag(A.AkCopy{}, fl), act.inl.d(act.ends.sort(ty), dd)), act.ends.sort(ty), act.tylevel(dd, ty, unf), mo, nm, act.modes.u(8n, ty, act.tylevel(dd, ty, unf), tab, unf), act.role(act.qs(q), act.ends.level(ty)), act.ixs.heads(dd, ty))
 
 # seen: the names this header has given so far (a non-dependent Pi's
 # parameter is in no context, but its name is taken)
@@ -2746,6 +2785,7 @@ type ActAbsSt is Data:
   AbsOpen{t: A.Ag}
   AbsWrap{c: List<&2, U32>, t: A.Ag}
   AbsEq{t: A.Ag}
+  AbsFam{t: A.Ag, cs: List<&2, String>}
   AbsFail{}
 
 # the last argument of a spine
@@ -2764,6 +2804,8 @@ def act.abs.sym(s: ActSym, q: A.AgQ, +es: A.Ag, +env: ActEnv) -> ActAbsSt:
       AbsEq{A.AgDef{q, es}}
     case ActSym{m, n, A.AkData{}, ms, ar, b, Nil{}, c, cp}:
       AbsDone{}
+    case ActSym{m, n, A.AkData{}, ms, ar, b, cs, c, cp}:
+      AbsFam{A.AgDef{q, es}, cs}
     case ActSym{+m, n, A.AkRecord{}, ms, ar, b, f <> Nil{}, +c, cp}:
       AbsWrap{act.ref.of(act.is.here(env, m), env, m, c), act.es.last(es)}
     case ActSym{m, n, A.AkFunction{}, ms, ar, b, fs, c, cp}:
@@ -2829,6 +2871,83 @@ def act.abs.clash(t: T.Bt, +x: List<&2, U32>, +goal: T.Bt) -> T.Bt:
     case _:
       T.BtExpr{act.todo("an absurd pattern on an equation agda2bend could not read")}
 
+# An absurd pattern on an indexed family (`n≮0 ()`: suc n ≤ 0): x is
+# matched, and each constructor's case refutes one of its index equations
+# whose sides have different heads, the family's index (left) against the
+# constructor's (its equation field's name: act.ix.tag), as act.abs.refute
+# does an equation's.  A constructor none of whose equations clashes at the
+# head (`suc m ≤ suc n` with m ≤ n absurd) is a gap.
+def act.abs.clashes(+h: String, a: T.Bt) -> Bool:
+  match a:
+    case T.BtSucc{t}:
+      String.eq(h, "ix_eqz")
+    case T.BtNat{+s}:
+      Bool.pick(Bool, S.eq(s, S.b("0")), String.eq(h, "ix_eqs"), String.eq(h, "ix_eqz"))
+    case T.BtCon{+c, args}:
+      Bool.or(Bool.and(S.eq(c, S.b("True")), String.eq(h, "ix_eqf")), Bool.and(S.eq(c, S.b("False")), String.eq(h, "ix_eqt")))
+    case _:
+      False{}
+
+def act.abs.tagty(+h: String) -> List<&2, U32>:
+  Bool.pick(List<&2, U32>, Bool.or(String.eq(h, "ix_eqt"), String.eq(h, "ix_eqf")), S.b("Bool"), S.b("Nat"))
+
+def act.abs.fam.pick(fs: List<&2, String>, ixs: List<&2, T.Bt>, +x: List<&2, U32>, +i: Nat, +goal: T.Bt, +why: String) -> T.Bt:
+  match fs ixs:
+    case +h <> ft a <> at:
+      +u = act.undead(a)
+      Bool.pick(T.Bt, act.abs.clashes(h, u), act.abs.refute(act.abs.disc(act.abs.tagty(h), u), act.at(x, i), goal), act.abs.fam.pick(ft, at, x, 1n+i, goal, why))
+    case _ _:
+      T.BtExpr{T.BtTodo{S.b("an absurd pattern on a family a constructor of which no index equation refutes at the head (" ++ why ++ ")")}}
+
+def act.abs.tags(fs: List<&2, String>, +n: Nat) -> String:
+  match fs:
+    case Nil{}:
+      "of " ++ Nat.show(n) ++ " indices"
+    case h <> t:
+      h ++ " " ++ act.abs.tags(t, n)
+
+def act.abs.wilds(n: Nat) -> List<&2, T.Bt>:
+  match n:
+    case 0n:
+      Nil{}
+    case 1n+p:
+      T.BtWild{} <> act.abs.wilds(p)
+
+def act.abs.eqpvs(fs: List<&2, String>, +x: List<&2, U32>, +i: Nat) -> List<&2, T.Bt>:
+  match fs:
+    case Nil{}:
+      Nil{}
+    case h <> t:
+      T.BtPv{T.BmLive{}, act.at(x, i)} <> act.abs.eqpvs(t, x, 1n+i)
+
+def act.abs.fam.c(s: ActSym, +ixs: List<&2, T.Bt>, +x: List<&2, U32>, +env: ActEnv, +goal: T.Bt, rest: T.Bt) -> T.Bt:
+  match s:
+    case ActSym{+m, +n, A.AkConstructor{}, ms, ar, b, +fs, c, cp}:
+      +y = List.append(&2, U32, x, S.b("_ix"))
+      T.BtCase{T.tba.args([T.BtCon{act.ref.of(act.is.here(env, m), env, m, n), T.tba.args(List.append(&2, T.Bt, act.abs.wilds(ar), act.abs.eqpvs(fs, y, 1n)))}]), act.abs.fam.pick(fs, act.list.last(List.length(&2, String, fs), ixs), y, 1n, goal, act.abs.tags(fs, List.length(&2, T.Bt, ixs))), rest}
+    case _:
+      T.BtCase{T.tba.args([T.BtWild{}]), T.BtExpr{act.todo("an absurd pattern on a family whose constructor the symbol table does not have")}, rest}
+
+# a constructor's entry by key (act.sym.key, which comes later in the file)
+def act.abs.sym.key(+env: ActEnv, k: String) -> ActSym:
+  match env:
+    case ActEnv{mod, tab, al, unf}:
+      act.sym.got(Map.get(ActSym, act.sym0(), tab, k))
+
+def act.abs.fam.cs(cs: List<&2, String>, +ixs: List<&2, T.Bt>, +x: List<&2, U32>, +env: ActEnv, +goal: T.Bt) -> T.Bt:
+  match cs:
+    case Nil{}:
+      T.BtCEnd{}
+    case k <> rest:
+      act.abs.fam.c(act.abs.sym.key(env, k), ixs, x, env, goal, act.abs.fam.cs(rest, ixs, x, env, goal))
+
+def act.abs.fam(t: T.Bt, cs: List<&2, String>, +x: List<&2, U32>, +env: ActEnv, +goal: T.Bt) -> T.Bt:
+  match t:
+    case T.BtTyApp{r, args}:
+      act.abs.match(x, act.abs.fam.cs(cs, act.spine.list(args), x, env, goal))
+    case _:
+      T.BtExpr{act.todo("an absurd pattern on a family agda2bend could not read")}
+
 # the elimination of x, a step at a time (ctx: the context of x's type;
 # goal: the clause's)
 def act.abs.elim(fuel: Nat, st: ActAbsSt, +x: List<&2, U32>, +env: ActEnv, +ctx: List<&2, T.Bt>, +goal: T.Bt) -> T.Bt:
@@ -2842,6 +2961,8 @@ def act.abs.elim(fuel: Nat, st: ActAbsSt, +x: List<&2, U32>, +env: ActEnv, +ctx:
       act.abs.match(x, T.BtCase{T.tba.args([T.BtCon{c, T.tba.args([T.BtPv{T.BmLive{}, y}])}]), act.abs.elim(f, act.abs.step(t, env), y, env, ctx, goal), T.BtCEnd{}})
     case 1n+f AbsEq{t}:
       act.abs.clash(act.t(act.inline(100000n, t, env), ctx, env), x, goal)
+    case 1n+f AbsFam{t, cs}:
+      act.abs.fam(act.t(act.inline(100000n, t, env), ctx, env), cs, x, env, goal)
     case _ _:
       T.BtExpr{act.todo("an absurd pattern on a type agda2bend cannot see is empty")}
 
