@@ -3182,6 +3182,30 @@ def act.ev.zip(ps: A.Ag, es: A.Ag, acc: List<&2, ActPt>) -> List<&2, ActPt>:
     case _ _:
       acc
 
+# a literal against zero/suc (0 is zero; k+1 is suc of k)
+def act.ev.num.go(cs: List<&2, U32>, acc: Nat) -> Nat:
+  match cs:
+    case Nil{}:
+      acc
+    case c <> t:
+      act.ev.num.go(t, Nat.add(Nat.mul(acc, 10n), Nat.sub(U32.to_nat(c), 48n)))
+
+def act.ev.litok(b: ActB, +s: List<&2, U32>) -> Bool:
+  match b:
+    case AbZero{}:
+      S.eq(s, S.b("0"))
+    case AbSuc{}:
+      Bool.not(S.eq(s, S.b("0")))
+    case _:
+      False{}
+
+def act.ev.litsub(b: ActB, sub: A.Ag, +s: List<&2, U32>, rest: List<&2, ActPt>) -> List<&2, ActPt>:
+  match b sub:
+    case AbSuc{} A.AgPArg{i, x, p, prest}:
+      ActPt{p, A.AgLit{A.AgLNat{S.b(Nat.show(Nat.sub(act.ev.num.go(s, 0n), 1n)))}}} <> rest
+    case _ _:
+      rest
+
 def act.ev.pairs(fuel: Nat, xs: List<&2, ActPt>) -> Bool:
   match fuel xs:
     case _ Nil{}:
@@ -3196,6 +3220,9 @@ def act.ev.pairs(fuel: Nat, xs: List<&2, ActPt>) -> Bool:
       Bool.and(String.eq(act.key(q), act.key(q2)), act.ev.pairs(f, act.ev.zip(sub, es2, rest)))
     case 1n+f ActPt{A.AgPLit{A.AgLNat{s}}, A.AgLit{A.AgLNat{s2}}} <> rest:
       Bool.and(S.eq(s, s2), act.ev.pairs(f, rest))
+    case 1n+f ActPt{A.AgPCon{+q, r, fo, sub}, A.AgLit{A.AgLNat{+s}}} <> rest:
+      +b = act.builtin(act.qs(q))
+      Bool.and(act.ev.litok(b, s), act.ev.pairs(f, act.ev.litsub(b, sub, s, rest)))
     case _ _:
       False{}
 
@@ -3237,26 +3264,21 @@ def act.ev.or(m: Maybe<&2, A.Ag>, d: A.Ag) -> A.Ag:
     case None{}:
       d
 
-def act.ev.args0(es: A.Ag, +env: ActEnv) -> A.Ag:
-  match es:
-    case A.AgEApp{i, t, rest}:
-      A.AgEApp{i, act.inline(64n, t, env), act.ev.args0(rest, env)}
-    case es:
-      es
-
-def act.ev.arg(t: A.Ag, +env: ActEnv) -> A.Ag:
-  match t:
-    case A.AgDef{+q, +es}:
-      act.ev.or(act.ev.cls(act.tcl.cls(env, q), act.ev.args0(es, env)), A.AgDef{q, es})
-    case t:
+# The arguments evaluated, nested (fuel levels): each inlined, and one
+# headed by a type- or Bool-valued definition by clauses evaluated at its
+# own evaluated arguments (NonZero 0's field `T (not (0 ≡ᵇ 0))`: _==_ at
+# 0 0 is true, not true is false, T false is ⊥).
+def act.ev.go(fuel: Nat, spine: Bool, t: A.Ag, +env: ActEnv) -> A.Ag:
+  match fuel spine t:
+    case 1n+(+f) True{} A.AgEApp{i, a, rest}:
+      A.AgEApp{i, act.ev.go(f, False{}, act.inline(64n, a, env), env), act.ev.go(f, True{}, rest, env)}
+    case 1n+f False{} A.AgDef{+q, +es}:
+      act.ev.or(act.ev.cls(act.tcl.cls(env, q), act.ev.go(f, True{}, es, env)), A.AgDef{q, es})
+    case _ _ t:
       t
 
 def act.ev.args(es: A.Ag, +env: ActEnv) -> A.Ag:
-  match es:
-    case A.AgEApp{i, t, rest}:
-      A.AgEApp{i, act.ev.arg(act.inline(64n, t, env), env), act.ev.args(rest, env)}
-    case es:
-      es
+  act.ev.go(8n, True{}, es, env)
 
 # Absurd clauses: Agda's `f ()` needs no split when the variable's type is
 # empty (⊥ = Irrelevant Empty), but Bend has to see the emptiness, so the
@@ -3283,6 +3305,24 @@ def act.es.last(es: A.Ag) -> A.Ag:
     case _:
       A.AgNone{}
 
+# a one-field record's field type at the record's arguments (the record's
+# unfoldings hold it under "rft:", act.rft.of); else, as before, the last
+# argument (Irrelevant A, Lift A)
+def act.rft.key(q: A.AgQ) -> String:
+  "rft:" ++ act.key(q)
+
+def act.rft.at(c: ActCopy, +es: A.Ag) -> A.Ag:
+  match c:
+    case ActCopy{0n, A.AgNone{}}:
+      act.es.last(es)
+    case c:
+      act.unfold.of(c, es)
+
+def act.rft(+env: ActEnv, q: A.AgQ, +es: A.Ag) -> A.Ag:
+  match env:
+    case ActEnv{mod, tab, al, unf}:
+      act.rft.at(act.unf.got(Map.get(ActCopy, ActCopy{0n, A.AgNone{}}, unf, act.rft.key(q))), es)
+
 def act.abs.cl(m: Maybe<&2, A.Ag>) -> ActAbsSt:
   match m:
     case Some{b}:
@@ -3308,7 +3348,7 @@ def act.abs.sym(s: ActSym, +q: A.AgQ, +es: A.Ag, +env: ActEnv) -> ActAbsSt:
     case ActSym{m, n, A.AkData{}, ms, ar, b, cs, c, cp}:
       AbsFam{A.AgDef{q, es}, cs}
     case ActSym{+m, n, A.AkRecord{}, ms, ar, b, f <> Nil{}, +c, cp}:
-      AbsWrap{act.ref.of(act.is.here(env, m), env, m, c), act.es.last(es)}
+      AbsWrap{act.ref.of(act.is.here(env, m), env, m, c), act.rft(env, q, es)}
     case ActSym{m, n, A.AkFunction{}, ms, ar, b, fs, c, cp}:
       act.abs.open(act.unfold(env, q, es), q, es, env)
     case _:
@@ -6020,10 +6060,20 @@ def act.ends.bool.t(t: A.Ag) -> Bool:
     case _:
       False{}
 
+# a record's first field's type, in the scope of its parameters (act.rft)
+def act.rft.of(d: A.AgDecl) -> Maybe<&2, ActCopy>:
+  match d:
+    case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, fl, lang, ty, A.AgDRec{+pars, c, named, ind, fs, tel, eta, pm, cl}}:
+      Some{ActCopy{pars, act.tel.nth(tel, pars)}}
+    case _:
+      None{}
+
 def act.tcl.d(on: Bool, dd: A.AgD) -> Maybe<&2, ActCopy>:
   match on dd:
     case True{} A.AgDFun{p, r, w, e, t, mu, cls, tree}:
       Some{ActCopy{1n, cls}}
+    case True{} A.AgDPrim{n, cls, tree}:
+      Some{ActCopy{1n, act.prim.cls(cls)}}
     case _ _:
       None{}
 
