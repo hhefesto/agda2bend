@@ -3104,10 +3104,80 @@ def act.copat.fields(ks: List<&2, String>, +cls: A.Ag, +ents: List<&2, T.Bt>, +e
     case +k <> t:
       act.copat.find(cls, k, ents, env, act.copat.hit.cl(cls, k)) <> act.copat.fields(t, cls, ents, env)
 
+# Nested copatterns: a record value inside a record value (unimath's
+# `triple a b c = (a , b , c)`, Σ a record with eta, is elaborated as the
+# clauses `.pr1 = a`, `.pr2 .pr1 = b`, `.pr2 .pr2 = c`).  A field whose
+# clause has a second projection right after its own is a record value of
+# the same record (the projection must be one of its fields, else a field
+# is missing: the item drops), built from that field's clauses with their
+# first projection taken out.  Only the same record: Σ in Σ, × and the
+# definitions that unfold to Σ (section, is-equiv).
+def act.copat.after.proj(ps: A.Ag) -> Bool:
+  match ps:
+    case A.AgPArg{i, x, A.AgPProj{q}, A.AgPArg{i2, x2, A.AgPProj{q2}, r2}}:
+      True{}
+    case A.AgPArg{i, x, A.AgPProj{q}, rest}:
+      False{}
+    case A.AgPArg{i, x, p, rest}:
+      act.copat.after.proj(rest)
+    case _:
+      False{}
+
+def act.copat.nested.cl(cls: A.Ag, +key: String) -> Bool:
+  match cls:
+    case A.AgCl{tel, +ps, body, ty, ca, rest}:
+      Bool.pick(Bool, act.copat.hit(ps, key), act.copat.after.proj(ps), act.copat.nested.cl(rest, key))
+    case _:
+      False{}
+
+def act.copat.nest.head(ks: List<&2, String>, +cls: A.Ag) -> Bool:
+  match ks:
+    case Nil{}:
+      False{}
+    case +k <> t:
+      act.copat.nested.cl(cls, k)
+
+# the patterns without their first projection
+def act.copat.strip(ps: A.Ag) -> A.Ag:
+  match ps:
+    case A.AgPArg{i, x, A.AgPProj{q}, rest}:
+      rest
+    case A.AgPArg{i, x, p, rest}:
+      A.AgPArg{i, x, p, act.copat.strip(rest)}
+    case p:
+      p
+
+def act.copat.sub.one(hit: Bool, tel: A.Ag, +ps: A.Ag, body: A.Ag, ty: A.Ag, ca: Bool, rest: A.Ag) -> A.Ag:
+  match hit:
+    case True{}:
+      A.AgCl{tel, act.copat.strip(ps), body, ty, ca, rest}
+    case False{}:
+      rest
+
+# the clauses of field key, its projection taken out
+def act.copat.sub(cls: A.Ag, +key: String) -> A.Ag:
+  match cls:
+    case A.AgCl{tel, +ps, body, ty, ca, rest}:
+      act.copat.sub.one(act.copat.hit(ps, key), tel, ps, body, ty, ca, act.copat.sub(rest, key))
+    case c:
+      c
+
+# the fields' values (ks the ones left, fs all of the record's, cref its
+# constructor; nest: whether ks's first is a nested record value)
+def act.copat.vals(fuel: Nat, ks: List<&2, String>, +fs: List<&2, String>, +cref: List<&2, U32>, +cls: A.Ag, +ents: List<&2, T.Bt>, +env: ActEnv, nest: Bool) -> List<&2, T.Bt>:
+  match fuel ks nest:
+    case _ Nil{} _:
+      Nil{}
+    case 1n+(+f) +k <> +t True{}:
+      +sub = act.copat.sub(cls, k)
+      T.BtCon{cref, T.tba.args(act.copat.vals(f, fs, fs, cref, sub, ents, env, act.copat.nest.head(fs, sub)))} <> act.copat.vals(1n+f, t, fs, cref, cls, ents, env, act.copat.nest.head(t, cls))
+    case +fuel +k <> +t _:
+      act.copat.find(cls, k, ents, env, act.copat.hit.cl(cls, k)) <> act.copat.vals(fuel, t, fs, cref, cls, ents, env, act.copat.nest.head(t, cls))
+
 def act.copat.rec(r: ActSym, +env: ActEnv, +cls: A.Ag, +ents: List<&2, T.Bt>) -> T.Bt:
   match r:
-    case ActSym{+m, n, A.AkRecord{}, ms, ar, b, fs, +c, cp}:
-      T.BtExpr{T.BtCon{act.ref.of(act.is.here(env, m), env, m, c), T.tba.args(act.copat.fields(fs, cls, ents, env))}}
+    case ActSym{+m, n, A.AkRecord{}, ms, ar, b, +fs, +c, cp}:
+      T.BtExpr{T.BtCon{act.ref.of(act.is.here(env, m), env, m, c), T.tba.args(act.copat.vals(8n, fs, fs, act.ref.of(act.is.here(env, m), env, m, c), cls, ents, env, act.copat.nest.head(fs, cls)))}}
     case _:
       T.BtExpr{act.todo("copattern clauses whose type is not a record")}
 
