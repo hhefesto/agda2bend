@@ -498,7 +498,7 @@ def a2b.rec.fix(+d: A.AgDecl, +nm: List<&2, U32>, tab: Map<&2, C.ActSym>) -> Map
 def a2b.syms.one(+top: List<&2, U32>, +d: A.AgDecl, +nm: List<&2, U32>, +al: Map<&2, List<&2, U32>>, t: A2bTabs) -> A2bTabs:
   match t:
     case A2bTabs{+tab, +unf, +dm, used, nk, pj, qs}:
-      A2bTabs{a2b.rec.fix(d, nm, Map.set(&2, C.ActSym, tab, C.act.key(a2b.dq(d)), a2b.sym.for(top, nm, d, tab, unf))), C.act.cop.add(d, a2b.unf.put(C.act.rft.of(d), C.act.rft.key(a2b.dq(d)), a2b.unf.put(C.act.tcl.of(d, unf), C.act.tcl.key(a2b.dq(d)), a2b.unf.put(C.act.cmb.of(d, unf), C.act.cmb.key(a2b.dq(d)), a2b.unf.put(C.act.etu.of(d, unf, tab), C.act.etu.key(a2b.dq(d)), a2b.unf.put(C.act.unf.of(d, unf), C.act.key(a2b.dq(d)), unf)))))), Map.set(&2, A.AgDecl, dm, C.act.key(a2b.dq(d)), d), nm <> used, Map.set(&2, String, nk, S.str(nm), C.act.key(a2b.dq(d))), a2b.pj.put(C.act.pj.of(d, tab), a2b.qual(al, top, nm), al, pj), qs}
+      A2bTabs{a2b.rec.fix(d, nm, Map.set(&2, C.ActSym, tab, C.act.key(a2b.dq(d)), a2b.sym.for(top, nm, d, tab, unf))), C.act.cop.add(d, a2b.unf.put(C.act.rft.of(d), C.act.rft.key(a2b.dq(d)), a2b.unf.put(C.act.tcl.of(d, unf), C.act.tcl.key(a2b.dq(d)), a2b.unf.put(C.act.cmb.of(d, unf), C.act.cmb.key(a2b.dq(d)), a2b.unf.put(C.act.etu.of(d, unf, tab), C.act.etu.key(a2b.dq(d)), a2b.unf.put(C.act.unf.of(d, unf), C.act.key(a2b.dq(d)), a2b.unf.put(C.act.fty.of(d), C.act.fty.key(C.act.key(a2b.dq(d))), unf))))))), Map.set(&2, A.AgDecl, dm, C.act.key(a2b.dq(d)), d), nm <> used, Map.set(&2, String, nk, S.str(nm), C.act.key(a2b.dq(d))), a2b.pj.put(C.act.pj.of(d, tab), a2b.qual(al, top, nm), al, pj), qs}
 
 def a2b.syms(ds: List<&2, A.AgDecl>, +top: List<&2, U32>, +al: Map<&2, List<&2, U32>>, t: A2bTabs) -> A2bTabs:
   match ds t:
@@ -939,6 +939,16 @@ def a2b.em.tabs(+out: String, +m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +r
     case A2bTabs{tab, +unf, +dm, used, +nk, +pj, +qs}:
       a2b.em.round(out, m, al, ral, List.length(&2, A.AgDecl, ds), kept, unf, pj, qs, a2b.round(5n, ds, m, al, unf, dm, nk, a2b.te(pj, al, m), a2b.qe(qs, al, m), A2bRst{tab, Nil{}, True{}}))
 
+# Copattern helpers (Cata.bend act.cop.hs): the declarations of the
+# module's copattern fields that match after their projection, their
+# symbols added after the module's own (their types need its records and
+# projections), translated with the rest.
+def a2b.cop.go(+out: String, +m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, +kept: Map<&2, Bool>, t: A2bTabs) -> IO(A2bG):
+  match t:
+    case A2bTabs{+tab, +unf, dm, used, nk, pj, qs}:
+      +hs = C.act.cop.hs(ds, unf, tab)
+      a2b.em.tabs(out, m, al, ral, List.append(&2, A.AgDecl, ds, hs), kept, a2b.syms(hs, m, al, A2bTabs{tab, unf, dm, used, nk, pj, qs}))
+
 # A module's translation without the gate, the tests' entry: its items in
 # Bend's order and the state the modules after it see (the kept names as
 # they were: only the gate adds to them).
@@ -956,10 +966,16 @@ def a2b.mod.items.of(+m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +ds: List<&
     case A2bTabs{tab, +unf, +dm, used, +nk, +pj, +qs}:
       a2b.mod.items.fin(kept, unf, pj, qs, a2b.te(pj, al, m), al, m, a2b.round(5n, ds, m, al, unf, dm, nk, a2b.te(pj, al, m), a2b.qe(qs, al, m), A2bRst{tab, Nil{}, True{}}))
 
+def a2b.cop.items(+m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, +kept: Map<&2, Bool>, t: A2bTabs) -> A2bTr:
+  match t:
+    case A2bTabs{+tab, +unf, dm, used, nk, pj, qs}:
+      +hs = C.act.cop.hs(ds, unf, tab)
+      a2b.mod.items.of(m, al, List.append(&2, A.AgDecl, ds, hs), kept, a2b.syms(hs, m, al, A2bTabs{tab, unf, dm, used, nk, pj, qs}))
+
 def a2b.mod.items(+m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, g: A2bG) -> A2bTr:
   match g:
     case A2bG{tab, unf, +kept, pj, qs}:
-      a2b.mod.items.of(m, al, ds, kept, a2b.syms(ds, m, al, A2bTabs{tab, unf, Map.new(&2, A.AgDecl), Nil{}, Map.new(&2, String), pj, qs}))
+      a2b.cop.items(m, al, ds, kept, a2b.syms(ds, m, al, A2bTabs{tab, unf, Map.new(&2, A.AgDecl), Nil{}, Map.new(&2, String), pj, qs}))
 
 # the text of a module's file before the gate (OUT/raw/<path>.bend)
 def a2b.raw.text(+m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +nd: Nat, +its: List<&2, T.BItem>) -> List<&2, U32>:
@@ -977,7 +993,7 @@ def a2b.em.mod(+out: String, +ms: Map<&2, A2bMod>, +al: Map<&2, List<&2, U32>>, 
     case A2bG{tab, unf, +kept, pj, qs}:
       do IO<A2bG>:
         +ds : List<&2, A.AgDecl> <- a2b.decls(a2b.mod.file(a2b.mod.get(ms, m)))
-        a2b.em.tabs(out, m, al, ral, ds, kept, a2b.syms(ds, m, al, A2bTabs{tab, unf, Map.new(&2, A.AgDecl), Nil{}, Map.new(&2, String), pj, qs}))
+        a2b.cop.go(out, m, al, ral, ds, kept, a2b.syms(ds, m, al, A2bTabs{tab, unf, Map.new(&2, A.AgDecl), Nil{}, Map.new(&2, String), pj, qs}))
 
 def a2b.em.mods(order: List<&2, List<&2, U32>>, +out: String, +ms: Map<&2, A2bMod>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, g: A2bG) -> IO(Unit):
   match order:
