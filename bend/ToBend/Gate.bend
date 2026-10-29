@@ -475,6 +475,28 @@ def tgt.repaired(r: Maybe<&2, T.BItem>, +blame: List<&2, U32>, +why: List<&2, U3
     case None{}:
       tgt.after.fail(blame, why, TgtSt{its, ds})
 
+# A copied pattern variable (+x, a constructor's field) whose type must be
+# Data: Bend names no type, so the def's first type parameter (Type or a
+# Kind) is the one declared Data (filter's x of a List<A>, used by the with
+# call and passed on, 2026-10-29)
+def tgt.tparam(ps: List<&2, T.BParam>) -> List<&2, U32>:
+  match ps:
+    case Nil{}:
+      Nil{}
+    case T.BParam{m, x, T.BtType{}} <> t:
+      x
+    case T.BParam{m, x, T.BtApp{T.BtVar{+k}, a}} <> t:
+      Bool.pick(List<&2, U32>, S.eq(k, S.b("Kind")), x, tgt.tparam(t))
+    case p <> t:
+      tgt.tparam(t)
+
+def tgt.data.v(+v: List<&2, U32>, m: Maybe<&2, T.BItem>) -> List<&2, U32>:
+  match m:
+    case Some{T.BiDef{n, ps, ret, body, doc}}:
+      Bool.pick(List<&2, U32>, S.head.is(v, 43), tgt.tparam(ps), v)
+    case _:
+      v
+
 # a failure: repaired when its message names a binder the blamed def can
 # raise (or its carets mark a type parameter to declare Data), else the def
 # and its dependents dropped
@@ -483,7 +505,7 @@ def tgt.on.fail(+k: Nat, +blame: List<&2, U32>, +why: List<&2, U32>, +sp: List<&
     case 0n:
       tgt.after.fail(blame, why, TgtSt{its, ds})
     case 3n:
-      tgt.repaired(tgt.data.of(tgt.find(its, blame), S.strip(S.strip(sp, S.b("~")), S.b("-")), why), blame, why, its, ds, qe)
+      tgt.repaired(tgt.data.of(tgt.find(its, blame), tgt.data.v(S.strip(S.strip(sp, S.b("~")), S.b("-")), tgt.find(its, blame)), why), blame, why, its, ds, qe)
     case 4n:
       tgt.repaired(tgt.q.of(tgt.find(its, blame), why), blame, why, its, ds, qe)
     case 5n:

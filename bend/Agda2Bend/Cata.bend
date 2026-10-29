@@ -2269,6 +2269,23 @@ def act.top.var(p: A.Ag, +n: Nat, ent: T.Bt) -> List<&2, ActBind>:
     case _:
       Nil{}
 
+# A cubical pattern (pdef: the transpX and hcomp clauses
+# --cubical-compatible generates beside the user's) at a parameter the
+# match does not split leaves the clause out as one at a split parameter
+# does (2026-10-29: `≤-reflexive {zero} refl`'s generated clauses put
+# transpX at the refl, and their stored bodies became gaps).
+def act.pat.cub(p: A.Ag) -> Bool:
+  match p:
+    case A.AgRaw{c, x}:
+      True{}
+    case _:
+      False{}
+
+def act.pat.ab(b: Bool, a: ActPat) -> ActPat:
+  match a:
+    case ActPat{p, cs, ab}:
+      ActPat{p, cs, Bool.or(b, ab)}
+
 def act.pat.add(bs: List<&2, ActBind>, a: ActPat) -> ActPat:
   match a:
     case ActPat{p, cs, ab}:
@@ -2281,8 +2298,8 @@ def act.top(ps: A.Ag, scr: List<&2, Bool>, ents: List<&2, T.Bt>, +n: Nat, +hints
   match ps scr ents:
     case A.AgPArg{i, x, q, rest} True{} <> st e <> et:
       act.pat.cat(act.pat(q, n, hints, pnames, env), act.top(rest, st, et, n, hints, pnames, env))
-    case A.AgPArg{i, x, q, rest} False{} <> st e <> et:
-      act.pat.add(act.top.var(q, n, e), act.top(rest, st, et, n, hints, pnames, env))
+    case A.AgPArg{i, x, +q, rest} False{} <> st e <> et:
+      act.pat.ab(act.pat.cub(q), act.pat.add(act.top.var(q, n, e), act.top(rest, st, et, n, hints, pnames, env)))
     case _ _ _:
       ActPat{T.BtANil{}, Nil{}, False{}}
 
@@ -2340,8 +2357,8 @@ def act.top.d(ps: A.Ag, scr: List<&2, Bool>, ents: List<&2, T.Bt>, +n: Nat, +hin
     case A.AgPArg{i, x, q, rest} True{} <> st e <> et:
       +a = act.pat.top(q, n, hints, pnames, env)
       act.pat.cat(act.dd.ren(a, seen, j), act.top.d(rest, st, et, n, hints, pnames, env, List.append(&2, List<&2, U32>, seen, act.dd.dots(a)), 1n+j))
-    case A.AgPArg{i, x, q, rest} False{} <> st e <> et:
-      act.pat.add(act.top.var(q, n, e), act.top.d(rest, st, et, n, hints, pnames, env, seen, 1n+j))
+    case A.AgPArg{i, x, +q, rest} False{} <> st e <> et:
+      act.pat.ab(act.pat.cub(q), act.pat.add(act.top.var(q, n, e), act.top.d(rest, st, et, n, hints, pnames, env, seen, 1n+j)))
     case _ _ _:
       ActPat{T.BtANil{}, Nil{}, False{}}
 
@@ -2787,17 +2804,91 @@ def act.gen.hps(ps: List<&2, T.BParam>, +gn: List<&2, List<&2, U32>>, +b: List<&
     case T.BParam{m, +x, +ty} <> t:
       T.BParam{m, x, Bool.pick(T.Bt, act.used(x, gn), T.tba.subst(T.tba.subst(ty, b, a), en, T.BtRefl{}), ty)} <> act.gen.hps(t, gn, b, a, en)
 
+# Equations between successors (`suc m ≡ suc n`: Agda's refl unifies by
+# injectivity, n dotted as m; pred-cancel-≡, suc-injective): with both
+# sides suc^k of a variable, k >= 1, the step is the one at the variables,
+# its motive's hole under k a2b_pred calls (%e : G[n := a2b_pred^k(_)]:
+# G at a2b_pred^k(suc^k n) is G, at a2b_pred^k(suc^k m) it is G[n := m]),
+# and it generalizes no parameter (2026-10-29).
+def act.sucs.k(t: T.Bt) -> Nat:
+  match t:
+    case T.BtSucc{a}:
+      1n+act.sucs.k(a)
+    case _:
+      0n
+
+def act.sucs.peel(t: T.Bt) -> T.Bt:
+  match t:
+    case T.BtSucc{a}:
+      act.sucs.peel(a)
+    case t:
+      t
+
+def act.pk.preds(k: Nat, t: T.Bt) -> T.Bt:
+  match k:
+    case 0n:
+      t
+    case 1n+p:
+      T.BtApp{T.BtVar{S.b("a2b_pred")}, T.tba.args([act.pk.preds(p, t)])}
+
+def act.bt.isvar(t: T.Bt) -> Bool:
+  match t:
+    case T.BtVar{x}:
+      True{}
+    case _:
+      False{}
+
+# the depth k of an equation between suc^k of two variables (k >= 1), else 0
+def act.eq.pk(+ty: T.Bt) -> Nat:
+  match ty:
+    case T.BtEq{t, +a, +b}:
+      +ka = act.sucs.k(a)
+      Bool.pick(Nat, Bool.and(Bool.and(Nat.is_eq(ka, act.sucs.k(b)), Bool.not(Nat.is_eq(ka, 0n))), Bool.and(act.bt.isvar(act.sucs.peel(a)), act.bt.isvar(act.sucs.peel(b)))), ka, 0n)
+    case _:
+      0n
+
+# the equation between the variables under its sucs (when pk > 0)
+def act.eq.pty(+pk: Nat, ty: T.Bt) -> T.Bt:
+  match ty:
+    case T.BtEq{+t, +a, +b}:
+      Bool.pick(T.Bt, Nat.is_eq(pk, 0n), T.BtEq{t, a, b}, T.BtEq{t, act.sucs.peel(a), act.sucs.peel(b)})
+    case ty:
+      ty
+
+def act.step.kp(k: Nat, +j: Nat, +t: T.Bt, +a: T.Bt, +b: T.Bt, +a1: T.Bt, +b1: T.Bt, +e: T.Bt, +goal: T.Bt) -> ActStep:
+  match k:
+    case 1n:
+      ActStep{1n, T.tba.subst(goal, act.var.name(b1), act.pk.preds(j, T.BtWild{})), T.tba.subst(T.tba.subst(goal, act.var.name(b1), a1), act.var.name.or(e), T.BtRefl{}), T.BtWild{}, Nil{}}
+    case 2n:
+      ActStep{2n, T.tba.subst(goal, act.var.name(a1), act.pk.preds(j, T.BtWild{})), T.tba.subst(goal, act.var.name(a1), b1), T.BtApp{T.BtVar{S.b("Equal.sym")}, T.tba.args([T.BtDead{t}, T.BtDead{a}, T.BtDead{b}, e])}, List.append(&2, U32, act.var.name(e), S.b("_sym"))}
+    case _:
+      ActStep{0n, T.BtWild{}, goal, T.BtWild{}, Nil{}}
+
+def act.step.pk(pk: Nat, +ty: T.Bt, +e: T.Bt, +ds: List<&2, List<&2, U32>>, +goal: T.Bt) -> ActStep:
+  match pk ty:
+    case 0n ty:
+      act.step(ty, e, ds, goal)
+    case 1n+q T.BtEq{+t, +a, +b}:
+      +a1 = act.sucs.peel(a)
+      +b1 = act.sucs.peel(b)
+      act.step.kp(act.mark.b(act.dotted(b1, ds), act.dotted(a1, ds), act.occurs(act.var.name(b1), goal), act.occurs(act.var.name(a1), goal)), 1n+q, t, a, b, a1, b1, e, goal)
+    case _ _:
+      ActStep{0n, T.BtWild{}, goal, T.BtWild{}, Nil{}}
+
 # the clause's rewrites, in order, before its body (svs: the split
 # parameters, which a rewrite does not generalize)
 def act.rws(fuel: Nat, es: List<&2, T.Bt>, +ds: List<&2, List<&2, U32>>, +goal: T.Bt, +hps: List<&2, T.BParam>, +svs: List<&2, List<&2, U32>>, body: T.Bt) -> T.Bt:
   match fuel es:
     case 1n+p +e <> t:
-      +ety = act.param.ty(hps, act.var.name(e))
-      +s = act.step.j(act.step(ety, e, ds, goal), ety, act.var.name.or(e), goal, hps)
+      +ety0 = act.param.ty(hps, act.var.name(e))
+      +pk = act.eq.pk(ety0)
+      +ety = act.eq.pty(pk, ety0)
+      +s0 = act.step.pk(pk, ety0, e, ds, goal)
+      +s = Bool.pick(ActStep, Nat.is_eq(pk, 0n), act.step.j(s0, ety, act.var.name.or(e), goal, hps), s0)
       +k = act.step.kind(s)
       +bn = act.step.hole(k, ety)
       +en = act.var.name(e)
-      +gs = Bool.pick(List<&2, T.BParam>, Nat.is_eq(k, 0n), Nil{}, act.gen.ps(hps, en <> bn <> svs, [bn, act.step.ev(k, en)]))
+      +gs = Bool.pick(List<&2, T.BParam>, Bool.or(Nat.is_eq(k, 0n), Bool.not(Nat.is_eq(pk, 0n))), Nil{}, act.gen.ps(hps, en <> bn <> svs, [bn, act.step.ev(k, en)]))
       act.step.wrap(s, e, goal, gs, bn, act.rws(p, t, ds, act.step.goal(s), act.gen.hps(hps, act.gen.names(gs), bn, act.step.fill(k, ety), act.step.ev(k, act.var.name.or(e))), svs, act.step.body(k, ety, body)))
     case _ _:
       body
@@ -6284,12 +6375,22 @@ def act.lift.arg(m: T.BMode, +n: List<&2, U32>) -> T.Bt:
     case _:
       T.BtVar{n}
 
+# an impossible case's Empty.absurd is at the goal the header has after the
+# lift already (`invertⁿ : Reflects A false → ¬ A`, its ofʸ case refuted
+# at ⊥ under x_3), so it takes no argument (2026-10-29)
+def act.lift.absurd(+e: T.Bt) -> Bool:
+  match e:
+    case T.BtApp{T.BtVar{+f}, a}:
+      S.eq(f, S.b("Empty.absurd"))
+    case _:
+      False{}
+
 def act.lift.one(b: T.Bt, +m: T.BMode, +n: List<&2, U32>) -> T.Bt:
   match b:
     case T.BtExpr{T.BtLam{lm, x, e}}:
       T.BtExpr{T.tba.subst(e, x, T.BtVar{n})}
-    case T.BtExpr{e}:
-      T.BtExpr{T.BtApp{e, T.BtArgs{act.lift.arg(m, n), T.BtANil{}}}}
+    case T.BtExpr{+e}:
+      Bool.pick(T.Bt, act.lift.absurd(e), T.BtExpr{e}, T.BtExpr{T.BtApp{e, T.BtArgs{act.lift.arg(m, n), T.BtANil{}}}})
     case T.BtMatch{xs, cs}:
       T.BtMatch{xs, act.lift.one(cs, m, n)}
     case T.BtCase{p, cb, rest}:

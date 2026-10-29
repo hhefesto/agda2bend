@@ -971,6 +971,100 @@ def tcp.destr(it: T.BItem, +e: TcpEnv) -> T.BItem:
     case it:
       it
 
+# A projection of a constructor value is its field (Agda's elimView):
+# `Dec.does(A, because{True{}, p})` is True{}.  map′'s does clause, once its
+# proof clauses split the Dec, had the Dec rebuilt from the case's pattern
+# and p used twice (2026-10-29).
+def tcp.pjr.nargs(a: T.Bt) -> Nat:
+  match a:
+    case T.BtArgs{h, rest}:
+      1n+tcp.pjr.nargs(rest)
+    case _:
+      0n
+
+def tcp.pjr.nth(i: Nat, a: T.Bt) -> T.Bt:
+  match i a:
+    case 0n T.BtArgs{h, rest}:
+      h
+    case 1n+p T.BtArgs{h, rest}:
+      tcp.pjr.nth(p, rest)
+    case _ _:
+      T.BtTodo{S.b("a field past its constructor's")}
+
+def tcp.pjr.last(a: T.Bt) -> T.Bt:
+  match a:
+    case T.BtArgs{h, T.BtANil{}}:
+      h
+    case T.BtArgs{h, rest}:
+      tcp.pjr.last(rest)
+    case _:
+      T.BtANil{}
+
+def tcp.pjr.con(l: T.Bt, +c: List<&2, U32>, +i: Nat, +k: Nat, +fn: List<&2, U32>, +a: T.Bt) -> T.Bt:
+  match l:
+    case T.BtCon{+c2, +fa}:
+      Bool.pick(T.Bt, Bool.and(S.eq(c2, c), Nat.is_eq(tcp.pjr.nargs(fa), k)), tcp.pjr.nth(i, fa), T.BtApp{T.BtVar{fn}, a})
+    case _:
+      T.BtApp{T.BtVar{fn}, a}
+
+def tcp.pjr.hit(p: TcpProj, +fn: List<&2, U32>, +a: T.Bt, +e: TcpEnv) -> T.Bt:
+  match p:
+    case TcpProj{+c, +i, 1n+k}:
+      tcp.pjr.con(tcp.pjr.last(a), tcp.ctor.here(c, e), i, 1n+k, fn, a)
+    case _:
+      T.BtApp{T.BtVar{fn}, a}
+
+def tcp.pjr.app(f: T.Bt, +a: T.Bt, +e: TcpEnv) -> T.Bt:
+  match f:
+    case T.BtVar{+fn}:
+      tcp.pjr.hit(tcp.pj.of(e, fn), fn, a, e)
+    case f:
+      T.BtApp{f, a}
+
+def tcp.pjr(t: T.Bt, +e: TcpEnv) -> T.Bt:
+  match t:
+    case T.BtApp{f, a}:
+      tcp.pjr.app(tcp.pjr(f, e), tcp.pjr(a, e), e)
+    case T.BtRw{r, p2, b}:
+      T.BtRw{tcp.pjr(r, e), tcp.pjr(p2, e), tcp.pjr(b, e)}
+    case T.BtLet{y, v, b}:
+      T.BtLet{y, tcp.pjr(v, e), tcp.pjr(b, e)}
+    case T.BtTplArg{a}:
+      T.BtTplArg{tcp.pjr(a, e)}
+    case T.BtLam{m, y, b}:
+      T.BtLam{m, y, tcp.pjr(b, e)}
+    case T.BtPi{m, y, d, a, b}:
+      T.BtPi{m, y, d, tcp.pjr(a, e), tcp.pjr(b, e)}
+    case T.BtCon{c2, a}:
+      T.BtCon{c2, tcp.pjr(a, e)}
+    case T.BtTyApp{n, a}:
+      T.BtTyApp{n, tcp.pjr(a, e)}
+    case T.BtEq{ty, a, b}:
+      T.BtEq{tcp.pjr(ty, e), tcp.pjr(a, e), tcp.pjr(b, e)}
+    case T.BtSucc{a}:
+      T.BtSucc{tcp.pjr(a, e)}
+    case T.BtAnn{a, ty}:
+      T.BtAnn{tcp.pjr(a, e), tcp.pjr(ty, e)}
+    case T.BtDead{a}:
+      T.BtDead{tcp.pjr(a, e)}
+    case T.BtMatch{xs, cs}:
+      T.BtMatch{xs, tcp.pjr(cs, e)}
+    case T.BtCase{p2, b, rest}:
+      T.BtCase{p2, tcp.pjr(b, e), tcp.pjr(rest, e)}
+    case T.BtExpr{b}:
+      T.BtExpr{tcp.pjr(b, e)}
+    case T.BtArgs{a, rest}:
+      T.BtArgs{tcp.pjr(a, e), tcp.pjr(rest, e)}
+    case t:
+      t
+
+def tcp.pjr.item(it: T.BItem, +e: TcpEnv) -> T.BItem:
+  match it:
+    case T.BiDef{n, ps, ret, b, doc}:
+      T.BiDef{n, ps, ret, tcp.pjr(b, e), doc}
+    case it:
+      it
+
 # Unit's eta (2026-10-22) -------------------------------------------------------
 #
 # Agda's ⊤ is a record with eta: any two of its values are equal, so

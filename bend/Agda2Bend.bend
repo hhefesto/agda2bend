@@ -11,6 +11,7 @@ import ./ToBend/Order.bend as O
 import ./ToBend/Gate.bend as G
 import ./ToBend/Copy.bend as Q
 import ./ToBend/Qfix.bend as QF
+import ./ToBend/Winl.bend as WL
 
 # agda2bend: Agda in, Bend 2 out.  Agda elaborates (agda-export writes its
 # elaborated definitions as S-expressions, tools/agda-export/FORMAT.md);
@@ -849,9 +850,10 @@ def a2b.destr(it: T.BItem, +te: Q.TcpEnv) -> T.BItem:
   it
 
 # an item as Copy counts its uses: Unit's eta done by matching (Q.tcp.unit,
-# 2026-10-22: Bend has no eta for Unit), and the unwired destructuring
+# 2026-10-22: Bend has no eta for Unit), projections of constructor values
+# reduced (Q.tcp.pjr, 2026-10-29), and the unwired destructuring
 def a2b.shape(it: T.BItem, +te: Q.TcpEnv) -> T.BItem:
-  Q.tcp.unit(a2b.destr(it, te))
+  Q.tcp.unit(Q.tcp.pjr.item(a2b.destr(it, te), te))
 
 def a2b.re.items(its: List<&2, T.BItem>, +nk: Map<&2, String>, +datas: List<&2, List<&2, U32>>, +te: Q.TcpEnv, +qe: QF.TqEnv, r: A2bRe) -> A2bRe:
   match its:
@@ -891,8 +893,9 @@ def a2b.finish(its: List<&2, T.BItem>, +datas: List<&2, List<&2, U32>>, +te: Q.T
       +d = a2b.shape(it, te)
       Q.tcp.finish(d, Q.tcp.decide(d, datas, qe)) <> a2b.finish(t, datas, te, qe)
 
+# (a mutual with-function's cycle broken first: WL.twl.items)
 def a2b.finish.of(+its: List<&2, T.BItem>, +te: Q.TcpEnv, +qe: QF.TqEnv) -> List<&2, T.BItem>:
-  a2b.finish(its, Q.tcp.datas(its), te, qe)
+  a2b.finish(WL.twl.items(its), Q.tcp.datas(its), te, qe)
 
 # Qfix (ToBend/Qfix.bend) over a module's finished items, in Bend's order, when
 # levels are quantities (C.act.quant.on): each quantity argument solved

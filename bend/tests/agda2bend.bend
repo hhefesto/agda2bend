@@ -661,6 +661,38 @@ def abs.laws() -> IO(Unit):
     g3 : D.A2bG <- abs.of(al, ral, ds, D.a2b.mod.items(S.b("A2bAbs"), al, ds, g2))
     return Unit{}
 
+# fixtures/agda2bend/src/A2bInj.agda (its export A2bInj.sexp, after
+# Agda.Primitive, Agda.Builtin.Bool, Agda.Builtin.Nat and
+# Agda.Builtin.Equality; --cubical-compatible): the clauses it generates
+# beside a match on refl are left out (≤-reflexive), an equation between
+# successors rewrites under a2b_pred (pred-cancel), an impossible case of a
+# def whose type ends in ¬ A takes no extra argument (invertⁿ), and a
+# projection of a constructor value is its field (map′'s does); the gate
+# keeps all 13 items (Bend 2.0.39).
+def inj.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, tr: D.A2bTr) -> IO(D.A2bG):
+  match tr:
+    case D.A2bTr{its, g}:
+      +text = D.a2b.raw.text(S.b("A2bInj"), al, ral, List.length(&2, A.AgDecl, ds), its)
+      do IO<D.A2bG>:
+        IO.print(verdict("the clauses --cubical-compatible generates are left out", Bool.and(S.infix(text, S.b("def le_reflexive(")), Bool.not(S.infix(text, S.b("?TODO"))))))
+        IO.print(verdict("an equation between successors rewrites under a2b_pred", S.infix(text, S.b("%x : {m == a2b_pred(_) : Nat}"))))
+        IO.print(verdict("an impossible case under a lifted parameter takes no argument", Bool.and(S.infix(text, S.b("def invert_n(")), Bool.not(S.infix(text, S.b("Unit{}))(x_"))))))
+        IO.print(verdict("a projection of a constructor value is its field", S.infix(text, S.b("because{True{}, Reflects.of_y{"))))
+        return g
+
+def inj.laws() -> IO(Unit):
+  +order : List<&2, List<&2, U32>> = [S.b("Agda.Primitive"), S.b("Agda.Builtin.Bool"), S.b("Agda.Builtin.Nat"), S.b("Agda.Builtin.Equality"), S.b("A2bInj")]
+  +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
+  +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
+  do IO<Unit>:
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g2 : D.A2bG <- abs.mod("Agda.Builtin.Bool", al, g1)
+    g3 : D.A2bG <- abs.mod("Agda.Builtin.Nat", al, g2)
+    g4 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g3)
+    +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bInj.sexp"))
+    g5 : D.A2bG <- inj.of(al, ral, ds, D.a2b.mod.items(S.b("A2bInj"), al, ds, g4))
+    return Unit{}
+
 def main() -> IO(Unit):
   do IO<Unit>:
     +bool : List<&2, U32> <- S.read("fixtures/agda2bend/Agda.Builtin.Bool.sexp")
@@ -672,3 +704,4 @@ def main() -> IO(Unit):
     gold.laws()
     gold.fix.laws()
     abs.laws()
+    inj.laws()
