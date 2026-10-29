@@ -740,8 +740,50 @@ def a2b.uses(ns: List<&2, List<&2, U32>>, +x: List<&2, U32>) -> Bool:
 def a2b.helpers(+its: List<&2, T.BItem>) -> List<&2, T.BItem>:
   Bool.pick(List<&2, T.BItem>, a2b.uses(a2b.fold.items(its, False{}, Nil{}), S.b("a2b_pred")), a2b.pred.item() <> its, its)
 
+# Agda.Builtin.Nat's div-helper and mod-helper recurse on n with k
+# changed first, which Bend's termination check (arguments read left to
+# right) refuses; their bodies call a2b_div_go/a2b_mod_go, the same
+# equations with n and j first (definitionally the same: div-helper k m
+# (suc n) zero and div-helper (suc k) m n m reach one normal form), so _/_
+# and _%_ and what uses them translate.
+def a2b.v(+x: String) -> T.Bt:
+  T.BtVar{S.b(x)}
+
+def a2b.go.item(+name: String, +zk: T.Bt, +sk: T.Bt) -> T.BItem:
+  T.BiDef{S.b(name), [T.BParam{T.BmLive{}, S.b("n"), a2b.v("Nat")}, T.BParam{T.BmLive{}, S.b("j"), a2b.v("Nat")}, T.BParam{T.BmLive{}, S.b("k"), a2b.v("Nat")}, T.BParam{T.BmCopy{}, S.b("m"), a2b.v("Nat")}], a2b.v("Nat"), T.BtMatch{T.tba.args([a2b.v("n"), a2b.v("j")]), T.BtCase{T.tba.args([T.BtNat{S.b("0")}, T.BtWild{}]), T.BtExpr{a2b.v("k")}, T.BtCase{T.tba.args([T.BtSucc{T.BtPv{T.BmLive{}, S.b("p")}}, T.BtNat{S.b("0")}]), T.BtExpr{T.BtApp{a2b.v(name), T.tba.args([a2b.v("p"), a2b.v("m"), zk, a2b.v("m")])}}, T.BtCase{T.tba.args([T.BtSucc{T.BtPv{T.BmLive{}, S.b("p")}}, T.BtSucc{T.BtPv{T.BmLive{}, S.b("q")}}]), T.BtExpr{T.BtApp{a2b.v(name), T.tba.args([a2b.v("p"), a2b.v("q"), sk, a2b.v("m")])}}, T.BtCEnd{}}}}}, [S.b("agda2bend: Agda.Builtin.Nat's helper with n and j first (Bend's termination check)")]}
+
+def a2b.pname(ps: List<&2, T.BParam>, i: Nat) -> T.Bt:
+  match ps i:
+    case T.BParam{m, x, ty} <> t 0n:
+      T.BtVar{x}
+    case T.BParam{m, x, ty} <> t 1n+p:
+      a2b.pname(t, p)
+    case _ _:
+      T.BtWild{}
+
+# div_helper(k, m, n, j) = go(n, j, k, m)
+def a2b.go.call(+go: String, +ps: List<&2, T.BParam>) -> T.Bt:
+  T.BtExpr{T.BtApp{a2b.v(go), T.tba.args([a2b.pname(ps, 2n), a2b.pname(ps, 3n), a2b.pname(ps, 0n), a2b.pname(ps, 1n)])}}
+
+def a2b.nat.item(it: T.BItem) -> T.BItem:
+  match it:
+    case T.BiDef{+n, +ps, +ret, body, +doc}:
+      Bool.pick(T.BItem, S.eq(n, S.b("div_helper")), T.BiDef{n, ps, ret, a2b.go.call("a2b_div_go", ps), doc}, Bool.pick(T.BItem, S.eq(n, S.b("mod_helper")), T.BiDef{n, ps, ret, a2b.go.call("a2b_mod_go", ps), doc}, T.BiDef{n, ps, ret, body, doc}))
+    case it:
+      it
+
+def a2b.nat.items(its: List<&2, T.BItem>) -> List<&2, T.BItem>:
+  match its:
+    case Nil{}:
+      Nil{}
+    case h <> t:
+      a2b.nat.item(h) <> a2b.nat.items(t)
+
+def a2b.builtin.nat(+m: List<&2, U32>, +its: List<&2, T.BItem>) -> List<&2, T.BItem>:
+  Bool.pick(List<&2, T.BItem>, S.eq(m, S.b("Agda.Builtin.Nat")), a2b.go.item("a2b_div_go", T.BtSucc{a2b.v("k")}, a2b.v("k")) <> a2b.go.item("a2b_mod_go", T.BtNat{S.b("0")}, T.BtSucc{a2b.v("k")}) <> a2b.nat.items(its), its)
+
 def a2b.em.items(+out: String, +m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +kept: Map<&2, Bool>, +nd: Nat, its0: List<&2, T.BItem>, +qe: QF.TqEnv) -> IO(List<&2, T.BItem>):
-  +its = a2b.helpers(its0)
+  +its = a2b.helpers(a2b.builtin.nat(m, its0))
   a2b.em.write(out, m, kept, ral, its, a2b.imports(a2b.snd(a2b.imps(a2b.fold.items(its, False{}, Nil{}), ral, (Map.new(&2, Bool), Nil{}))), m, al), nd, a2b.fold.items(its, True{}, Nil{}), a2b.defs.n(its), qe)
 
 # The quantity rounds (ToBend/Copy.bend): the module is translated, each
