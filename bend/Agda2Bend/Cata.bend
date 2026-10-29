@@ -2880,6 +2880,112 @@ def act.scr.vars(scr: List<&2, Bool>, ents: List<&2, T.Bt>) -> List<&2, T.Bt>:
     case _ _:
       Nil{}
 
+# Definitions by clauses, one level (`T false`, `True (no _)`: toWitness's
+# absurd pattern): the type- and Bool-valued definitions' clauses are in
+# the unfoldings under "tcl:" (act.tcl.of); at arguments already
+# constructors (inlined, and each argument headed by such a definition
+# evaluated once at inlined arguments of its own), the first clause whose
+# patterns match them (constructors by key, literals by digits; a variable
+# or a dot anything), its body when closed.
+def act.tcl.key(q: A.AgQ) -> String:
+  "tcl:" ++ act.key(q)
+
+def act.tcl.body(c: ActCopy) -> A.Ag:
+  match c:
+    case ActCopy{n, b}:
+      b
+
+def act.tcl.cls(+env: ActEnv, q: A.AgQ) -> A.Ag:
+  match env:
+    case ActEnv{mod, tab, al, unf}:
+      act.tcl.body(act.unf.got(Map.get(ActCopy, ActCopy{0n, A.AgNone{}}, unf, act.tcl.key(q))))
+
+type ActPt is Data:
+  ActPt{p: A.Ag, t: A.Ag}
+
+def act.ev.zip(ps: A.Ag, es: A.Ag, acc: List<&2, ActPt>) -> List<&2, ActPt>:
+  match ps es:
+    case A.AgPArg{i, x, p, prest} A.AgEApp{i2, t, erest}:
+      ActPt{p, t} <> act.ev.zip(prest, erest, acc)
+    case _ _:
+      acc
+
+def act.ev.pairs(fuel: Nat, xs: List<&2, ActPt>) -> Bool:
+  match fuel xs:
+    case _ Nil{}:
+      True{}
+    case 0n _:
+      False{}
+    case 1n+f ActPt{A.AgPVar{x, ix, o}, t} <> rest:
+      act.ev.pairs(f, rest)
+    case 1n+f ActPt{A.AgPDot{d}, t} <> rest:
+      act.ev.pairs(f, rest)
+    case 1n+f ActPt{A.AgPCon{q, r, sub}, A.AgCon{q2, o, es2}} <> rest:
+      Bool.and(String.eq(act.key(q), act.key(q2)), act.ev.pairs(f, act.ev.zip(sub, es2, rest)))
+    case 1n+f ActPt{A.AgPLit{A.AgLNat{s}}, A.AgLit{A.AgLNat{s2}}} <> rest:
+      Bool.and(S.eq(s, s2), act.ev.pairs(f, rest))
+    case _ _:
+      False{}
+
+def act.ag.closed(t: A.Ag) -> Bool:
+  match t:
+    case A.AgDef{q, es}:
+      act.ag.closed(es)
+    case A.AgCon{q, o, es}:
+      act.ag.closed(es)
+    case A.AgEApp{i, a, rest}:
+      Bool.and(act.ag.closed(a), act.ag.closed(rest))
+    case A.AgENil{}:
+      True{}
+    case A.AgLit{l}:
+      True{}
+    case A.AgEl{s, a}:
+      act.ag.closed(a)
+    case A.AgSort{s}:
+      True{}
+    case A.AgLevel{l}:
+      True{}
+    case _:
+      False{}
+
+def act.ev.pick(hit: Bool, +body: A.Ag, alt: Maybe<&2, A.Ag>) -> Maybe<&2, A.Ag>:
+  Bool.pick(Maybe<&2, A.Ag>, Bool.and(hit, act.ag.closed(body)), Some{body}, alt)
+
+def act.ev.cls(cls: A.Ag, +es: A.Ag) -> Maybe<&2, A.Ag>:
+  match cls:
+    case A.AgCl{tel, ps, body, ty, ca, rest}:
+      act.ev.pick(act.ev.pairs(64n, act.ev.zip(ps, es, Nil{})), body, act.ev.cls(rest, es))
+    case _:
+      None{}
+
+def act.ev.or(m: Maybe<&2, A.Ag>, d: A.Ag) -> A.Ag:
+  match m:
+    case Some{b}:
+      b
+    case None{}:
+      d
+
+def act.ev.args0(es: A.Ag, +env: ActEnv) -> A.Ag:
+  match es:
+    case A.AgEApp{i, t, rest}:
+      A.AgEApp{i, act.inline(64n, t, env), act.ev.args0(rest, env)}
+    case es:
+      es
+
+def act.ev.arg(t: A.Ag, +env: ActEnv) -> A.Ag:
+  match t:
+    case A.AgDef{+q, +es}:
+      act.ev.or(act.ev.cls(act.tcl.cls(env, q), act.ev.args0(es, env)), A.AgDef{q, es})
+    case t:
+      t
+
+def act.ev.args(es: A.Ag, +env: ActEnv) -> A.Ag:
+  match es:
+    case A.AgEApp{i, t, rest}:
+      A.AgEApp{i, act.ev.arg(act.inline(64n, t, env), env), act.ev.args(rest, env)}
+    case es:
+      es
+
 # Absurd clauses: Agda's `f ()` needs no split when the variable's type is
 # empty (⊥ = Irrelevant Empty), but Bend has to see the emptiness, so the
 # clause's body matches the variable down to an empty data type: a
@@ -2905,7 +3011,23 @@ def act.es.last(es: A.Ag) -> A.Ag:
     case _:
       A.AgNone{}
 
-def act.abs.sym(s: ActSym, q: A.AgQ, +es: A.Ag, +env: ActEnv) -> ActAbsSt:
+def act.abs.cl(m: Maybe<&2, A.Ag>) -> ActAbsSt:
+  match m:
+    case Some{b}:
+      AbsOpen{b}
+    case None{}:
+      AbsFail{}
+
+# a type-valued definition opened: its unfolding, else its clause at the
+# arguments (act.ev.cls)
+def act.abs.open(t: A.Ag, +q: A.AgQ, +es: A.Ag, +env: ActEnv) -> ActAbsSt:
+  match t:
+    case A.AgNone{}:
+      act.abs.cl(act.ev.cls(act.tcl.cls(env, q), act.ev.args(es, env)))
+    case t:
+      AbsOpen{act.inline(1024n, t, env)}
+
+def act.abs.sym(s: ActSym, +q: A.AgQ, +es: A.Ag, +env: ActEnv) -> ActAbsSt:
   match s:
     case ActSym{m, n, k, ms, ar, AbEq{}, fs, c, cp}:
       AbsEq{A.AgDef{q, es}}
@@ -2916,7 +3038,7 @@ def act.abs.sym(s: ActSym, q: A.AgQ, +es: A.Ag, +env: ActEnv) -> ActAbsSt:
     case ActSym{+m, n, A.AkRecord{}, ms, ar, b, f <> Nil{}, +c, cp}:
       AbsWrap{act.ref.of(act.is.here(env, m), env, m, c), act.es.last(es)}
     case ActSym{m, n, A.AkFunction{}, ms, ar, b, fs, c, cp}:
-      AbsOpen{act.inline(1024n, act.unfold(env, q, es), env)}
+      act.abs.open(act.unfold(env, q, es), q, es, env)
     case _:
       AbsFail{}
 
@@ -2967,7 +3089,7 @@ def act.abs.disc.ty(+ty: T.Bt, +a: T.Bt) -> Maybe<&2, T.Bt>:
 def act.abs.refute(m: Maybe<&2, T.Bt>, +x: List<&2, U32>, +goal: T.Bt) -> T.Bt:
   match m:
     case Some{d}:
-      T.BtExpr{act.bt.app("Empty.absurd", [goal, T.BtRw{T.BtVar{x}, act.bt.app("Bool.pick", [T.BtType{}, d, T.BtVar{S.b("Unit")}, T.BtVar{S.b("Empty")}]), T.BtExpr{T.BtCon{S.b("Unit"), T.BtANil{}}}}])}
+      T.BtExpr{act.bt.app("Empty.absurd", [T.BtDead{goal}, T.BtRw{T.BtVar{x}, act.bt.app("Bool.pick", [T.BtType{}, d, T.BtVar{S.b("Unit")}, T.BtVar{S.b("Empty")}]), T.BtExpr{T.BtCon{S.b("Unit"), T.BtANil{}}}}])}
     case None{}:
       T.BtExpr{act.todo("an absurd pattern on an equation of a type other than Bool or Nat")}
 
@@ -4583,6 +4705,33 @@ def act.unf.d(cp: Bool, srt: Bool, d: A.AgD) -> Maybe<&2, ActCopy>:
       None{}
 
 # a definition's opening, when it is a type-valued one (unf: the earlier ones)
+# a type- or Bool-valued definition's clauses (act.tcl.key)
+def act.ix.is.bool(b: ActB) -> Bool:
+  match b:
+    case AbBool{}:
+      True{}
+    case _:
+      False{}
+
+def act.ends.bool.t(t: A.Ag) -> Bool:
+  match t:
+    case A.AgEl{s, A.AgDef{q, es}}:
+      act.ix.is.bool(act.builtin(act.qs(q)))
+    case _:
+      False{}
+
+def act.tcl.d(on: Bool, dd: A.AgD) -> Maybe<&2, ActCopy>:
+  match on dd:
+    case True{} A.AgDFun{p, r, w, e, t, mu, cls, tree}:
+      Some{ActCopy{1n, cls}}
+    case _ _:
+      None{}
+
+def act.tcl.of(d: A.AgDecl, +unf: Map<&2, ActCopy>) -> Maybe<&2, ActCopy>:
+  match d:
+    case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, fl, lang, +ty, dd}:
+      act.tcl.d(Bool.or(act.ends.sort.u(8n, ty, unf), act.ends.bool.t(act.target(ty))), dd)
+
 def act.unf.of(d: A.AgDecl, +unf: Map<&2, ActCopy>) -> Maybe<&2, ActCopy>:
   match d:
     case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, fl, lang, +ty, dd}:
