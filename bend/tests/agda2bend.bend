@@ -693,6 +693,36 @@ def inj.laws() -> IO(Unit):
     g5 : D.A2bG <- inj.of(al, ral, ds, D.a2b.mod.items(S.b("A2bInj"), al, ds, g4))
     return Unit{}
 
+# fixtures/agda2bend/src/A2bCtx.agda (its export A2bCtx.sexp, after
+# Agda.Primitive, Agda.Builtin.Bool, Agda.Builtin.Nat and
+# Agda.Builtin.Equality): plfa's ext at Z {.Γ} {.A} : Γ , B ∋ A binds the
+# fields Agda dots and splits the index equation {Γ , B == Γd , Ad} into
+# one a field, and rename's ρ, a function used twice, is read transported
+# to the fields rather than generalized; the gate keeps 14 of the 15 items
+# (lookup-dom's absurd case is a gap; Bend 2.0.39).
+def ctx.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, tr: D.A2bTr) -> IO(D.A2bG):
+  match tr:
+    case D.A2bTr{its, g}:
+      +text = D.a2b.raw.text(S.b("A2bCtx"), al, ral, List.length(&2, A.AgDecl, ds), its)
+      do IO<D.A2bG>:
+        IO.print(verdict("a constructor pattern binds the fields its index's equation needs", S.infix(text, S.b("case u220b.Z{u0393_0_dot, A_3_dot, x_9_3_eq, x_9_4_eq}"))))
+        IO.print(verdict("an equation between constructor indices splits into one a field", S.infix(text, S.b("Equal.cong(Context, Type_, {\\{Context.comma: (a2b_f1 => a2b_f2 => a2b_f2); (_ => B)} : Context -> Type_}"))))
+        IO.print(verdict("a function parameter is read transported to the fields", S.infix(text, S.b("{(%x_7_6_eq : @-A:Ty -> in<A, _> -> in<A, u0394>; x) : @-A:Ty -> in<A, u0393_0_dot> -> in<A, u0394>}"))))
+        return g
+
+def ctx.laws() -> IO(Unit):
+  +order : List<&2, List<&2, U32>> = [S.b("Agda.Primitive"), S.b("Agda.Builtin.Bool"), S.b("Agda.Builtin.Nat"), S.b("Agda.Builtin.Equality"), S.b("A2bCtx")]
+  +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
+  +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
+  do IO<Unit>:
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g2 : D.A2bG <- abs.mod("Agda.Builtin.Bool", al, g1)
+    g3 : D.A2bG <- abs.mod("Agda.Builtin.Nat", al, g2)
+    g4 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g3)
+    +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bCtx.sexp"))
+    g5 : D.A2bG <- ctx.of(al, ral, ds, D.a2b.mod.items(S.b("A2bCtx"), al, ds, g4))
+    return Unit{}
+
 def main() -> IO(Unit):
   do IO<Unit>:
     +bool : List<&2, U32> <- S.read("fixtures/agda2bend/Agda.Builtin.Bool.sexp")
@@ -705,3 +735,4 @@ def main() -> IO(Unit):
     gold.fix.laws()
     abs.laws()
     inj.laws()
+    ctx.laws()
