@@ -2281,10 +2281,20 @@ def act.mark.b(rb: Bool, ra: Bool, inb: Bool, ina: Bool) -> Nat:
 def act.occurs(+x: List<&2, U32>, +t: T.Bt) -> Bool:
   act.used(x, T.tba.refs(t, Nil{}))
 
+# a variable's name, or none (a rewrite's evidence that is no variable)
+def act.var.name.or(t: T.Bt) -> List<&2, U32>:
+  match t:
+    case T.BtVar{x}:
+      x
+    case _:
+      Nil{}
+
+# with e a variable the rewrite is J (%e@e), so the goal it leaves has
+# {==} for e as well as a for b
 def act.step.k(k: Nat, +t: T.Bt, +a: T.Bt, +b: T.Bt, +e: T.Bt, +goal: T.Bt) -> ActStep:
   match k:
     case 1n:
-      ActStep{1n, T.tba.subst(goal, act.var.name(b), T.BtWild{}), T.tba.subst(goal, act.var.name(b), a), T.BtWild{}, Nil{}}
+      ActStep{1n, T.tba.subst(goal, act.var.name(b), T.BtWild{}), T.tba.subst(T.tba.subst(goal, act.var.name(b), a), act.var.name.or(e), T.BtRefl{}), T.BtWild{}, Nil{}}
     case 2n:
       ActStep{2n, T.tba.subst(goal, act.var.name(a), T.BtWild{}), T.tba.subst(goal, act.var.name(a), b), T.BtApp{T.BtVar{S.b("Equal.sym")}, T.tba.args([T.BtDead{t}, T.BtDead{a}, T.BtDead{b}, e])}, List.append(&2, U32, act.var.name(e), S.b("_sym"))}
     case _:
@@ -2305,22 +2315,269 @@ def act.step.goal(s: ActStep) -> T.Bt:
     case ActStep{k, p, g, y, e2}:
       g
 
-# the rewrite a step plans, in front of the rest
-def act.step.wrap(s: ActStep, e: T.Bt, inner: T.Bt) -> T.Bt:
+# J generalizes.  A rewrite %e@e : P at e : {a == b} (b the dotted side)
+# is Bend's J, but only the goal is its motive: a parameter whose type
+# mentions b or e (q : {b == z} in `assoc refl q r = refl`) keeps b in the
+# body, where Agda's match on refl put a.  So, as Agda's unifier does, the
+# motive abstracts those parameters (and the ones whose types mention
+# those): the step is
+#   {(%e@e : @q:Q[b := _] -> P; q => body) : @q:Q -> G}(q)
+# The parameters: in telescope order, not e, b or a split one (a dotted
+# one is: a later step's endpoint, as s in `splice-concat refl refl q`).
+def act.any.of(ns: List<&2, List<&2, U32>>, +seen: List<&2, List<&2, U32>>) -> Bool:
+  match ns:
+    case Nil{}:
+      False{}
+    case +h <> t:
+      Bool.or(act.used(h, seen), act.any.of(t, seen))
+
+def act.drop.name(+y: List<&2, U32>, ns: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  match ns:
+    case Nil{}:
+      Nil{}
+    case +h <> t:
+      List.append(&2, List<&2, U32>, Bool.pick(List<&2, List<&2, U32>>, S.eq(h, y), Nil{}, [h]), act.drop.name(y, t))
+
+# whether t mentions a name of ns free (a Pi's or a lambda's binder hides
+# its name in its body: B : @y:A -> {x == y : A} -> Type does not mention y)
+def act.mentions(t: T.Bt, +ns: List<&2, List<&2, U32>>) -> Bool:
+  match t:
+    case T.BtVar{+x}:
+      act.used(x, ns)
+    case T.BtLam{m, +y, b}:
+      act.mentions(b, act.drop.name(y, ns))
+    case T.BtPi{m, +y, d, a, b}:
+      Bool.or(act.mentions(a, ns), act.mentions(b, act.drop.name(y, ns)))
+    case T.BtApp{f, a}:
+      Bool.or(act.mentions(f, ns), act.mentions(a, ns))
+    case T.BtArgs{a, rest}:
+      Bool.or(act.mentions(a, ns), act.mentions(rest, ns))
+    case T.BtTplArg{a}:
+      act.mentions(a, ns)
+    case T.BtDead{a}:
+      act.mentions(a, ns)
+    case T.BtCon{c, a}:
+      act.mentions(a, ns)
+    case T.BtTyApp{n, a}:
+      act.mentions(a, ns)
+    case T.BtEq{ty, a, b}:
+      Bool.or(act.mentions(ty, ns), Bool.or(act.mentions(a, ns), act.mentions(b, ns)))
+    case T.BtSucc{a}:
+      act.mentions(a, ns)
+    case T.BtAnn{a, ty}:
+      Bool.or(act.mentions(a, ns), act.mentions(ty, ns))
+    case T.BtExpr{e}:
+      act.mentions(e, ns)
+    case T.BtRw{e, p, b}:
+      Bool.or(act.mentions(e, ns), Bool.or(act.mentions(p, ns), act.mentions(b, ns)))
+    case T.BtLet{x, v, b}:
+      Bool.or(act.mentions(v, ns), act.mentions(b, ns))
+    case _:
+      act.any.of(T.tba.refs(t, Nil{}), ns)
+
+def act.gen.ps(ps: List<&2, T.BParam>, +skip: List<&2, List<&2, U32>>, +seen: List<&2, List<&2, U32>>) -> List<&2, T.BParam>:
+  match ps:
+    case Nil{}:
+      Nil{}
+    case T.BParam{+m, +x, +ty} <> t:
+      +hit = Bool.and(Bool.not(act.used(x, skip)), act.mentions(ty, seen))
+      List.append(&2, T.BParam, Bool.pick(List<&2, T.BParam>, hit, [T.BParam{m, x, ty}], Nil{}), act.gen.ps(t, skip, Bool.pick(List<&2, List<&2, U32>>, hit, x <> seen, seen)))
+
+def act.gen.names(ps: List<&2, T.BParam>) -> List<&2, List<&2, U32>>:
+  match ps:
+    case Nil{}:
+      Nil{}
+    case T.BParam{m, x, ty} <> t:
+      x <> act.gen.names(t)
+
+def act.gen.ty(ty: T.Bt, +b: List<&2, U32>, wild: Bool) -> T.Bt:
+  match wild:
+    case True{}:
+      T.tba.subst(ty, b, T.BtWild{})
+    case False{}:
+      ty
+
+# Pis over the generalized parameters: in the motive, b is the hole
+def act.gen.pis(gs: List<&2, T.BParam>, +b: List<&2, U32>, +wild: Bool, t: T.Bt) -> T.Bt:
+  match gs:
+    case Nil{}:
+      t
+    case T.BParam{m, x, ty} <> r:
+      T.BtPi{m, x, True{}, act.gen.ty(ty, b, wild), act.gen.pis(r, b, wild, t)}
+
+def act.gen.lams(gs: List<&2, T.BParam>, b: T.Bt) -> T.Bt:
+  match gs:
+    case Nil{}:
+      b
+    case T.BParam{m, x, ty} <> r:
+      T.BtLam{m, x, act.gen.lams(r, b)}
+
+# each argument live: the lambda's body uses its binder, not the parameter,
+# so this use is what tells Copy the parameter is live (an erased one used
+# live inside becomes live, and the translation again writes its Pi live)
+def act.gen.arg(m: T.BMode, x: List<&2, U32>) -> T.Bt:
+  T.BtVar{x}
+
+def act.gen.args(gs: List<&2, T.BParam>) -> List<&2, T.Bt>:
+  match gs:
+    case Nil{}:
+      Nil{}
+    case T.BParam{m, x, ty} <> r:
+      act.gen.arg(m, x) <> act.gen.args(r)
+
+def act.gen.none(gs: List<&2, T.BParam>) -> Bool:
+  match gs:
+    case Nil{}:
+      True{}
+    case _:
+      False{}
+
+# whether a clause's rest can be written inside a term (the generalizing
+# step's lambda body, on one line): rewrites (a reversed one's let too) over
+# an expression; a match cannot
+def act.loose.ok(t: T.Bt) -> Bool:
+  match t:
+    case T.BtMatch{xs, cs}:
+      False{}
+    case T.BtRw{e, p, b}:
+      act.loose.ok(b)
+    case T.BtLet{x, v, T.BtRw{T.BtVar{y}, p, b}}:
+      act.loose.ok(b)
+    case T.BtLet{x, v, b}:
+      False{}
+    case _:
+      True{}
+
+def act.gen.wrap(none: Bool, +gs: List<&2, T.BParam>, e: T.Bt, p: T.Bt, +goal: T.Bt, +b: List<&2, U32>, inner: T.Bt) -> T.Bt:
+  match none:
+    case True{}:
+      T.BtRw{e, p, inner}
+    case False{}:
+      T.BtExpr{T.BtApp{T.BtAnn{T.BtRw{e, act.gen.pis(gs, b, True{}, p), act.gen.lams(gs, inner)}, act.gen.pis(gs, b, False{}, goal)}, T.tba.args(act.gen.args(gs))}}
+
+# the rewrite a step plans, in front of the rest (b: the dotted side's
+# name, the motive's hole)
+def act.step.wrap(s: ActStep, e: T.Bt, +goal: T.Bt, +gs: List<&2, T.BParam>, +b: List<&2, U32>, +inner: T.Bt) -> T.Bt:
   match s:
     case ActStep{0n, p, g, y, e2}:
       inner
     case ActStep{1n, p, g, y, e2}:
-      T.BtRw{e, p, inner}
+      act.gen.wrap(Bool.or(act.gen.none(gs), Bool.not(act.loose.ok(inner))), gs, e, p, goal, b, inner)
+    case ActStep{3n, p, g, y, e2}:
+      act.gen.wrap(Bool.or(act.gen.none(gs), Bool.not(act.loose.ok(inner))), gs, e, p, goal, b, inner)
     case ActStep{k, p, g, y, +e2}:
-      T.BtLet{e2, y, T.BtRw{T.BtVar{e2}, p, inner}}
+      T.BtLet{e2, y, act.gen.wrap(Bool.or(act.gen.none(gs), Bool.not(act.loose.ok(inner))), gs, T.BtVar{e2}, p, goal, b, inner)}
 
-# the clause's rewrites, in order, before its body
-def act.rws(fuel: Nat, es: List<&2, T.Bt>, +ds: List<&2, List<&2, U32>>, +goal: T.Bt, +hps: List<&2, T.BParam>, body: T.Bt) -> T.Bt:
+def act.step.kind(s: ActStep) -> Nat:
+  match s:
+    case ActStep{k, p, g, y, e2}:
+      k
+
+def act.eq.rhs(ty: T.Bt) -> List<&2, U32>:
+  match ty:
+    case T.BtEq{t, a, b}:
+      act.var.name(b)
+    case _:
+      Nil{}
+
+def act.eq.lhs(ty: T.Bt) -> T.Bt:
+  match ty:
+    case T.BtEq{t, a, b}:
+      a
+    case _:
+      T.BtWild{}
+
+# a step's hole: b's name for a rewrite with e, a's for one with e reversed
+# (none for no rewrite); and what the hole's variable becomes after it
+def act.step.hole(k: Nat, +ty: T.Bt) -> List<&2, U32>:
+  match k:
+    case 1n:
+      act.eq.rhs(ty)
+    case 3n:
+      act.eq.rhs(ty)
+    case 2n:
+      act.var.name(act.eq.lhs(ty))
+    case _:
+      Nil{}
+
+def act.eq.rhs.t(ty: T.Bt) -> T.Bt:
+  match ty:
+    case T.BtEq{t, a, b}:
+      b
+    case _:
+      T.BtWild{}
+
+def act.step.fill(k: Nat, +ty: T.Bt) -> T.Bt:
+  match k:
+    case 2n:
+      act.eq.rhs.t(ty)
+    case _:
+      act.eq.lhs(ty)
+
+# with e itself the evidence (J on e), e is {==} after the step
+def act.step.ev(k: Nat, +en: List<&2, U32>) -> List<&2, U32>:
+  match k:
+    case 1n:
+      en
+    case 3n:
+      en
+    case _:
+      Nil{}
+
+# A reversed step (a dotted: e : {a == b}, Agda put b for a) whose goal or
+# a parameter's type mentions e itself cannot go through Equal.sym (the
+# motive would have sym(sym(e)) for e).  It is J on e, b the hole (3):
+# the goal at b := a, e := {==}, and the body, written with b (Agda's
+# survivor), has a for b.
+def act.ps.mention(ps: List<&2, T.BParam>, +x: List<&2, U32>) -> Bool:
+  match ps:
+    case Nil{}:
+      False{}
+    case T.BParam{m, +y, +ty} <> t:
+      Bool.or(Bool.and(Bool.not(S.eq(y, x)), act.occurs(x, ty)), act.ps.mention(t, x))
+
+def act.eq.rhs.or(ty: T.Bt) -> List<&2, U32>:
+  match ty:
+    case T.BtEq{t, a, b}:
+      act.var.name.or(b)
+    case _:
+      Nil{}
+
+def act.step.three(+ty: T.Bt, +en: List<&2, U32>, +goal: T.Bt) -> ActStep:
+  ActStep{3n, T.tba.subst(goal, act.eq.rhs(ty), T.BtWild{}), T.tba.subst(T.tba.subst(goal, act.eq.rhs(ty), act.eq.lhs(ty)), en, T.BtRefl{}), T.BtWild{}, Nil{}}
+
+def act.step.j(+s: ActStep, +ty: T.Bt, +en: List<&2, U32>, +goal: T.Bt, +hps: List<&2, T.BParam>) -> ActStep:
+  +hit = Bool.and(Bool.and(Nat.is_eq(act.step.kind(s), 2n), Bool.not(S.eq(en, Nil{}))), Bool.and(Bool.not(S.eq(act.eq.rhs.or(ty), Nil{})), Bool.or(act.occurs(en, goal), act.ps.mention(hps, en))))
+  Bool.pick(ActStep, hit, act.step.three(ty, en, goal), s)
+
+def act.step.body(k: Nat, +ty: T.Bt, body: T.Bt) -> T.Bt:
+  match k:
+    case 3n:
+      T.tba.subst(body, act.eq.rhs(ty), act.eq.lhs(ty))
+    case _:
+      body
+
+# after a generalizing step, the generalized parameters' types have the
+# hole filled, and {==} for e (the next steps read them)
+def act.gen.hps(ps: List<&2, T.BParam>, +gn: List<&2, List<&2, U32>>, +b: List<&2, U32>, +a: T.Bt, +en: List<&2, U32>) -> List<&2, T.BParam>:
+  match ps:
+    case Nil{}:
+      Nil{}
+    case T.BParam{m, +x, +ty} <> t:
+      T.BParam{m, x, Bool.pick(T.Bt, act.used(x, gn), T.tba.subst(T.tba.subst(ty, b, a), en, T.BtRefl{}), ty)} <> act.gen.hps(t, gn, b, a, en)
+
+# the clause's rewrites, in order, before its body (svs: the split
+# parameters, which a rewrite does not generalize)
+def act.rws(fuel: Nat, es: List<&2, T.Bt>, +ds: List<&2, List<&2, U32>>, +goal: T.Bt, +hps: List<&2, T.BParam>, +svs: List<&2, List<&2, U32>>, body: T.Bt) -> T.Bt:
   match fuel es:
     case 1n+p +e <> t:
-      +s = act.step(act.param.ty(hps, act.var.name(e)), e, ds, goal)
-      act.step.wrap(s, e, act.rws(p, t, ds, act.step.goal(s), hps, body))
+      +ety = act.param.ty(hps, act.var.name(e))
+      +s = act.step.j(act.step(ety, e, ds, goal), ety, act.var.name.or(e), goal, hps)
+      +k = act.step.kind(s)
+      +bn = act.step.hole(k, ety)
+      +en = act.var.name(e)
+      +gs = Bool.pick(List<&2, T.BParam>, Nat.is_eq(k, 0n), Nil{}, act.gen.ps(hps, en <> bn <> svs, [bn, act.step.ev(k, en)]))
+      act.step.wrap(s, e, goal, gs, bn, act.rws(p, t, ds, act.step.goal(s), act.gen.hps(hps, act.gen.names(gs), bn, act.step.fill(k, ety), act.step.ev(k, act.var.name.or(e))), svs, act.step.body(k, ety, body)))
     case _ _:
       body
 
@@ -2460,10 +2717,10 @@ def act.ps.vars(ps: List<&2, T.BParam>) -> List<&2, T.Bt>:
 
 # a case's body: the rewrites of its refl patterns, then those of its
 # indexed patterns' equations (eqs), then the body
-def act.case.body(+eqs: List<&2, T.BParam>, rw: ActRw, +goal: T.Bt, +hps: List<&2, T.BParam>, body: T.Bt) -> T.Bt:
+def act.case.body(+eqs: List<&2, T.BParam>, rw: ActRw, +goal: T.Bt, +hps: List<&2, T.BParam>, +svs: List<&2, List<&2, U32>>, body: T.Bt) -> T.Bt:
   match rw:
     case ActRw{rs, ds}:
-      act.rws(64n, List.append(&2, T.Bt, rs, act.ps.vars(eqs)), ds, goal, List.append(&2, T.BParam, hps, eqs), body)
+      act.rws(64n, List.append(&2, T.Bt, rs, act.ps.vars(eqs)), ds, goal, List.append(&2, T.BParam, hps, eqs), svs, body)
 
 # the scrutinees: the entries of the split parameters
 def act.scr.vars(scr: List<&2, Bool>, ents: List<&2, T.Bt>) -> List<&2, T.Bt>:
@@ -2594,7 +2851,7 @@ def act.case.of(a: ActPat, +n: Nat, body: A.Ag, +env: ActEnv, rest: T.Bt, rw: Ac
     case ActPat{p, +bs, False{}}:
       +q = act.eq.spine(p, svars)
       +ctx = act.ctx.of(n, bs)
-      T.BtCase{q, act.case.body(act.eq.tops(q, svars, hps, dots, ctx, env), rw, act.goal(svars, q, ret), hps, act.abs.body(abs, body, ctx, env)), rest}
+      T.BtCase{q, act.case.body(act.eq.tops(q, svars, hps, dots, ctx, env), rw, act.goal(svars, q, ret), hps, act.names(svars), act.abs.body(abs, body, ctx, env)), rest}
 
 # the cases of a match from the clauses (an absurd clause is left out)
 def act.cases(cls: A.Ag, +scr: List<&2, Bool>, +ents: List<&2, T.Bt>, +pnames: List<&2, List<&2, U32>>, +env: ActEnv, +hps: List<&2, T.BParam>, +ret: T.Bt) -> T.Bt:

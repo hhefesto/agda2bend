@@ -41,6 +41,19 @@ def tpr.spaces(n: Nat, acc: List<&2, U32>) -> List<&2, U32>:
     case 1n+p:
       32 <> tpr.spaces(p, acc)
 
+# a rewrite's evidence variable x, and "@x" when the motive p mentions it
+# (J: the motive binds the evidence too, shadowing x); otherwise the plain
+# rewrite, which means the same
+def tpr.has(+x: List<&2, U32>, ns: List<&2, List<&2, U32>>) -> Bool:
+  match ns:
+    case Nil{}:
+      False{}
+    case h <> t:
+      Bool.or(S.eq(h, x), tpr.has(x, t))
+
+def tpr.rw.name(+x: List<&2, U32>, +p: T.Bt, acc: List<&2, U32>) -> List<&2, U32>:
+  tpr.b(x, List.append(&2, U32, Bool.pick(List<&2, U32>, tpr.has(x, T.tba.refs(p, Nil{})), 64 <> x, Nil{}), acc))
+
 # a binder's mode as its prefix: "", "-", "+", "~"
 def tpr.mode(m: T.BMode, acc: List<&2, U32>) -> List<&2, U32>:
   match m:
@@ -100,8 +113,24 @@ def tpr.t(t: T.Bt, k: TpK, +ind: Nat, acc: List<&2, U32>) -> List<&2, U32>:
       tpr.spaces(ind, tpr.s("case ", tpr.t(p, TpWords{}, 0n, 58 <> 10 <> tpr.t(b, TpStmt{}, Nat.add(ind, 2n), tpr.t(rest, TpCases{}, ind, acc)))))
     case T.BtCEnd{} TpCases{}:
       acc
+    # a rewrite with a variable e as evidence whose motive mentions e is
+    # written %e@e, Bend's J: the motive binds the evidence too (shadowing
+    # e), so a goal that mentions the equation itself, B(y, p), is the
+    # motive at it
+    case T.BtRw{T.BtVar{+x}, +p, b} TpStmt{}:
+      tpr.spaces(ind, 37 <> tpr.rw.name(x, p, tpr.s(" : ", tpr.t(p, TpLoose{}, 0n, 10 <> tpr.t(b, TpStmt{}, ind, acc)))))
     case T.BtRw{e, p, b} TpStmt{}:
       tpr.spaces(ind, 37 <> tpr.t(e, TpHead{}, 0n, tpr.s(" : ", tpr.t(p, TpLoose{}, 0n, 10 <> tpr.t(b, TpStmt{}, ind, acc)))))
+    # a rewrite inside a term (a generalizing J step, Cata's act.gen.wrap):
+    # parenthesized, on one line
+    case T.BtRw{T.BtVar{+x}, +p, b} _:
+      40 <> 37 <> tpr.rw.name(x, p, tpr.s(" : ", tpr.t(p, TpLoose{}, 0n, tpr.s("; ", tpr.t(b, TpLoose{}, 0n, 41 <> acc)))))
+    case T.BtRw{e, p, b} _:
+      40 <> 37 <> tpr.t(e, TpHead{}, 0n, tpr.s(" : ", tpr.t(p, TpLoose{}, 0n, tpr.s("; ", tpr.t(b, TpLoose{}, 0n, 41 <> acc)))))
+    # a reversed rewrite's let (x = Equal.sym(..); %x@x : P; f) inside a
+    # term: the named rewrite's evidence is any term, (%x@v : P; f)
+    case T.BtLet{+x, v, T.BtRw{T.BtVar{y}, p, b}} TpLoose{}:
+      40 <> 37 <> tpr.b(x, 64 <> tpr.t(v, TpHead{}, 0n, tpr.s(" : ", tpr.t(p, TpLoose{}, 0n, tpr.s("; ", tpr.t(b, TpLoose{}, 0n, 41 <> acc))))))
     case T.BtLet{x, v, b} TpStmt{}:
       tpr.spaces(ind, tpr.b(x, tpr.s(" = ", tpr.t(v, TpLoose{}, 0n, 10 <> tpr.t(b, TpStmt{}, ind, acc)))))
     case T.BtExpr{e} TpStmt{}:
