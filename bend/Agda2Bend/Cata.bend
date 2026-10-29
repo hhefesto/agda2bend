@@ -3075,10 +3075,50 @@ def act.copat.value(a: ActPat, b: ActPat, +n: Nat, body: A.Ag, +env: ActEnv) -> 
     case ActPat{p, bs, x} ActPat{q, cs, y}:
       act.lams(q, act.t(act.inline(100000n, body, env), act.ctx.of(n, List.append(&2, ActBind, bs, cs)), env))
 
+# Copattern clauses that match their parameters (`pr1 (is-equiv-comp g h
+# (sh , rh) (sg , rg)) = …`): the parameters with a constructor pattern
+# (not refl) are split, its variables bound in every field's value, and the
+# record value sits in one case of a match on them, its pattern the first
+# clause's (every field's clause must match the same way: its names come
+# from the same telescope positions)
+def act.copat.scr1(p: A.Ag, +env: ActEnv) -> Bool:
+  match p:
+    case A.AgPCon{+q, r, ps}:
+      Bool.not(act.is.refl(act.sym(env, q)))
+    case _:
+      False{}
+
+def act.copat.scr(ps: A.Ag, ents: List<&2, T.Bt>, +env: ActEnv) -> List<&2, Bool>:
+  match ps ents:
+    case A.AgPArg{i, x, p, rest} e <> et:
+      act.copat.scr1(p, env) <> act.copat.scr(rest, et, env)
+    case _ _:
+      Nil{}
+
 def act.copat.of(+tel: A.Ag, +ps: A.Ag, body: A.Ag, +ents: List<&2, T.Bt>, +env: ActEnv) -> T.Bt:
   +n = act.tel.len(tel)
   +hints = act.tel.hints(tel)
-  act.copat.value(act.top(ps, act.falses(ents), ents, n, hints, act.names(ents), env), act.pat(act.copat.extra(ps), n, hints, act.names(ents), env), n, body, env)
+  act.copat.value(act.top(ps, act.copat.scr(ps, ents, env), ents, n, hints, act.names(ents), env), act.pat(act.copat.extra(ps), n, hints, act.names(ents), env), n, body, env)
+
+def act.pat.p(a: ActPat) -> T.Bt:
+  match a:
+    case ActPat{p, bs, ab}:
+      p
+
+def act.copat.wrap.go(any: Bool, xs: List<&2, T.Bt>, sp: T.Bt, inner: T.Bt) -> T.Bt:
+  match any:
+    case True{}:
+      T.BtMatch{T.tba.args(xs), T.BtCase{sp, T.BtExpr{inner}, T.BtCEnd{}}}
+    case False{}:
+      T.BtExpr{inner}
+
+def act.copat.wrap(cls: A.Ag, +ents: List<&2, T.Bt>, +env: ActEnv, inner: T.Bt) -> T.Bt:
+  match cls:
+    case A.AgCl{+tel, +ps, body, ty, ca, rest}:
+      +scr = act.copat.scr(ps, ents, env)
+      act.copat.wrap.go(act.any(scr), act.scr.vars(scr, ents), act.pat.p(act.top(ps, scr, ents, act.tel.len(tel), act.tel.hints(tel), act.names(ents), env)), inner)
+    case _:
+      T.BtExpr{inner}
 
 def act.copat.hit.cl(cls: A.Ag, +key: String) -> Bool:
   match cls:
@@ -3177,7 +3217,7 @@ def act.copat.vals(fuel: Nat, ks: List<&2, String>, +fs: List<&2, String>, +cref
 def act.copat.rec(r: ActSym, +env: ActEnv, +cls: A.Ag, +ents: List<&2, T.Bt>) -> T.Bt:
   match r:
     case ActSym{+m, n, A.AkRecord{}, ms, ar, b, +fs, +c, cp}:
-      T.BtExpr{T.BtCon{act.ref.of(act.is.here(env, m), env, m, c), T.tba.args(act.copat.vals(8n, fs, fs, act.ref.of(act.is.here(env, m), env, m, c), cls, ents, env, act.copat.nest.head(fs, cls)))}}
+      act.copat.wrap(cls, ents, env, T.BtCon{act.ref.of(act.is.here(env, m), env, m, c), T.tba.args(act.copat.vals(8n, fs, fs, act.ref.of(act.is.here(env, m), env, m, c), cls, ents, env, act.copat.nest.head(fs, cls)))})
     case _:
       T.BtExpr{act.todo("copattern clauses whose type is not a record")}
 
