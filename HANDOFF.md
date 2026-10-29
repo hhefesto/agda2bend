@@ -2,6 +2,14 @@
 
 Working notes, so the work can continue from another machine or agent. Newest first. Times are UTC-6. agda2bend was split out of ana (github:hhefesto/ana) on 2026-10-22. ana's HANDOFF.md, before that date, has the rest of the history.
 
+## corpus1t: agda-categories past module 355 (2026-10-29, 00:45 UTC-6; running)
+
+- **Why every category run stopped at 355.** corpus1, corpus1r and corpus1s all logged the same 355 of export2's 767 modules, the last being Categories.Adjoint.Monadic. None of them wrote the 356th module's raw file, so the translation itself stalled, not the check. The next module ready in import order is Categories.Adjoint.Monadic.Properties, a **678 MB export**. corpus1s spent 18 h on it until the OOM killer stopped it at a 16 GB peak (10-26 20:14). Twelve of the remaining exports are bigger than 150 MB, and Categories.Pseudofunctor.Composition is 843 MB.
+- **The big exports give almost nothing.** Over corpus1s's ledger (4,281 checked items), the modules under 5 MB gave 3,141 checked items and those of 5-20 MB gave 1,096. The modules of 20-100 MB gave 40, and the ones over 100 MB gave 0. Their items are dependents of earlier drops. The time goes into translation: Monoidal.Properties (227 MB) took 73 min for 38 items, all of them dependents.
+- **corpus1t** (unit `a2b-corpus1t`, MemoryMax 10G) runs master's translator (bin/agda2bend-O0-c1s, 3174c1e; the master code is unchanged since) with corpus1s's environment (`A2B_MAXLINE=100000 A2B_CORPUS_LINE=2000`). Its input is **run/a2b/export2s**: symlinks to export2's 703 exports of 20 MB or less, with their erasure sidecars. A module it skipped is simply missing: an item naming one of its defs drops with "a name the symbol table does not have" (tested on Data.Empty.Polymorphic without Data.Empty). I expect about 7 h at corpus1s's pace (1,425 MB in 7.4 h) and longer at today's load.
+- **ana takes it** through its unit `ana-a2bm7` (ana run/v5/clean/a2bm7.sh). That unit waits for corpus1t to end, then runs `corpus` on export2 + corpus1t and keeps only the ids ana's a2b-s lacks. corpus1s's own copies already reached ana: run 5's a2b-s takes 232 modules from export2 + corpus1s, and all 232 are in it.
+- **Not done:** resuming (skipping the check of modules an earlier run's ledger has) and skipping items whose dependencies dropped before translation. Either would save the 7 h that corpus1t spends redoing corpus1s's first 355 modules, minus their big exports.
+
 ## ▶ CONTINUE HERE (2026-10-25, 20:15 UTC-6): ⊤ eta, dead arguments and Nat's primitives, merged into master
 
 - **Merged and pushed (10-25 20:15).** The user said to merge `unit-eta` into master and push once yoneda24 showed no losses. It showed none (below), so master is unit-eta, fast-forwarded and pushed.
