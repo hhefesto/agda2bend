@@ -34,10 +34,12 @@ import Data.Time.Format (defaultTimeLocale, formatTime)
 import GHC.Clock (getMonotonicTime)
 import GHC.Generics (Generic)
 import Numeric (showFFloat)
-import System.Directory (createDirectoryIfMissing, renameFile)
+import System.Directory (createDirectoryIfMissing, removeFile, renameFile)
 import System.FilePath ((</>))
 import System.Environment (lookupEnv)
 import System.IO
+import System.Timeout (timeout)
+import Text.Read (readMaybe)
 
 import Agda.Compiler.Common (curIF, sortDefs)
 import Agda.Interaction.FindFile (findFile)
@@ -139,18 +141,52 @@ data Env = Env
     -- ^ the definition is a copy written compactly: no clauses
   }
 
+-- | A reconstruction that ran past its time limit (agda-unimath's
+--   foundation.homotopy-induction: ev-refl-htpy's ran 10 minutes and more;
+--   left stored, the module exports in 0.03 s).
+data AttemptTimeout = AttemptTimeout deriving Show
+
+instance E.Exception AttemptTimeout
+
+-- | Seconds one reconstruction may take: AGDA_EXPORT_ATTEMPT_SECS, 20 by
+--   default (attempts take milliseconds; one that does not is a blowup).
+attemptSecs :: IO Int
+attemptSecs = maybe 20 id . (>>= readMaybe) <$> lookupEnv "AGDA_EXPORT_ATTEMPT_SECS"
+
+-- | A module's export size limit in bytes: AGDA_EXPORT_MAX_BYTES, none by
+--   default (agda-unimath's category-theory.isomorphisms-in-precategories
+--   passed 64 MB at 5 GB of heap; agda2bend's corpus runs skip exports over
+--   20 MB, whose items all depend on earlier drops).
+maxModuleBytes :: IO (Maybe Int)
+maxModuleBytes = (>>= readMaybe) <$> lookupEnv "AGDA_EXPORT_MAX_BYTES"
+
+-- | A definition's explicit size limit in bytes: AGDA_EXPORT_MAX_DEF_BYTES,
+--   none by default.  Reconstructed projection parameters can blow up:
+--   isomorphisms-in-precategories' first 3 definitions took 25 MB explicit,
+--   while all 74 take 1.2 MB stored (agda2bend drops a stored term's item;
+--   its A2B_MAXLINE drops such an item anyway).
+maxDefBytes :: IO (Maybe Int)
+maxDefBytes = (>>= readMaybe) <$> lookupEnv "AGDA_EXPORT_MAX_DEF_BYTES"
+
 -- | Run a TCM action in a scratch copy of the state and return its forced
 --   result; any synchronous exception (a type error, an internal
---   __IMPOSSIBLE__, a failed lazy match) becomes a short reason.
+--   __IMPOSSIBLE__, a failed lazy match) or the time limit becomes a short
+--   reason.
 tryTCM :: NFData a => TCM a -> TCM (Either E.SomeException a)
 tryTCM m = TCM $ \r e -> do
   s <- readIORef r
-  (Right <$> (E.evaluate . force =<< unTCM (localTCState m) r e)) `E.catch` \(ex :: E.SomeException) ->
-    case E.fromException ex of
-      Just (async :: E.SomeAsyncException) -> E.throwIO async
-      Nothing -> do
-        writeIORef r s
-        return (Left ex)
+  secs <- attemptSecs
+  res <- (maybe (Left (E.toException AttemptTimeout)) Right
+            <$> timeout (secs * 1000000) (E.evaluate . force =<< unTCM (localTCState m) r e))
+    `E.catch` \(ex :: E.SomeException) ->
+      case E.fromException ex of
+        Just (async :: E.SomeAsyncException) -> E.throwIO async
+        Nothing -> return (Left ex)
+  case res of
+    Left ex -> do
+      writeIORef r s
+      return (Left ex)
+    Right a -> return (Right a)
 
 -- | Why a reconstruction failed: a short class (counted in the index), or
 --   with the detail flag a longer message (AGDA_EXPORT_DEBUG).
@@ -214,19 +250,47 @@ exportModule opts tlm = do
       emit s = if optPretty opts then renderPretty 100 s else render s
   header <- moduleHeader i (length defs)
   liftIO $ createDirectoryIfMissing True dir
+  maxBytes <- liftIO maxModuleBytes
+  maxDef <- liftIO maxDefBytes
   h <- liftIO $ openBinaryFile tmp WriteMode
   bytes0 <- liftIO $ writeOne h (emit header)
-  results <- forM defs $ \(_, d) -> do
-    (kind, s) <- encodeDef env d
-    n <- liftIO $ writeOne h (emit s)
-    return (kind, n, residualProj s, countWhere (== S unboundHint) s)
+  -- a definition whose explicit form passes AGDA_EXPORT_MAX_DEF_BYTES is
+  -- written in stored form (its terms in noparams)
+  let storedEnv = env { envOpts = opts { optExplicit = False } }
+      encodeCapped d = do
+        (kind, s) <- encodeDef env d
+        let bs = line (emit s)
+        case maxDef of
+          Just m | optExplicit opts, BL.length bs > fromIntegral m -> do
+            (kind', s') <- encodeDef storedEnv d
+            liftIO $ logLine ("  " ++ prettyShow (defName d) ++ ": explicit form " ++ show (BL.length bs)
+              ++ " bytes, over AGDA_EXPORT_MAX_DEF_BYTES: written stored")
+            return (kind', s', line (emit s'))
+          _ -> return (kind, s, bs)
+  -- past AGDA_EXPORT_MAX_BYTES the module is dropped: its definitions
+  -- after that point are not encoded, the file is not written, and
+  -- OUT/<Module>.sexp.skip records it (--export-skip-existing keeps it)
+  let go _ acc [] = return (reverse acc, False)
+      go total acc ((_, d) : ds)
+        | maybe False (total >) maxBytes = return (reverse acc, True)
+        | otherwise = do
+            (kind, s, bs) <- encodeCapped d
+            liftIO $ BL.hPut h bs
+            let n = fromIntegral (BL.length bs)
+            go (total + n) ((kind, n, residualProj s, countWhere (== S unboundHint) s) : acc) ds
+  (results, over) <- go bytes0 [] defs
   liftIO $ hClose h
-  liftIO $ renameFile tmp out
+  if over
+    then liftIO $ do
+      removeFile tmp
+      writeFile (out ++ ".skip") (show (bytes0 + sum [n | (_, n, _, _) <- results]) ++ " bytes after "
+        ++ show (length results) ++ " of " ++ show (length defs) ++ " defs: over AGDA_EXPORT_MAX_BYTES\n")
+    else liftIO $ renameFile tmp out
   t1 <- liftIO getMonotonicTime
   c <- liftIO $ readIORef cref
   let stats = ModStats
         { msModule = T.pack (prettyShow tlm)
-        , msSkipped = False
+        , msSkipped = over
         , msDefs = length defs
         , msBytes = bytes0 + sum [n | (_, n, _, _) <- results]
         , msSeconds = t1 - t0
@@ -245,11 +309,13 @@ exportModule opts tlm = do
     , show (msExplicit stats), "/", show (msExplicit stats + msStored stats), " terms, "
     , show (msTreesExplicit stats), "/", show (msTreesExplicit stats + msTreesStored stats), " case trees"
     , if msUnbound stats > 0 then "; UNBOUND VARIABLES " ++ show (msUnbound stats) else ""
+    , if over then "; OVER AGDA_EXPORT_MAX_BYTES, not written (" ++ show (length results) ++ " defs encoded)" else ""
     ]
   return stats
   where
+    line b = B.toLazyByteString (b <> B.char7 '\n')
     writeOne h b = do
-      let bs = B.toLazyByteString (b <> B.char7 '\n')
+      let bs = line b
       BL.hPut h bs
       return (fromIntegral (BL.length bs))
 

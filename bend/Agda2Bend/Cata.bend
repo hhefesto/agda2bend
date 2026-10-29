@@ -405,6 +405,23 @@ def act.modes(t: A.Ag, +tylevel: Bool) -> List<&2, ActM>:
 def act.bi(+s: List<&2, U32>, +name: String, b: ActB, other: ActB) -> ActB:
   Bool.pick(ActB, S.eq(s, S.b(name)), b, other)
 
+# agda-unimath's BUILTIN bindings (NATURAL, BOOL, TRUE, FALSE, EQUALITY,
+# UNIT; the same shapes as Agda.Builtin's): its identity type Id is the
+# equality whose refl a match rewrites by (foundation-core.identity-types'
+# ind-Id and _∙_ dropped without it, and 33 of its 39 items after them);
+# its _＝_ (x ＝ y = Id x y, the same arguments) is the one the library
+# writes, and a match on refl at type x ＝ y rewrites only when that is
+# the equality too
+def act.builtin.um1(+s: List<&2, U32>) -> ActB:
+  act.bi(s, "elementary-number-theory.natural-numbers.ℕ", AbNat{}, act.bi(s, "elementary-number-theory.natural-numbers.ℕ.zero-ℕ", AbZero{},
+  act.bi(s, "elementary-number-theory.natural-numbers.ℕ.succ-ℕ", AbSuc{},
+  act.bi(s, "foundation-core.booleans.bool", AbBool{}, act.bi(s, "foundation-core.booleans.bool.true", AbTrue{}, act.bi(s, "foundation-core.booleans.bool.false", AbFalse{},
+  act.bi(s, "foundation-core.identity-types._.Id", AbEq{}, act.bi(s, "foundation-core.identity-types._.Id.refl", AbRefl{},
+  act.bi(s, "foundation.unit-type.unit", AbUnit{}, act.bi(s, "foundation.unit-type.star", AbTt{}, AbNone{}))))))))))
+
+def act.builtin.um(+s: List<&2, U32>) -> ActB:
+  act.bi(s, "foundation-core.identity-types._._＝_", AbEq{}, act.builtin.um1(s))
+
 # the builtin role of a name, by its printed name
 def act.builtin(+s: List<&2, U32>) -> ActB:
   act.bi(s, "Agda.Builtin.Nat.Nat", AbNat{}, act.bi(s, "Agda.Builtin.Nat.Nat.zero", AbZero{}, act.bi(s, "Agda.Builtin.Nat.Nat.suc", AbSuc{},
@@ -412,7 +429,7 @@ def act.builtin(+s: List<&2, U32>) -> ActB:
   act.bi(s, "Agda.Builtin.Equality._≡_", AbEq{}, act.bi(s, "Agda.Builtin.Equality._≡_.refl", AbRefl{},
   act.bi(s, "Agda.Builtin.Unit.⊤", AbUnit{}, act.bi(s, "Agda.Builtin.Unit.tt", AbTt{},
   act.bi(s, "Agda.Primitive.Level", AbQuant{}, act.bi(s, "Agda.Primitive.lzero", AbQone{}, act.bi(s, "Agda.Primitive.lsuc", AbQone{},
-  act.bi(s, "Agda.Primitive._⊔_", AbQmin{}, AbNone{}))))))))))))))
+  act.bi(s, "Agda.Primitive._⊔_", AbQmin{}, act.builtin.um(s)))))))))))))))
 
 # Terms ------------------------------------------------------------------------
 
@@ -2865,6 +2882,43 @@ def act.copat.is(cls: A.Ag) -> Bool:
     case _:
       False{}
 
+def act.sym.is.rec(s: ActSym) -> Bool:
+  match s:
+    case ActSym{m, n, A.AkRecord{}, ms, ar, b, fs, c, cp}:
+      True{}
+    case _:
+      False{}
+
+# the head of the leaf a type-valued definition unfolds to (None when it
+# does not)
+def act.copat.unf.q(c: ActCopy) -> Maybe<&2, A.AgQ>:
+  match c:
+    case ActCopy{n, body}:
+      act.cod.q(0n, body)
+
+def act.copat.unf(+env: ActEnv, +r: A.AgQ) -> Maybe<&2, A.AgQ>:
+  match env:
+    case ActEnv{mod, tab, al, unf}:
+      act.copat.unf.q(act.unf.got(Map.get(ActCopy, ActCopy{0n, A.AgNone{}}, unf, act.key(r))))
+
+# the record a copattern definition builds: its type's head, or where that
+# is a type-valued definition, the head it unfolds to, fuel times
+# (agda-unimath's section f = Σ (B → A) …: section-comp's clauses are
+# Σ's pr1 and pr2)
+def act.copat.isrec(+env: ActEnv, m: Maybe<&2, A.AgQ>) -> Bool:
+  match m:
+    case Some{r}:
+      act.sym.is.rec(act.sym(env, r))
+    case None{}:
+      True{}
+
+def act.copat.recq(fuel: Nat, q: Maybe<&2, A.AgQ>, isrec: Bool, +env: ActEnv) -> Maybe<&2, A.AgQ>:
+  match fuel q isrec:
+    case 1n+f Some{+r} False{}:
+      act.copat.recq(f, act.copat.unf(env, r), act.copat.isrec(env, act.copat.unf(env, r)), env)
+    case _ x _:
+      x
+
 def act.copat.body(q: Maybe<&2, A.AgQ>, +env: ActEnv, +cls: A.Ag, +ents: List<&2, T.Bt>) -> T.Bt:
   match q:
     case Some{r}:
@@ -3031,7 +3085,7 @@ def act.fun.body(p: A.AgProj, +cls: A.Ag, +key: String, +ar: Nat, +t: A.Ag, +ent
     case A.AgPrOf{Some{r}, o, ix} _:
       act.proj.body(act.sym(env, r), env, key, ents)
     case _ True{}:
-      act.copat.body(act.cod.q(ar, t), env, cls, ents)
+      act.copat.body(act.copat.recq(4n, act.cod.q(ar, t), act.copat.isrec(env, act.cod.q(ar, t)), env), env, cls, ents)
     case _ False{}:
       act.lift.app(List.drop(&2, T.BParam, act.ps.ps(r), act.kept.n(act.cls.arity(cls), ms)), act.body(cls, ents, env, act.ps.ps(r), act.ps.ret(r)))
 

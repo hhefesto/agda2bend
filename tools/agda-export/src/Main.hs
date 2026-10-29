@@ -63,7 +63,7 @@ backend = Backend'
       -- then only keeps an existing sidecar file
       _ | optErasureOnly o -> return (Recompile ())
       Just dir | optSkipExisting o -> do
-        there <- liftIO $ doesFileExist (moduleFile dir m)
+        there <- liftIO $ (||) <$> doesFileExist (moduleFile dir m) <*> doesFileExist (moduleFile dir m ++ ".skip")
         return $ if there then Skip (skippedStats (T.pack (prettyShow m))) else Recompile ()
       _ -> return (Recompile ())
   , postModule = \o () _ m _ -> if optErasureOnly o then erasureModule o m else exportModule o m
