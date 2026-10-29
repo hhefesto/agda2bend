@@ -17,6 +17,13 @@ import ./Winl.bend as WL
 # self-calls f_dec's at the arguments reordered the same way; and
 # f, with its own parameters, calling f_dec.  foldl_dec(~.., ~c, xs, n)
 # recurses on xs first.  A def already in that order is left as it was.
+#
+# The split order too: Bend's match splits its columns left to right, Agda
+# splits first where the first clause has a constructor (`m ∸ zero = m`
+# splits n), so Bend's `anon(n, 0n)` (∸) was stuck where Agda's computes,
+# and every lemma whose type needs it failed (Data.Nat.Properties'
+# pred[n]≤n).  The matched parameters are ordered with the first clause's
+# constructor columns first, and the match's columns with them.
 
 def tro.len(ps: List<&2, T.BParam>) -> Nat:
   List.length(&2, T.BParam, ps)
@@ -220,12 +227,12 @@ def tro.split(+n: List<&2, U32>, +ps: List<&2, T.BParam>, +ret: T.Bt, +body: T.B
   +gd : List<&2, List<&2, U32>> = [List.append(&2, U32, S.b("agda2bend: "), List.append(&2, U32, n, S.b(" with its matched parameters first (Bend reads a self-call's arguments left to right)")))]
   [T.BiDef{g, ps2, ret, tro.rec(body, n, g, tro.len(ps), p), gd}, T.BiDef{n, ps, ret, T.BtExpr{T.BtApp{T.BtVar{g}, T.tba.args(tro.args(ps2))}}, doc}]
 
-def tro.item.go(skip: Bool, +n: List<&2, U32>, +ps: List<&2, T.BParam>, +ret: T.Bt, +body: T.Bt, +doc: List<&2, List<&2, U32>>, +p: List<&2, Nat>) -> List<&2, T.BItem>:
+def tro.item.go(skip: Bool, +n: List<&2, U32>, +ps: List<&2, T.BParam>, +ret: T.Bt, +body: T.Bt, +body2: T.Bt, +doc: List<&2, List<&2, U32>>, +p: List<&2, Nat>) -> List<&2, T.BItem>:
   match skip:
     case True{}:
       [T.BiDef{n, ps, ret, body, doc}]
     case False{}:
-      tro.split(n, ps, ret, body, doc, p)
+      tro.split(n, ps, ret, body2, doc, p)
 
 # whether some self-call changes a parameter before the first matched one
 # (foldr passes c and n unchanged before xs shrinks: it stays whole)
@@ -254,13 +261,158 @@ def tro.changes(cs: List<&2, T.Bt>, +ns: List<&2, List<&2, U32>>, +scr: List<&2,
     case c <> t:
       Bool.or(Bool.not(tro.prefix.same(c, ns, scr)), tro.changes(t, ns, scr))
 
+# the top match's scrutinee names, and its first case's patterns
+def tro.top.scr(+b: T.Bt) -> List<&2, List<&2, U32>>:
+  match b:
+    case T.BtMatch{xs, cs}:
+      tro.scr(xs)
+    case _:
+      Nil{}
+
+def tro.first.pats(+b: T.Bt) -> List<&2, T.Bt>:
+  match b:
+    case T.BtMatch{xs, T.BtCase{p, cb, rest}}:
+      tro.list(p)
+    case _:
+      Nil{}
+
+def tro.is.vpat(p: T.Bt) -> Bool:
+  match p:
+    case T.BtPv{m, x}:
+      True{}
+    case T.BtWild{}:
+      True{}
+    case _:
+      False{}
+
+# the scrutinees whose first-case pattern is a constructor (Agda splits
+# there first)
+def tro.lead(ps: List<&2, T.Bt>, ns: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  match ps ns:
+    case p <> pt n <> nt:
+      +r = tro.lead(pt, nt)
+      Bool.pick(List<&2, List<&2, U32>>, tro.is.vpat(p), r, n <> r)
+    case _ _:
+      Nil{}
+
+def tro.idx(ns: List<&2, List<&2, U32>>, +x: List<&2, U32>, +i: Nat) -> Maybe<&2, Nat>:
+  match ns:
+    case Nil{}:
+      None{}
+    case h <> t:
+      Bool.pick(Maybe<&2, Nat>, S.eq(h, x), Some{i}, tro.idx(t, x, 1n+i))
+
+def tro.nat.mem(+x: Nat, xs: List<&2, Nat>) -> Bool:
+  match xs:
+    case Nil{}:
+      False{}
+    case h <> t:
+      Bool.or(Nat.is_eq(h, x), tro.nat.mem(x, t))
+
+def tro.g.at(i: Nat, gs: List<&2, Nat>) -> Nat:
+  match i gs:
+    case 0n h <> t:
+      h
+    case 1n+k h <> t:
+      tro.g.at(k, t)
+    case _ _:
+      9n
+
+# group 2's positions, in the order of the names l (each once), then the
+# rest of group 2 in parameter order
+def tro.g2.of(m: Maybe<&2, Nat>, +gs: List<&2, Nat>, acc: List<&2, Nat>) -> List<&2, Nat>:
+  match m:
+    case Some{+i}:
+      +acc2 = acc
+      Bool.pick(List<&2, Nat>, Bool.and(Nat.is_eq(tro.g.at(i, gs), 2n), Bool.not(tro.nat.mem(i, acc2))), List.append(&2, Nat, acc2, [i]), acc2)
+    case None{}:
+      acc
+
+def tro.g2(l: List<&2, List<&2, U32>>, +ns: List<&2, List<&2, U32>>, +gs: List<&2, Nat>, acc: List<&2, Nat>) -> List<&2, Nat>:
+  match l:
+    case Nil{}:
+      acc
+    case +x <> t:
+      tro.g2(t, ns, gs, tro.g2.of(tro.idx(ns, x, 0n), gs, acc))
+
+def tro.g2.rest(gs: List<&2, Nat>, +have: List<&2, Nat>, +i: Nat) -> List<&2, Nat>:
+  match gs:
+    case Nil{}:
+      Nil{}
+    case h <> t:
+      +r = tro.g2.rest(t, have, 1n+i)
+      Bool.pick(List<&2, Nat>, Bool.and(Nat.is_eq(h, 2n), Bool.not(tro.nat.mem(i, have))), i <> r, r)
+
+def tro.perm2(+gs: List<&2, Nat>, +ns: List<&2, List<&2, U32>>, +l: List<&2, List<&2, U32>>) -> List<&2, Nat>:
+  +g2 = tro.g2(l, ns, gs, Nil{})
+  List.append(&2, Nat, tro.pos(gs, 0n, 0n), List.append(&2, Nat, tro.pos(gs, 1n, 0n), List.append(&2, Nat, List.append(&2, Nat, g2, tro.g2.rest(gs, g2, 0n)), tro.pos(gs, 3n, 0n))))
+
+# the names of ns that are in keep, in ns's order
+def tro.only(ns: List<&2, List<&2, U32>>, +keep: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  match ns:
+    case Nil{}:
+      Nil{}
+    case +h <> t:
+      +r = tro.only(t, keep)
+      Bool.pick(List<&2, List<&2, U32>>, WL.twl.mem(h, keep), h <> r, r)
+
+def tro.names.eq(a: List<&2, List<&2, U32>>, b: List<&2, List<&2, U32>>) -> Bool:
+  match a b:
+    case Nil{} Nil{}:
+      True{}
+    case x <> at y <> bt:
+      Bool.and(S.eq(x, y), tro.names.eq(at, bt))
+    case _ _:
+      False{}
+
+def tro.head.in(xs: List<&2, List<&2, U32>>, +ys: List<&2, List<&2, U32>>) -> Bool:
+  match xs:
+    case h <> t:
+      WL.twl.mem(h, ys)
+    case Nil{}:
+      False{}
+
+# the column permutation: for each new column, its old index
+def tro.cperm.one(m: Maybe<&2, Nat>, rest: List<&2, Nat>) -> List<&2, Nat>:
+  match m:
+    case Some{i}:
+      i <> rest
+    case None{}:
+      rest
+
+def tro.cperm(nw: List<&2, List<&2, U32>>, +old: List<&2, List<&2, U32>>) -> List<&2, Nat>:
+  match nw:
+    case Nil{}:
+      Nil{}
+    case +x <> t:
+      tro.cperm.one(tro.idx(old, x, 0n), tro.cperm(t, old))
+
+def tro.cases(cs: T.Bt, +cp: List<&2, Nat>) -> T.Bt:
+  match cs:
+    case T.BtCase{p, b, rest}:
+      T.BtCase{T.tba.args(tro.as(tro.list(p), cp)), b, tro.cases(rest, cp)}
+    case cs:
+      cs
+
+def tro.cols(b: T.Bt, +cp: List<&2, Nat>) -> T.Bt:
+  match b:
+    case T.BtMatch{xs, cs}:
+      T.BtMatch{T.tba.args(tro.as(tro.list(xs), cp)), tro.cases(cs, cp)}
+    case b:
+      b
+
 def tro.item(it: T.BItem) -> List<&2, T.BItem>:
   match it:
     case T.BiDef{+n, +ps, +ret, +body, +doc}:
+      +ps0 = tro.tplfirst(ps)
       +scr = tro.body.scr(body, Nil{})
-      +p = tro.perm(tro.groups(tro.tplfirst(ps), scr))
-      +need = tro.changes(WL.twl.calls(body, n, Nil{}), WL.twl.pnames(tro.tplfirst(ps)), scr)
-      tro.item.go(Bool.or(Bool.or(tro.ident(p, 0n), Bool.not(tro.is.match(body))), Bool.not(need)), n, ps, ret, body, doc, p)
+      +top = tro.top.scr(body)
+      +lead = tro.lead(tro.first.pats(body), top)
+      +p = tro.perm2(tro.groups(ps0, scr), WL.twl.pnames(ps0), List.append(&2, List<&2, U32>, lead, scr))
+      +top2 = tro.only(WL.twl.pnames(tro.ps(ps0, p)), top)
+      +moved = Bool.and(Bool.not(tro.names.eq(top2, top)), Bool.and(tro.head.in(top2, lead), Bool.not(tro.head.in(top, lead))))
+      +need = Bool.or(tro.changes(WL.twl.calls(body, n, Nil{}), WL.twl.pnames(ps0), scr), moved)
+      tro.item.go(Bool.or(Bool.or(tro.ident(p, 0n), Bool.not(tro.is.match(body))), Bool.not(need)), n, ps, ret, body, tro.cols(body, tro.cperm(top2, top)), doc, p)
     case it:
       [it]
 
