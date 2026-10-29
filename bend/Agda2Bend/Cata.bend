@@ -1446,12 +1446,14 @@ def act.app.def(s: ActSym, +env: ActEnv, args: T.Bt) -> T.Bt:
     case ActSym{+m, +n, k, ms, ar, b, fs, c, cp}:
       act.app.def.kind(k, act.copy.is(cp), act.ref.of(act.is.here(env, m), env, m, n), ms, ar, args)
 
-def act.first(xs: List<&2, T.Bt>) -> T.Bt:
+# suc applied, or unapplied (`cong suc`, `map suc xs`): the function
+# sn => 1n+sn
+def act.suc(xs: List<&2, T.Bt>) -> T.Bt:
   match xs:
     case h <> t:
-      h
+      T.BtSucc{h}
     case Nil{}:
-      act.todo("suc with no argument")
+      T.BtLam{T.BmLive{}, S.b("sn"), T.BtSucc{T.BtVar{S.b("sn")}}}
 
 # {==} for each of a constructor's equation fields (an indexed family's)
 def act.refls(fs: List<&2, String>) -> List<&2, T.Bt>:
@@ -1474,7 +1476,7 @@ def act.app.con(s: ActSym, +env: ActEnv, args: T.Bt) -> T.Bt:
     case ActSym{m, n, k, ms, ar, AbZero{}, fs, c, cp}:
       T.BtNat{S.b("0")}
     case ActSym{m, n, k, ms, ar, AbSuc{}, fs, c, cp}:
-      T.BtSucc{act.first(act.keep(args, ms))}
+      act.suc(act.keep(args, ms))
     case ActSym{m, n, k, ms, ar, AbTrue{}, fs, c, cp}:
       T.BtCon{S.b("True"), T.BtANil{}}
     case ActSym{m, n, k, ms, ar, AbFalse{}, fs, c, cp}:
@@ -2743,6 +2745,7 @@ type ActAbsSt is Data:
   AbsDone{}
   AbsOpen{t: A.Ag}
   AbsWrap{c: List<&2, U32>, t: A.Ag}
+  AbsEq{t: A.Ag}
   AbsFail{}
 
 # the last argument of a spine
@@ -2757,6 +2760,8 @@ def act.es.last(es: A.Ag) -> A.Ag:
 
 def act.abs.sym(s: ActSym, q: A.AgQ, +es: A.Ag, +env: ActEnv) -> ActAbsSt:
   match s:
+    case ActSym{m, n, k, ms, ar, AbEq{}, fs, c, cp}:
+      AbsEq{A.AgDef{q, es}}
     case ActSym{m, n, A.AkData{}, ms, ar, b, Nil{}, c, cp}:
       AbsDone{}
     case ActSym{+m, n, A.AkRecord{}, ms, ar, b, f <> Nil{}, +c, cp}:
@@ -2783,22 +2788,66 @@ def act.abs.step(t: A.Ag, +env: ActEnv) -> ActAbsSt:
 def act.abs.match(+x: List<&2, U32>, cs: T.Bt) -> T.Bt:
   T.BtMatch{T.tba.args([T.BtVar{x}]), cs}
 
-# the elimination of x, a step at a time
-def act.abs.elim(fuel: Nat, st: ActAbsSt, +x: List<&2, U32>, +env: ActEnv) -> T.Bt:
+# Bend cannot match on an equation, so an absurd one between two
+# constructors (`not-injective {false} {true} ()`, `suc n ≡ 0`) is
+# refuted by a rewrite through a motive that is Unit at its left side and
+# Empty at its right, and Empty.absurd at the goal (Bend's GUIDE: rewrite a
+# clash through disc(_)).  disc(_) is Bool.pick over a Bool that is True
+# at the left side: for Bool, _ itself (or its negation); for Nat, whether
+# _ is 0n against whether the left side is (a zero/suc clash).  Other types:
+# a gap.
+def act.bt.app(+f: String, args: List<&2, T.Bt>) -> T.Bt:
+  T.BtApp{T.BtVar{S.b(f)}, T.tba.args(args)}
+
+def act.abs.same(b: T.Bt, +a: T.Bt) -> T.Bt:
+  act.bt.app("Bool.pick", [T.BtVar{S.b("Bool")}, b, a, act.bt.app("Bool.not", [a])])
+
+def act.abs.iz(t: T.Bt) -> T.Bt:
+  act.bt.app("Nat.is_eq", [t, T.BtNat{S.b("0")}])
+
+def act.abs.disc(+ty: List<&2, U32>, +a: T.Bt) -> Maybe<&2, T.Bt>:
+  Bool.pick(Maybe<&2, T.Bt>, S.eq(ty, S.b("Bool")), Some{act.abs.same(T.BtWild{}, a)}, Bool.pick(Maybe<&2, T.Bt>, S.eq(ty, S.b("Nat")), Some{act.abs.same(act.abs.iz(T.BtWild{}), act.abs.iz(a))}, None{}))
+
+def act.abs.disc.ty(+ty: T.Bt, +a: T.Bt) -> Maybe<&2, T.Bt>:
+  match ty:
+    case T.BtVar{n}:
+      act.abs.disc(n, a)
+    case _:
+      None{}
+
+def act.abs.refute(m: Maybe<&2, T.Bt>, +x: List<&2, U32>, +goal: T.Bt) -> T.Bt:
+  match m:
+    case Some{d}:
+      T.BtExpr{act.bt.app("Empty.absurd", [goal, T.BtRw{T.BtVar{x}, act.bt.app("Bool.pick", [T.BtType{}, d, T.BtVar{S.b("Unit")}, T.BtVar{S.b("Empty")}]), T.BtExpr{T.BtCon{S.b("Unit"), T.BtANil{}}}}])}
+    case None{}:
+      T.BtExpr{act.todo("an absurd pattern on an equation of a type other than Bool or Nat")}
+
+def act.abs.clash(t: T.Bt, +x: List<&2, U32>, +goal: T.Bt) -> T.Bt:
+  match t:
+    case T.BtEq{+ty, +a, b}:
+      act.abs.refute(act.abs.disc.ty(ty, a), x, goal)
+    case _:
+      T.BtExpr{act.todo("an absurd pattern on an equation agda2bend could not read")}
+
+# the elimination of x, a step at a time (ctx: the context of x's type;
+# goal: the clause's)
+def act.abs.elim(fuel: Nat, st: ActAbsSt, +x: List<&2, U32>, +env: ActEnv, +ctx: List<&2, T.Bt>, +goal: T.Bt) -> T.Bt:
   match fuel st:
     case _ AbsDone{}:
       act.abs.match(x, T.BtCEnd{})
     case 1n+f AbsOpen{t}:
-      act.abs.elim(f, act.abs.step(t, env), x, env)
+      act.abs.elim(f, act.abs.step(t, env), x, env, ctx, goal)
     case 1n+f AbsWrap{c, t}:
       +y = List.append(&2, U32, x, S.b("_f"))
-      act.abs.match(x, T.BtCase{T.tba.args([T.BtCon{c, T.tba.args([T.BtPv{T.BmLive{}, y}])}]), act.abs.elim(f, act.abs.step(t, env), y, env), T.BtCEnd{}})
+      act.abs.match(x, T.BtCase{T.tba.args([T.BtCon{c, T.tba.args([T.BtPv{T.BmLive{}, y}])}]), act.abs.elim(f, act.abs.step(t, env), y, env, ctx, goal), T.BtCEnd{}})
+    case 1n+f AbsEq{t}:
+      act.abs.clash(act.t(act.inline(100000n, t, env), ctx, env), x, goal)
     case _ _:
       T.BtExpr{act.todo("an absurd pattern on a type agda2bend cannot see is empty")}
 
 # a clause's first top-level absurd pattern variable: its parameter and type
 type ActAbs is Data:
-  ActAbs{x: List<&2, U32>, ty: A.Ag}
+  ActAbs{x: List<&2, U32>, ty: A.Ag, ix: Nat}
 
 def act.tel.nth(tel: A.Ag, n: Nat) -> A.Ag:
   match tel n:
@@ -2812,17 +2861,17 @@ def act.tel.nth(tel: A.Ag, n: Nat) -> A.Ag:
 def act.abs.find(ps: A.Ag, ents: List<&2, T.Bt>, +tel: A.Ag, +n: Nat) -> Maybe<&2, ActAbs>:
   match ps ents:
     case A.AgPArg{i, x, A.AgPVar{v, +ix, A.AkAbsurd{}}, rest} e <> et:
-      Some{ActAbs{act.var.name(e), act.tel.nth(tel, Nat.sub(Nat.sub(n, 1n), ix))}}
+      Some{ActAbs{act.var.name(e), act.tel.nth(tel, Nat.sub(Nat.sub(n, 1n), ix)), ix}}
     case A.AgPArg{i, x, p, rest} e <> et:
       act.abs.find(rest, et, tel, n)
     case _ _:
       None{}
 
 # a clause's body: an absurd one's elimination, else the body translated
-def act.abs.body(m: Maybe<&2, ActAbs>, body: A.Ag, +ctx: List<&2, T.Bt>, +env: ActEnv) -> T.Bt:
+def act.abs.body(m: Maybe<&2, ActAbs>, body: A.Ag, +ctx: List<&2, T.Bt>, +env: ActEnv, +goal: T.Bt) -> T.Bt:
   match m body:
-    case Some{ActAbs{x, ty}} A.AgAbsurd{}:
-      act.abs.elim(16n, act.abs.step(ty, env), x, env)
+    case Some{ActAbs{x, ty, ix}} A.AgAbsurd{}:
+      act.abs.elim(16n, act.abs.step(ty, env), x, env, List.drop(&2, T.Bt, ctx, 1n+ix), goal)
     case _ body:
       T.BtExpr{act.t(act.inline(100000n, body, env), ctx, env)}
 
@@ -2851,7 +2900,8 @@ def act.case.of(a: ActPat, +n: Nat, body: A.Ag, +env: ActEnv, rest: T.Bt, rw: Ac
     case ActPat{p, +bs, False{}}:
       +q = act.eq.spine(p, svars)
       +ctx = act.ctx.of(n, bs)
-      T.BtCase{q, act.case.body(act.eq.tops(q, svars, hps, dots, ctx, env), rw, act.goal(svars, q, ret), hps, act.names(svars), act.abs.body(abs, body, ctx, env)), rest}
+      +g = act.goal(svars, q, ret)
+      T.BtCase{q, act.case.body(act.eq.tops(q, svars, hps, dots, ctx, env), rw, g, hps, act.names(svars), act.abs.body(abs, body, ctx, env, g)), rest}
 
 # the cases of a match from the clauses (an absurd clause is left out)
 def act.cases(cls: A.Ag, +scr: List<&2, Bool>, +ents: List<&2, T.Bt>, +pnames: List<&2, List<&2, U32>>, +env: ActEnv, +hps: List<&2, T.BParam>, +ret: T.Bt) -> T.Bt:
