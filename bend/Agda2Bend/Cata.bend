@@ -2994,11 +2994,115 @@ def act.ps.minus(ps: List<&2, T.BParam>, +skip: List<&2, List<&2, U32>>) -> List
     case T.BParam{+m, +x, +ty} <> t:
       List.append(&2, T.BParam, Bool.pick(List<&2, T.BParam>, act.used(x, skip), Nil{}, [T.BParam{m, x, ty}]), act.ps.minus(t, skip))
 
+# Equations between two applications of one constructor (`(Γ , B) ≡ (Γ , A)`
+# at Z : (Γ , A) ∋ A, plfa's ext; `A ⇒ B ≡ C ⇒ D` at a refl pattern,
+# ⇒-inj₁: Agda's unifier uses injectivity) are one equation a field: where
+# a field's sides differ and one is a variable whose type the clause
+# knows, e_pjI = Equal.cong(T, F, {\{C: (a2b_f1 => .. => a2b_fN => a2b_fI);
+# (_ => v)} : T -> F}, a, b, e) : {a_I == b_I : F} (v: that variable, F its
+# type; Bend 2.0.39 checks it, /tmp/bx/inj/d.bend), then a step like any
+# variable equation's, its let only when the step rewrites (2026-10-29).
+type ActInj is Data:
+  ActInj{x: List<&2, U32>, ty: T.Bt, v: T.Bt}
+  ActOne{e: T.Bt}
+
+def act.inj.bind(n: Nat, +k: Nat) -> String:
+  match n:
+    case 0n:
+      ""
+    case 1n+p:
+      "a2b_f" ++ Nat.show(k) ++ " => " ++ act.inj.bind(p, 1n+k)
+
+def act.inj.prj(+c: List<&2, U32>, +n: Nat, +i: Nat, +d: List<&2, U32>, +t: T.Bt, +f: T.Bt) -> T.Bt:
+  +raw = List.append(&2, U32, S.b("\\{"), List.append(&2, U32, c, List.append(&2, U32, S.b(": (" ++ act.inj.bind(n, 1n) ++ "a2b_f" ++ Nat.show(i) ++ "); (_ => "), List.append(&2, U32, d, S.b(")}")))))
+  T.BtAnn{T.BtVar{raw}, T.BtPi{T.BmLive{}, S.b("_"), False{}, t, f}}
+
+def act.inj.vn(t: T.Bt) -> List<&2, U32>:
+  match t:
+    case T.BtVar{x}:
+      x
+    case _:
+      Nil{}
+
+def act.inj.known(t: T.Bt) -> Bool:
+  match t:
+    case T.BtWild{}:
+      False{}
+    case _:
+      True{}
+
+# two variables of one name (no equation to rewrite by)
+def act.inj.same(a: T.Bt, b: T.Bt) -> Bool:
+  match a b:
+    case T.BtVar{x} T.BtVar{y}:
+      S.eq(x, y)
+    case _ _:
+      False{}
+
+def act.inj.fields(xa: List<&2, T.Bt>, xb: List<&2, T.Bt>, +i: Nat, +n: Nat, +c: List<&2, U32>, +t: T.Bt, +wa: T.Bt, +wb: T.Bt, +e: T.Bt, +en: List<&2, U32>, +hps: List<&2, T.BParam>) -> List<&2, ActInj>:
+  match xa xb:
+    case +a <> at +b <> bt:
+      +a1 = act.undead(a)
+      +b1 = act.undead(b)
+      +va = act.inj.vn(a1)
+      +vb = act.inj.vn(b1)
+      +fa = act.param.ty(hps, va)
+      +ka = Bool.and(Bool.not(S.eq(va, Nil{})), act.inj.known(fa))
+      +v = Bool.pick(List<&2, U32>, ka, va, vb)
+      +f = Bool.pick(T.Bt, ka, fa, act.param.ty(hps, vb))
+      +ok = Bool.and(Bool.and(Bool.not(S.eq(v, Nil{})), act.inj.known(f)), Bool.not(act.inj.same(a1, b1)))
+      +rest = act.inj.fields(at, bt, 1n+i, n, c, t, wa, wb, e, en, hps)
+      Bool.pick(List<&2, ActInj>, ok, ActInj{List.append(&2, U32, en, S.b("_pj" ++ Nat.show(i))), T.BtEq{f, a1, b1}, T.BtApp{T.BtVar{S.b("Equal.cong")}, T.tba.args([T.BtDead{t}, T.BtDead{f}, T.BtDead{act.inj.prj(c, n, i, v, t, f)}, T.BtDead{wa}, T.BtDead{wb}, e])}} <> rest, rest)
+    case _ _:
+      Nil{}
+
+def act.inj.list(a: T.Bt) -> List<&2, T.Bt>:
+  match a:
+    case T.BtArgs{h, t}:
+      h <> act.inj.list(t)
+    case _:
+      Nil{}
+
+def act.inj.con(a: T.Bt, b: T.Bt, +t: T.Bt, +e: T.Bt, +hps: List<&2, T.BParam>) -> List<&2, ActInj>:
+  match a b:
+    case T.BtCon{+ca, +xa} T.BtCon{+cb, +xb}:
+      +la = act.inj.list(xa)
+      +lb = act.inj.list(xb)
+      +n = List.length(&2, T.Bt, la)
+      Bool.pick(List<&2, ActInj>, Bool.and(Bool.and(S.eq(ca, cb), Nat.is_eq(n, List.length(&2, T.Bt, lb))), Bool.not(Nat.is_eq(n, 0n))), act.inj.fields(la, lb, 1n, n, ca, t, T.BtCon{ca, xa}, T.BtCon{cb, xb}, e, act.var.name(e), hps), Nil{})
+    case _ _:
+      Nil{}
+
+def act.inj.of(ety: T.Bt, +e: T.Bt, +hps: List<&2, T.BParam>) -> List<&2, ActInj>:
+  match ety:
+    case T.BtEq{+t, a, b}:
+      act.inj.con(act.undead(a), act.undead(b), t, e, hps)
+    case _:
+      Nil{}
+
 # the clause's rewrites, in order, before its body (svs: the split
-# parameters, which a rewrite does not generalize)
-def act.rws(fuel: Nat, es: List<&2, T.Bt>, +ds: List<&2, List<&2, U32>>, +goal: T.Bt, +hps: List<&2, T.BParam>, +svs: List<&2, List<&2, U32>>, body: T.Bt) -> T.Bt:
-  match fuel es:
-    case 1n+p +e <> t:
+# parameters, which a rewrite does not generalize; pj: the equations the
+# head equation splits into, act.inj, or ActOne{e} for e itself)
+def act.inj.or(pjs: List<&2, ActInj>, +e: T.Bt) -> List<&2, ActInj>:
+  match pjs:
+    case Nil{}:
+      [ActOne{e}]
+    case h <> r:
+      h <> r
+
+def act.rws(fuel: Nat, pj: List<&2, ActInj>, es: List<&2, T.Bt>, +ds: List<&2, List<&2, U32>>, +goal: T.Bt, +hps: List<&2, T.BParam>, +svs: List<&2, List<&2, U32>>, body: T.Bt) -> T.Bt:
+  match fuel pj es:
+    case 1n+q ActInj{+x, +ety, v} <> r es:
+      +hps2 = List.append(&2, T.BParam, hps, [T.BParam{T.BmLive{}, x, ety}])
+      +e : T.Bt = T.BtVar{x}
+      +s = act.step(ety, e, ds, goal, act.ps.minus(hps2, svs))
+      +k = act.step.kind(s)
+      +bn = act.step.hole(k, ety)
+      +gs = Bool.pick(List<&2, T.BParam>, Nat.is_eq(k, 0n), Nil{}, act.gen.ps(hps2, x <> bn <> svs, [bn, act.step.ev(k, x)]))
+      +hps3 = Bool.pick(List<&2, T.BParam>, Nat.is_eq(k, 0n), hps, act.gen.hps(hps2, act.gen.names(gs), bn, act.step.fill(k, ety), act.step.ev(k, x)))
+      +inner = act.rws(q, r, es, ds, act.step.goal(s), hps3, svs, act.step.body(k, ety, body))
+      Bool.pick(T.Bt, Nat.is_eq(k, 0n), inner, T.BtLet{x, v, act.step.wrap(s, e, goal, gs, bn, inner)})
+    case 1n+q ActOne{+e} <> r es:
       +ety0 = act.param.ty(hps, act.var.name(e))
       +pk = act.eq.pk(ety0)
       +ety = act.eq.pty(pk, ety0)
@@ -3008,8 +3112,10 @@ def act.rws(fuel: Nat, es: List<&2, T.Bt>, +ds: List<&2, List<&2, U32>>, +goal: 
       +bn = act.step.hole(k, ety)
       +en = act.var.name(e)
       +gs = Bool.pick(List<&2, T.BParam>, Bool.or(Nat.is_eq(k, 0n), Bool.not(Nat.is_eq(pk, 0n))), Nil{}, act.gen.ps(hps, en <> bn <> svs, [bn, act.step.ev(k, en)]))
-      act.step.wrap(s, e, goal, gs, bn, act.rws(p, t, ds, act.step.goal(s), act.gen.hps(hps, act.gen.names(gs), bn, act.step.fill(k, ety), act.step.ev(k, act.var.name.or(e))), svs, act.step.body(k, ety, body)))
-    case _ _:
+      act.step.wrap(s, e, goal, gs, bn, act.rws(q, r, es, ds, act.step.goal(s), act.gen.hps(hps, act.gen.names(gs), bn, act.step.fill(k, ety), act.step.ev(k, act.var.name.or(e))), svs, act.step.body(k, ety, body)))
+    case 1n+p Nil{} +e <> t:
+      act.rws(p, act.inj.or(act.inj.of(act.param.ty(hps, act.var.name(e)), e, hps), e), t, ds, goal, hps, svs, body)
+    case _ _ _:
       body
 
 # Indexed patterns: a constructor pattern of an indexed family names its
@@ -3373,7 +3479,7 @@ def act.case.body.or(m: Maybe<&2, T.Bt>, +eqs: List<&2, T.BParam>, +rs: List<&2,
     case Some{b}:
       b
     case None{}:
-      act.rws(64n, List.append(&2, T.Bt, rs, act.ps.vars(act.ixp.keep(eqs, goal))), ds, goal, List.append(&2, T.BParam, hps, eqs), svs, body)
+      act.rws(256n, Nil{}, List.append(&2, T.Bt, rs, act.ps.vars(act.ixp.keep(eqs, goal))), ds, goal, List.append(&2, T.BParam, hps, eqs), svs, body)
 
 def act.case.body(+eqs: List<&2, T.BParam>, rw: ActRw, +goal: T.Bt, +hps: List<&2, T.BParam>, +svs: List<&2, List<&2, U32>>, +body: T.Bt) -> T.Bt:
   match rw:
