@@ -2270,6 +2270,10 @@ type ActBind is Data:
   # a dotted field of a top constructor pattern, bound as x (act.ds); not
   # a binding of pos unless the case makes it one
   ActBDot{pos: Nat, x: List<&2, U32>}
+  # a dotted field whose dot is a term, no variable (`splitAt (suc m)
+  # (suc {.(m + n)} i)`): bound as x, its later fields cast to the term
+  # (act.sd)
+  ActBDotT{x: List<&2, U32>, t: A.Ag}
 
 # a translated pattern (or pattern spine), its bindings, and whether the
 # clause is left out: it holds an absurd pattern, or a cubical one (the
@@ -2405,30 +2409,31 @@ def act.pat(p: A.Ag, +n: Nat, +hints: List<&2, List<&2, U32>>, +pnames: List<&2,
     case _:
       ActPat{act.todo("a pattern not translated (a literal other than a Nat, a copattern)"), Nil{}, False{}}
 
-def act.pat.dot(t: A.Ag, +n: Nat, +hints: List<&2, List<&2, U32>>, +pnames: List<&2, List<&2, U32>>) -> ActPat:
+def act.pat.dot(t: A.Ag, +n: Nat, +hints: List<&2, List<&2, U32>>, +pnames: List<&2, List<&2, U32>>, +j: Nat) -> ActPat:
   match t:
     case A.AgVar{+ix, x, A.AgENil{}}:
       +pos = Nat.sub(Nat.sub(n, 1n), ix)
       +nm = List.append(&2, U32, act.pv.name(pos, hints, pnames), S.b("_dot"))
       ActPat{T.BtPv{T.BmLive{}, nm}, [ActBDot{pos, nm}], False{}}
-    case _:
-      ActPat{T.BtWild{}, Nil{}, False{}}
+    case t:
+      +nm = S.b("a2b_dt" ++ Nat.show(j))
+      ActPat{T.BtPv{T.BmLive{}, nm}, [ActBDotT{nm, t}], False{}}
 
 # a top constructor pattern's own arguments: a dotted variable is bound
 # (act.ds), the rest as act.pat
-def act.pat.subs(p: A.Ag, +n: Nat, +hints: List<&2, List<&2, U32>>, +pnames: List<&2, List<&2, U32>>, +env: ActEnv) -> ActPat:
+def act.pat.subs(p: A.Ag, +n: Nat, +hints: List<&2, List<&2, U32>>, +pnames: List<&2, List<&2, U32>>, +env: ActEnv, +j: Nat) -> ActPat:
   match p:
     case A.AgPArg{i, x, A.AgPDot{t}, rest}:
-      act.pat.cat(act.pat.dot(t, n, hints, pnames), act.pat.subs(rest, n, hints, pnames, env))
+      act.pat.cat(act.pat.dot(t, n, hints, pnames, j), act.pat.subs(rest, n, hints, pnames, env, 1n+j))
     case A.AgPArg{i, x, q, rest}:
-      act.pat.cat(act.pat(q, n, hints, pnames, env), act.pat.subs(rest, n, hints, pnames, env))
+      act.pat.cat(act.pat(q, n, hints, pnames, env), act.pat.subs(rest, n, hints, pnames, env, 1n+j))
     case p:
       act.pat(p, n, hints, pnames, env)
 
 def act.pat.top(p: A.Ag, +n: Nat, +hints: List<&2, List<&2, U32>>, +pnames: List<&2, List<&2, U32>>, +env: ActEnv) -> ActPat:
   match p:
     case A.AgPCon{+q, r, fo, ps}:
-      act.pat.con(act.sym(env, q), env, act.pat.subs(ps, n, hints, pnames, env))
+      act.pat.con(act.sym(env, q), env, act.pat.subs(ps, n, hints, pnames, env, 1n))
     case p:
       act.pat(p, n, hints, pnames, env)
 
@@ -2500,6 +2505,8 @@ def act.dd.ren.bs(bs: List<&2, ActBind>, +seen: List<&2, List<&2, U32>>, +j: Nat
       Nil{}
     case ActBDot{p, +x} <> t:
       ActBDot{p, act.dd.sfx(x, seen, j)} <> act.dd.ren.bs(t, seen, j)
+    case ActBDotT{+x, a} <> t:
+      ActBDotT{act.dd.sfx(x, seen, j), a} <> act.dd.ren.bs(t, seen, j)
     case b <> t:
       b <> act.dd.ren.bs(t, seen, j)
 
@@ -2508,6 +2515,8 @@ def act.dd.olds(bs: List<&2, ActBind>) -> List<&2, List<&2, U32>>:
     case Nil{}:
       Nil{}
     case ActBDot{p, x} <> t:
+      x <> act.dd.olds(t)
+    case ActBDotT{x, a} <> t:
       x <> act.dd.olds(t)
     case b <> t:
       act.dd.olds(t)
@@ -2539,6 +2548,8 @@ def act.bind.find(+pos: Nat, bs: List<&2, ActBind>) -> T.Bt:
     case ActBind{+p, t} <> rest:
       Bool.pick(T.Bt, Nat.is_eq(p, pos), t, act.bind.find(pos, rest))
     case ActBDot{p, x} <> rest:
+      act.bind.find(pos, rest)
+    case ActBDotT{x, a} <> rest:
       act.bind.find(pos, rest)
 
 # the body's context from the bindings: telescope position n-1 first
@@ -4294,12 +4305,16 @@ def act.ds.dot(+bs: List<&2, ActBind>, +dn: List<&2, U32>) -> Maybe<&2, Nat>:
       Bool.pick(Maybe<&2, Nat>, S.eq(x, dn), Some{p}, act.ds.dot(t, dn))
     case ActBind{p, v} <> t:
       act.ds.dot(t, dn)
+    case ActBDotT{x, a} <> t:
+      act.ds.dot(t, dn)
 
 def act.ds.count(+bs: List<&2, ActBind>, +dn: List<&2, U32>) -> Nat:
   match bs:
     case Nil{}:
       0n
     case ActBDot{p, +x} <> t:
+      Nat.add(Bool.pick(Nat, S.eq(x, dn), 1n, 0n), act.ds.count(t, dn))
+    case ActBDotT{+x, a} <> t:
       Nat.add(Bool.pick(Nat, S.eq(x, dn), 1n, 0n), act.ds.count(t, dn))
     case ActBind{p, v} <> t:
       act.ds.count(t, dn)
@@ -4516,6 +4531,8 @@ def act.ds.ndots(bs: List<&2, ActBind>) -> Nat:
       0n
     case ActBDot{p, x} <> t:
       1n+act.ds.ndots(t)
+    case ActBDotT{x, a} <> t:
+      1n+act.ds.ndots(t)
     case ActBind{p, v} <> t:
       act.ds.ndots(t)
 
@@ -4551,7 +4568,7 @@ def act.ds.wrap(ds: List<&2, ActDs>, +goal: T.Bt, body: T.Bt) -> T.Bt:
 # T[s := k], d, s, h, v) (a2b_cast: the rewrite of F(b) to F(a),
 # Agda2Bend.bend a2b.helpers).  A variable dotted once only.
 type ActSd is Data:
-  ActSd{d: List<&2, U32>, s: List<&2, U32>, h: T.Bt, vs: List<&2, List<&2, U32>>}
+  ActSd{d: List<&2, U32>, s: T.Bt, h: T.Bt, vs: List<&2, List<&2, U32>>}
 
 type ActSl is Data:
   ActSl{e: List<&2, U32>, i: T.Bt, k: Nat}
@@ -4654,7 +4671,7 @@ def act.sd.mk(m: Maybe<&2, T.Bt>, +d: List<&2, U32>, +s: List<&2, U32>, vs: List
     case None{}:
       Nil{}
     case Some{h}:
-      [ActSd{d, s, h, vs}]
+      [ActSd{d, T.BtVar{s}, h, vs}]
 
 def act.sd.one(m: Maybe<&2, ActDk>, +dn: List<&2, U32>, +xn: List<&2, U32>, +ixs: List<&2, T.Bt>, +svars: List<&2, T.Bt>, +q: T.Bt, +bs: List<&2, ActBind>, +pos: Nat, +hps: List<&2, T.BParam>, +all: T.Bt, +allx: List<&2, T.Bt>, later: List<&2, T.Bt>) -> List<&2, ActSd>:
   match m:
@@ -4672,29 +4689,175 @@ def act.sd.pv(m: Maybe<&2, Nat>, +dn: List<&2, U32>, +i: Nat, +es: List<&2, ActD
     case Some{+pos}:
       act.sd.one(act.ds.find(es, i), dn, xn, ixs, svars, q, bs, pos, hps, all, allx, later)
 
-def act.sd.fields(fs: List<&2, T.Bt>, +i: Nat, +es: List<&2, ActDe>, +xn: List<&2, U32>, +ixs: List<&2, T.Bt>, +svars: List<&2, T.Bt>, +q: T.Bt, +bs: List<&2, ActBind>, +hps: List<&2, T.BParam>, +all: T.Bt, +allx: List<&2, T.Bt>) -> List<&2, ActSd>:
+# Two Bend terms the same (a dead mark aside), a term's occurrence in
+# another, and its replacement there: act.sd's casts at a dotted term
+# (ActBDotT), whose motive abstracts the term as a variable's abstracts it
+def act.bt.eq(a: T.Bt, b: T.Bt) -> Bool:
+  match a b:
+    case T.BtDead{x} y:
+      act.bt.eq(x, y)
+    case x T.BtDead{y}:
+      act.bt.eq(x, y)
+    case T.BtVar{x} T.BtVar{y}:
+      S.eq(x, y)
+    case T.BtApp{f, x} T.BtApp{g, y}:
+      Bool.and(act.bt.eq(f, g), act.bt.eq(x, y))
+    case T.BtArgs{x, xs} T.BtArgs{y, ys}:
+      Bool.and(act.bt.eq(x, y), act.bt.eq(xs, ys))
+    case T.BtANil{} T.BtANil{}:
+      True{}
+    case T.BtTplArg{x} T.BtTplArg{y}:
+      act.bt.eq(x, y)
+    case T.BtCon{c, x} T.BtCon{e, y}:
+      Bool.and(S.eq(c, e), act.bt.eq(x, y))
+    case T.BtTyApp{c, x} T.BtTyApp{e, y}:
+      Bool.and(S.eq(c, e), act.bt.eq(x, y))
+    case T.BtSucc{x} T.BtSucc{y}:
+      act.bt.eq(x, y)
+    case T.BtNat{x} T.BtNat{y}:
+      S.eq(x, y)
+    case T.BtLam{m, x, b} T.BtLam{n, y, c}:
+      Bool.and(S.eq(x, y), act.bt.eq(b, c))
+    case _ _:
+      False{}
+
+def act.bt.has(t: T.Bt, +s: T.Bt) -> Bool:
+  match t:
+    case T.BtApp{+f, +a}:
+      Bool.or(act.bt.eq(T.BtApp{f, a}, s), Bool.or(act.bt.has(f, s), act.bt.has(a, s)))
+    case T.BtArgs{+a, +rest}:
+      Bool.or(act.bt.has(a, s), act.bt.has(rest, s))
+    case T.BtTplArg{+a}:
+      Bool.or(act.bt.eq(T.BtTplArg{a}, s), act.bt.has(a, s))
+    case T.BtCon{+c, +a}:
+      Bool.or(act.bt.eq(T.BtCon{c, a}, s), act.bt.has(a, s))
+    case T.BtTyApp{+c, +a}:
+      Bool.or(act.bt.eq(T.BtTyApp{c, a}, s), act.bt.has(a, s))
+    case T.BtSucc{+a}:
+      Bool.or(act.bt.eq(T.BtSucc{a}, s), act.bt.has(a, s))
+    case T.BtDead{a}:
+      act.bt.has(a, s)
+    case T.BtEq{ty, a, b}:
+      Bool.or(act.bt.has(ty, s), Bool.or(act.bt.has(a, s), act.bt.has(b, s)))
+    case T.BtAnn{a, ty}:
+      Bool.or(act.bt.has(a, s), act.bt.has(ty, s))
+    case T.BtLam{m, x, b}:
+      act.bt.has(b, s)
+    case T.BtPi{m, x, d, a, b}:
+      Bool.or(act.bt.has(a, s), act.bt.has(b, s))
+    case t:
+      act.bt.eq(t, s)
+
+def act.bt.repl(t: T.Bt, +s: T.Bt, +v: T.Bt) -> T.Bt:
+  match t:
+    case T.BtApp{+f, +a}:
+      Bool.pick(T.Bt, act.bt.eq(T.BtApp{f, a}, s), v, T.BtApp{act.bt.repl(f, s, v), act.bt.repl(a, s, v)})
+    case T.BtArgs{a, rest}:
+      T.BtArgs{act.bt.repl(a, s, v), act.bt.repl(rest, s, v)}
+    case T.BtTplArg{+a}:
+      Bool.pick(T.Bt, act.bt.eq(T.BtTplArg{a}, s), v, T.BtTplArg{act.bt.repl(a, s, v)})
+    case T.BtCon{+c, +a}:
+      Bool.pick(T.Bt, act.bt.eq(T.BtCon{c, a}, s), v, T.BtCon{c, act.bt.repl(a, s, v)})
+    case T.BtTyApp{+c, +a}:
+      Bool.pick(T.Bt, act.bt.eq(T.BtTyApp{c, a}, s), v, T.BtTyApp{c, act.bt.repl(a, s, v)})
+    case T.BtSucc{+a}:
+      Bool.pick(T.Bt, act.bt.eq(T.BtSucc{a}, s), v, T.BtSucc{act.bt.repl(a, s, v)})
+    case T.BtDead{a}:
+      T.BtDead{act.bt.repl(a, s, v)}
+    case T.BtEq{ty, a, b}:
+      T.BtEq{act.bt.repl(ty, s, v), act.bt.repl(a, s, v), act.bt.repl(b, s, v)}
+    case T.BtAnn{a, ty}:
+      T.BtAnn{act.bt.repl(a, s, v), act.bt.repl(ty, s, v)}
+    case T.BtLam{m, x, b}:
+      T.BtLam{m, x, act.bt.repl(b, s, v)}
+    case T.BtPi{m, x, d, a, b}:
+      T.BtPi{m, x, d, act.bt.repl(a, s, v), act.bt.repl(b, s, v)}
+    case +t:
+      Bool.pick(T.Bt, act.bt.eq(t, s), v, t)
+
+# ty with the dotted field's target s (a variable, or a dotted term) read as v
+def act.sd.abst(ty: T.Bt, +s: T.Bt, +v: T.Bt) -> T.Bt:
+  match s:
+    case T.BtVar{x}:
+      T.tba.subst(ty, x, v)
+    case s:
+      act.bt.repl(ty, s, v)
+
+def act.sd.occ(+s: T.Bt, +t: T.Bt) -> Bool:
+  match s:
+    case T.BtVar{x}:
+      act.occurs(x, t)
+    case s:
+      act.bt.has(t, s)
+
+# a dotted term's field and the term, in Bend at the clause's context
+type ActDt is Data:
+  ActDt{x: List<&2, U32>, t: T.Bt}
+
+def act.dt.all(bs: List<&2, ActBind>, +ctx: List<&2, T.Bt>, +env: ActEnv) -> List<&2, ActDt>:
+  match bs:
+    case Nil{}:
+      Nil{}
+    case ActBDotT{x, a} <> t:
+      ActDt{x, act.t(act.inline(100000n, a, env), ctx, env)} <> act.dt.all(t, ctx, env)
+    case b <> t:
+      act.dt.all(t, ctx, env)
+
+def act.dt.find(dts: List<&2, ActDt>, +nm: List<&2, U32>) -> Maybe<&2, T.Bt>:
+  match dts:
+    case Nil{}:
+      None{}
+    case ActDt{+x, t} <> r:
+      Bool.pick(Maybe<&2, T.Bt>, S.eq(x, nm), Some{t}, act.dt.find(r, nm))
+
+# {d == tt} from e : {suc^k(d) == I}, I suc^k(tt) as Bend computes it
+def act.sd.injt(+k: Nat, +d: List<&2, U32>, +tt: T.Bt, e: T.Bt) -> T.Bt:
+  act.bt.app("Equal.cong", [act.sd.nat(), act.sd.nat(), T.BtDead{T.BtLam{T.BmLive{}, S.b("a2b_y"), act.bt.preds(k, T.BtVar{S.b("a2b_y")})}}, T.BtDead{act.bt.sucs(k, T.BtVar{d})}, T.BtDead{act.bt.sucs(k, tt)}, e])
+
+# A dotted term (`splitAt (suc m) (suc {.(m + n)} i)`): the field d is
+# bound, h : {d == tt} by suc's injectivity from its own index equation
+# {I == suc^k(d)} (I, the parameter's index at the patterns, computing to
+# suc^k(tt): (suc m) + n is suc (m + n)), and the later fields whose
+# telescope type has tt are cast to it, as at a dotted variable
+# (2026-10-30: Fin.splitAt, List.lookup, Vec.splitAt; Fin<_> observed).
+def act.sd.onet(m: Maybe<&2, ActDk>, +dn: List<&2, U32>, +xn: List<&2, U32>, +ixs: List<&2, T.Bt>, +svars: List<&2, T.Bt>, +q: T.Bt, +tt: T.Bt, later: List<&2, T.Bt>) -> List<&2, ActSd>:
+  match m:
+    case None{}:
+      Nil{}
+    case Some{ActDk{+j, +o, +k}}:
+      +i = act.abs.nplus(act.undead(act.goal(svars, q, act.ds.nth(ixs, o))))
+      [ActSd{dn, tt, act.sd.injt(k, dn, tt, act.sd.sym(i, act.bt.sucs(k, T.BtVar{dn}), T.BtVar{List.append(&2, U32, act.at(xn, j), S.b("_eq"))})), act.sd.vs(later)}]
+
+def act.sd.pvt(m: Maybe<&2, T.Bt>, +dn: List<&2, U32>, +i: Nat, +es: List<&2, ActDe>, +xn: List<&2, U32>, +ixs: List<&2, T.Bt>, +svars: List<&2, T.Bt>, +q: T.Bt, later: List<&2, T.Bt>) -> List<&2, ActSd>:
+  match m:
+    case None{}:
+      Nil{}
+    case Some{+tt}:
+      act.sd.onet(act.ds.find(es, i), dn, xn, ixs, svars, q, tt, later)
+
+def act.sd.fields(fs: List<&2, T.Bt>, +i: Nat, +es: List<&2, ActDe>, +xn: List<&2, U32>, +ixs: List<&2, T.Bt>, +svars: List<&2, T.Bt>, +q: T.Bt, +bs: List<&2, ActBind>, +hps: List<&2, T.BParam>, +all: T.Bt, +allx: List<&2, T.Bt>, +dts: List<&2, ActDt>) -> List<&2, ActSd>:
   match fs:
     case Nil{}:
       Nil{}
     case T.BtPv{m, +nm} <> +t:
-      List.append(&2, ActSd, act.sd.pv(act.ds.dot(bs, nm), nm, i, es, xn, ixs, svars, q, bs, hps, all, allx, t), act.sd.fields(t, 1n+i, es, xn, ixs, svars, q, bs, hps, all, allx))
+      List.append(&2, ActSd, act.sd.pv(act.ds.dot(bs, nm), nm, i, es, xn, ixs, svars, q, bs, hps, all, allx, t), List.append(&2, ActSd, act.sd.pvt(act.dt.find(dts, nm), nm, i, es, xn, ixs, svars, q, t), act.sd.fields(t, 1n+i, es, xn, ixs, svars, q, bs, hps, all, allx, dts)))
     case h <> t:
-      act.sd.fields(t, 1n+i, es, xn, ixs, svars, q, bs, hps, all, allx)
+      act.sd.fields(t, 1n+i, es, xn, ixs, svars, q, bs, hps, all, allx, dts)
 
-def act.sd.top(p: T.Bt, +x: T.Bt, +svars: List<&2, T.Bt>, +q: T.Bt, +bs: List<&2, ActBind>, +hps: List<&2, T.BParam>, +all: T.Bt, +allx: List<&2, T.Bt>) -> List<&2, ActSd>:
+def act.sd.top(p: T.Bt, +x: T.Bt, +svars: List<&2, T.Bt>, +q: T.Bt, +bs: List<&2, ActBind>, +hps: List<&2, T.BParam>, +all: T.Bt, +allx: List<&2, T.Bt>, +dts: List<&2, ActDt>) -> List<&2, ActSd>:
   match p:
     case T.BtCon{c, +args}:
       +fs = act.spine.list(args)
       +es = act.ds.eqs(fs, 1n, 0n)
       +xn = act.var.name(x)
-      act.sd.fields(fs, 1n, es, xn, act.list.last(List.length(&2, ActDe, es), act.ty.args(act.param.ty(hps, xn))), svars, q, bs, hps, all, allx)
+      act.sd.fields(fs, 1n, es, xn, act.list.last(List.length(&2, ActDe, es), act.ty.args(act.param.ty(hps, xn))), svars, q, bs, hps, all, allx, dts)
     case _:
       Nil{}
 
-def act.sd.tops(ps: T.Bt, xs: List<&2, T.Bt>, +svars: List<&2, T.Bt>, +q: T.Bt, +bs: List<&2, ActBind>, +hps: List<&2, T.BParam>, +all: T.Bt, +allx: List<&2, T.Bt>) -> List<&2, ActSd>:
+def act.sd.tops(ps: T.Bt, xs: List<&2, T.Bt>, +svars: List<&2, T.Bt>, +q: T.Bt, +bs: List<&2, ActBind>, +hps: List<&2, T.BParam>, +all: T.Bt, +allx: List<&2, T.Bt>, +dts: List<&2, ActDt>) -> List<&2, ActSd>:
   match ps xs:
     case T.BtArgs{p, rest} +x <> xt:
-      List.append(&2, ActSd, act.sd.top(p, x, svars, q, bs, hps, all, allx), act.sd.tops(rest, xt, svars, q, bs, hps, all, allx))
+      List.append(&2, ActSd, act.sd.top(p, x, svars, q, bs, hps, all, allx, dts), act.sd.tops(rest, xt, svars, q, bs, hps, all, allx, dts))
     case _ _:
       Nil{}
 
@@ -4740,11 +4903,11 @@ def act.sd.motive(later: List<&2, ActSd>, +ty: T.Bt, +v: List<&2, U32>) -> T.Bt:
     case Nil{}:
       ty
     case ActSd{+d, +s, h, +vs} <> t:
-      act.sd.motive(t, Bool.pick(T.Bt, act.used(v, vs), T.tba.subst(ty, s, T.BtVar{d}), ty), v)
+      act.sd.motive(t, Bool.pick(T.Bt, act.used(v, vs), act.sd.abst(ty, s, T.BtVar{d}), ty), v)
 
 # whether a cast of v (its telescope type ty) at the dotted field happens
-def act.sd.cast.at(+v: List<&2, U32>, +ty: T.Bt, +vs: List<&2, List<&2, U32>>, +s: List<&2, U32>, later: List<&2, ActSd>) -> Bool:
-  Bool.and(act.used(v, vs), act.occurs(s, act.sd.motive(later, ty, v)))
+def act.sd.cast.at(+v: List<&2, U32>, +ty: T.Bt, +vs: List<&2, List<&2, U32>>, +s: T.Bt, later: List<&2, ActSd>) -> Bool:
+  Bool.and(act.used(v, vs), act.sd.occ(s, act.sd.motive(later, ty, v)))
 
 def act.sd.ncast(sds: List<&2, ActSd>, +v: List<&2, U32>, +ty: T.Bt) -> Nat:
   match sds:
@@ -4764,7 +4927,7 @@ def act.sd.casts(sds: List<&2, ActSd>, +v: List<&2, U32>, +cur: List<&2, U32>, +
     case ActSd{+d, +s, h, +vs} <> +t:
       +mty = act.sd.motive(t, ty, v)
       +out = Bool.pick(List<&2, U32>, Nat.is_eq(act.sd.ncast(t, v, ty), 0n), v, List.append(&2, U32, cur, S.b("_c")))
-      Bool.pick(T.Bt, act.sd.cast.at(v, ty, vs, s, t), T.BtLet{out, act.bt.app("a2b_cast", [act.sd.nat(), T.BtDead{T.BtLam{T.BmLive{}, S.b("a2b_k"), T.tba.subst(mty, s, T.BtVar{S.b("a2b_k")})}}, T.BtDead{T.BtVar{d}}, T.BtDead{T.BtVar{s}}, T.BtVar{act.sd.hn(d)}, T.BtVar{cur}]), act.sd.casts(t, v, out, ty, body)}, act.sd.casts(t, v, cur, ty, body))
+      Bool.pick(T.Bt, act.sd.cast.at(v, ty, vs, s, t), T.BtLet{out, act.bt.app("a2b_cast", [act.sd.nat(), T.BtDead{T.BtLam{T.BmLive{}, S.b("a2b_k"), act.sd.abst(mty, s, T.BtVar{S.b("a2b_k")})}}, T.BtDead{T.BtVar{d}}, T.BtDead{s}, T.BtVar{act.sd.hn(d)}, T.BtVar{cur}]), act.sd.casts(t, v, out, ty, body)}, act.sd.casts(t, v, cur, ty, body))
 
 # the fields a cast retypes, with their telescope types
 type ActCv is Data:
@@ -5375,6 +5538,8 @@ def act.cq.pos(bs: List<&2, ActBind>, +x: List<&2, U32>) -> Maybe<&2, Nat>:
       Bool.pick(Maybe<&2, Nat>, act.cq.isv(t, x), Some{p}, act.cq.pos(r, x))
     case ActBDot{p, y} <> r:
       act.cq.pos(r, x)
+    case ActBDotT{y, a} <> r:
+      act.cq.pos(r, x)
 
 def act.cq.tp3(m: Maybe<&2, Nat>, +x: List<&2, U32>, r: ActTr) -> List<&2, ActCqt>:
   match m r:
@@ -5479,7 +5644,7 @@ def act.case.of(a: ActPat, +n: Nat, body: A.Ag, +env: ActEnv, rest: T.Bt, +rw: A
       +dn = act.nrf.dnames.if(nr, q0)
       +qw = act.ds.undot(q0, dn, bs)
       +eqs0 = List.append(&2, T.BParam, act.eq.tops(qw, svars, hps, dots, act.ctx.of(n, bs), env), act.nrf.eqs.if(nr, qw, svars, uhps))
-      +sd = act.sd.uniq(Bool.pick(List<&2, ActSd>, nr, Nil{}, act.sd.tops(p, svars, svars, qw, bs, uhps, p, svars)), bs)
+      +sd = act.sd.uniq(Bool.pick(List<&2, ActSd>, nr, Nil{}, act.sd.tops(p, svars, svars, qw, bs, uhps, p, svars, act.dt.all(bs, act.ctx.of(n, bs), env))), bs)
       +cq0 = act.cq.tops(p, svars, bs, hps, act.names(svars), env, svars, qw)
       +cqon = Bool.and(Bool.and(act.rw.none(rw), Bool.not(nr)), Bool.and(act.cq.ok(cq0), act.cq.nilsd(sd)))
       +cq = Bool.pick(ActCq, cqon, cq0, act.cq.none())
@@ -7159,6 +7324,8 @@ def act.nu.bound(+pos: Nat, bs: List<&2, ActBind>) -> Bool:
     case ActBind{p, t} <> rest:
       Bool.or(Nat.is_eq(p, pos), act.nu.bound(pos, rest))
     case ActBDot{p, x} <> rest:
+      act.nu.bound(pos, rest)
+    case ActBDotT{x, a} <> rest:
       act.nu.bound(pos, rest)
     case Nil{}:
       False{}
