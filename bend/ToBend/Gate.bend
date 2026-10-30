@@ -355,12 +355,28 @@ def tgt.calls.base(+b: List<&2, U32>, rs: List<&2, List<&2, U32>>) -> Bool:
     case +r <> t:
       Bool.or(Bool.or(S.eq(r, b), S.suffix(r, 46 <> b)), tgt.calls.base(b, t))
 
+# A name's last part (after its last dot), for when no item calls the
+# instance's name itself: Bend may name the instance by its module
+# (Setoid's anon.comm_and_distr_l_Arr_distr_r) where the items call the
+# template that applies it (Propositional's), and then the marked line,
+# the other module's, blamed whatever item of this one sat at that line
+# (Data.Nat.Properties' ≤-trans and 75 items with it, 2026-10-30).
+def tgt.lastc(xs: List<&2, U32>, acc: List<&2, U32>) -> List<&2, U32>:
+  match xs:
+    case Nil{}:
+      List.reverse(&2, U32, acc)
+    case +h <> t:
+      tgt.lastc(t, Bool.pick(List<&2, U32>, U32.is_eq(h, 46), Nil{}, h <> acc))
+
+def tgt.calls.core(+b: List<&2, U32>, +rs: List<&2, List<&2, U32>>) -> Bool:
+  Bool.or(tgt.calls.base(b, rs), tgt.calls.base(tgt.lastc(b, Nil{}), rs))
+
 def tgt.first.caller(+b: List<&2, U32>, its: List<&2, T.BItem>) -> List<&2, U32>:
   match its:
     case Nil{}:
       Nil{}
     case +it <> t:
-      Bool.pick(List<&2, U32>, tgt.calls.base(b, tgt.refs(it)), tgt.name(it), tgt.first.caller(b, t))
+      Bool.pick(List<&2, U32>, tgt.calls.core(b, tgt.refs(it)), tgt.name(it), tgt.first.caller(b, t))
 
 def tgt.blame.or(+c: List<&2, U32>, +its: List<&2, T.BItem>, +start: Nat, +l: Nat) -> List<&2, U32>:
   Bool.pick(List<&2, U32>, S.eq(c, Nil{}), tgt.at.line(its, start, l), c)
