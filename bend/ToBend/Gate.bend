@@ -409,12 +409,19 @@ def tgt.cut(+xs: List<&2, U32>, +stop: List<&2, U32>) -> List<&2, U32>:
 def tgt.var.of(+w: List<&2, U32>) -> List<&2, U32>:
   S.strip(tgt.cut(S.strip(w, S.b("expected : ")), S.b(" observed")), S.b("-"))
 
+# a family of Data expected where one of Kind(q) is passed (`A -> A -> Data`
+# against `A -> A -> Kind(l_2)`: NonStrictToStrict's with-366 passing its le
+# to with-398, whose l_2 the gate made &2): the quantity repair (4) too
+# (2026-10-30)
+def tgt.data.fam(+w: List<&2, U32>) -> Bool:
+  Bool.and(S.infix(w, S.b("-> Data observed : ")), S.infix(w, S.b("-> Kind(")))
+
 # 1: a use twice, 2: an erased binder used live, 3: a Type where Data is
 # expected (the marked span a type parameter), 4: &2 expected, 5: a Type
 # where a Kind(q) is expected, 6: &1 or Type expected (a callee
 # specialised to &1), 0: none of these
 def tgt.repair.kind(+w: List<&2, U32>) -> Nat:
-  Bool.pick(Nat, S.infix(w, S.b("(consumed more than once)")), 1n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : -")), S.infix(w, S.b("observed : "))), 2n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : Data")), Bool.or(S.infix(w, S.b("observed : Type")), S.infix(w, S.b("observed : Kind(")))), 3n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : Kind(")), S.infix(w, S.b("observed : Type"))), 5n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : ")), S.infix(w, S.b("&2"))), 4n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : ")), Bool.or(S.infix(w, S.b("&1")), S.infix(w, S.b("Type")))), 6n, 0n))))))
+  Bool.pick(Nat, S.infix(w, S.b("(consumed more than once)")), 1n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : -")), S.infix(w, S.b("observed : "))), 2n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : Data")), Bool.or(S.infix(w, S.b("observed : Type")), S.infix(w, S.b("observed : Kind(")))), 3n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : Kind(")), S.infix(w, S.b("observed : Type"))), 5n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : ")), Bool.or(S.infix(w, S.b("&2")), tgt.data.fam(w))), 4n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : ")), Bool.or(S.infix(w, S.b("&1")), S.infix(w, S.b("Type")))), 6n, 0n))))))
 
 def tgt.find(its: List<&2, T.BItem>, +n: List<&2, U32>) -> Maybe<&2, T.BItem>:
   match its:
