@@ -3617,13 +3617,63 @@ def act.ag.closed(t: A.Ag) -> Bool:
     case _:
       False{}
 
+# A matched clause's pattern variables, each with its argument (de Bruijn
+# index, term), so its body can be read at them (`suc n < suc m = n < m`
+# at 1 1 is 0 < 0)
+type ActEvB is Data:
+  ActEvB{ix: Nat, t: A.Ag}
+
+def act.ev.binds(fuel: Nat, xs: List<&2, ActPt>, acc: List<&2, ActEvB>) -> List<&2, ActEvB>:
+  match fuel xs:
+    case 1n+f ActPt{A.AgPVar{x, ix, o}, t} <> rest:
+      act.ev.binds(f, rest, ActEvB{ix, t} <> acc)
+    case 1n+f ActPt{A.AgPCon{q, r, fo, sub}, A.AgCon{q2, o, es2}} <> rest:
+      act.ev.binds(f, act.ev.zip(sub, es2, rest), acc)
+    case 1n+f ActPt{A.AgPCon{+q, r, fo, sub}, A.AgLit{A.AgLNat{+s}}} <> rest:
+      act.ev.binds(f, act.ev.litsub(act.builtin(act.qs(q)), sub, s, rest), acc)
+    case 1n+f x <> rest:
+      act.ev.binds(f, rest, acc)
+    case _ _:
+      acc
+
+def act.ev.find.or(hit: Bool, t: A.Ag, d: A.Ag) -> A.Ag:
+  match hit:
+    case True{}:
+      t
+    case False{}:
+      d
+
+def act.ev.find(bs: List<&2, ActEvB>, +i: Nat, +d: A.Ag) -> A.Ag:
+  match bs:
+    case ActEvB{+ix, t} <> rest:
+      act.ev.find.or(Nat.is_eq(ix, i), t, act.ev.find(rest, i, d))
+    case Nil{}:
+      d
+
+# a body with its pattern variables replaced by their arguments
+def act.ev.sub(t: A.Ag, +bs: List<&2, ActEvB>) -> A.Ag:
+  match t:
+    case A.AgVar{+i, +x, A.AgENil{}}:
+      act.ev.find(bs, i, A.AgVar{i, x, A.AgENil{}})
+    case A.AgDef{q, es}:
+      A.AgDef{q, act.ev.sub(es, bs)}
+    case A.AgCon{q, o, es}:
+      A.AgCon{q, o, act.ev.sub(es, bs)}
+    case A.AgEApp{i, a, rest}:
+      A.AgEApp{i, act.ev.sub(a, bs), act.ev.sub(rest, bs)}
+    case A.AgEl{s, a}:
+      A.AgEl{s, act.ev.sub(a, bs)}
+    case t:
+      t
+
 def act.ev.pick(hit: Bool, +body: A.Ag, alt: Maybe<&2, A.Ag>) -> Maybe<&2, A.Ag>:
   Bool.pick(Maybe<&2, A.Ag>, Bool.and(hit, act.ag.closed(body)), Some{body}, alt)
 
 def act.ev.cls(cls: A.Ag, +es: A.Ag) -> Maybe<&2, A.Ag>:
   match cls:
     case A.AgCl{tel, ps, body, ty, ca, rest}:
-      act.ev.pick(act.ev.pairs(64n, act.ev.zip(ps, es, Nil{})), body, act.ev.cls(rest, es))
+      +xs = act.ev.zip(ps, es, Nil{})
+      act.ev.pick(act.ev.pairs(64n, xs), act.ev.sub(body, act.ev.binds(64n, xs, Nil{})), act.ev.cls(rest, es))
     case _:
       None{}
 
@@ -3634,6 +3684,14 @@ def act.ev.or(m: Maybe<&2, A.Ag>, d: A.Ag) -> A.Ag:
     case None{}:
       d
 
+# no clause matched (AgNone): the call as it was
+def act.ev.fill(t: A.Ag, d: A.Ag) -> A.Ag:
+  match t:
+    case A.AgNone{}:
+      d
+    case t:
+      t
+
 # The arguments evaluated, nested (fuel levels): each inlined, and one
 # headed by a type- or Bool-valued definition by clauses evaluated at its
 # own evaluated arguments (NonZero 0's field `T (not (0 ≡ᵇ 0))`: _==_ at
@@ -3642,8 +3700,8 @@ def act.ev.go(fuel: Nat, spine: Bool, t: A.Ag, +env: ActEnv) -> A.Ag:
   match fuel spine t:
     case 1n+(+f) True{} A.AgEApp{i, a, rest}:
       A.AgEApp{i, act.ev.go(f, False{}, act.inline(64n, a, env), env), act.ev.go(f, True{}, rest, env)}
-    case 1n+f False{} A.AgDef{+q, +es}:
-      act.ev.or(act.ev.cls(act.tcl.cls(env, q), act.ev.go(f, True{}, es, env)), A.AgDef{q, es})
+    case 1n+(+f) False{} A.AgDef{+q, +es}:
+      act.ev.fill(act.ev.go(f, False{}, act.ev.or(act.ev.cls(act.tcl.cls(env, q), act.ev.go(f, True{}, es, env)), A.AgNone{}), env), A.AgDef{q, es})
     case _ _ t:
       t
 
