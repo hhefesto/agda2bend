@@ -1327,9 +1327,17 @@ def tcp.raise.rw(e: T.Bt, p: T.Bt, r: TcpR) -> TcpR:
     case TcpR{b, ch}:
       TcpR{T.BtRw{e, p, b}, ch}
 
-# the lambdas and pattern variables named v in t given +
+def tcp.raise.succ(r: TcpR) -> TcpR:
+  match r:
+    case TcpR{a, ch}:
+      TcpR{T.BtSucc{a}, ch}
+
+# the lambdas and pattern variables named v in t given + (a Nat pattern's
+# too: compare's `1n+n_1`, once with_484 takes n live)
 def tcp.raise.t(t: T.Bt, +v: List<&2, U32>) -> TcpR:
   match t:
+    case T.BtSucc{a}:
+      tcp.raise.succ(tcp.raise.t(a, v))
     case T.BtRw{e, p, b}:
       tcp.raise.rw(e, p, tcp.raise.t(b, v))
     case T.BtLam{+m, +x, b}:

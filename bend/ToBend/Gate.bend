@@ -488,10 +488,31 @@ def tgt.is.alt(m: Maybe<&2, T.BItem>) -> Bool:
     case _:
       False{}
 
+def tgt.requal.put(uses: Bool, it: T.BItem, t: List<&2, T.BItem>, +qe: QF.TqEnv) -> List<&2, T.BItem>:
+  match uses:
+    case True{}:
+      QF.tqf.item(it, qe) <> t
+    case False{}:
+      it <> t
+
+# the items that call n read again by Qfix (its signature changed)
+def tgt.requal(its: List<&2, T.BItem>, +n: List<&2, U32>, +qe: QF.TqEnv) -> List<&2, T.BItem>:
+  match its:
+    case +it <> t:
+      tgt.requal.put(tgt.mem(n, tgt.refs(it)), it, tgt.requal(t, n, qe), qe)
+    case Nil{}:
+      Nil{}
+
+# the alternative in the def's place, read by Qfix with its own signature,
+# and the items that call it read again with that signature
+def tgt.alt.in(+blame: List<&2, U32>, +its: List<&2, T.BItem>, +alt: T.BItem, +qe: QF.TqEnv) -> List<&2, T.BItem>:
+  +qe2 = QF.tqf.env.put(blame, QF.tqf.sig.of(alt), qe)
+  tgt.requal(tgt.replace(its, blame, QF.tqf.item(alt, qe2)), blame, qe2)
+
 def tgt.alt.use(m: Maybe<&2, T.BItem>, +blame: List<&2, U32>, +why: List<&2, U32>, +its: List<&2, T.BItem>, ds: List<&2, TgtDrop>, +qe: QF.TqEnv) -> TgtSt:
   match m:
     case Some{alt}:
-      TgtSt{tgt.replace(its, blame, QF.tqf.item(alt, qe)), ds}
+      TgtSt{tgt.alt.in(blame, its, alt, qe), ds}
     case None{}:
       tgt.after.fail(blame, why, TgtSt{its, ds})
 
@@ -505,10 +526,16 @@ def tgt.alt.try(cur: Bool, +blame: List<&2, U32>, +why: List<&2, U32>, +its: Lis
 def tgt.alt.or.fail(+blame: List<&2, U32>, +why: List<&2, U32>, +its: List<&2, T.BItem>, ds: List<&2, TgtDrop>, +qe: QF.TqEnv) -> TgtSt:
   tgt.alt.try(tgt.is.alt(tgt.find(its, blame)), blame, why, its, ds, qe)
 
+# a repaired def in its place, and the items that call it read again by
+# Qfix with its new signature (a binder it raised to live or copied changes
+# what its callers pass: compare's with_484(m_0, n_1, compare(m_0, n_1)))
+def tgt.fixed(+blame: List<&2, U32>, +its: List<&2, T.BItem>, +new: T.BItem, +qe: QF.TqEnv) -> List<&2, T.BItem>:
+  tgt.requal(tgt.replace(its, blame, new), blame, QF.tqf.env.put(blame, QF.tqf.sig.of(new), qe))
+
 def tgt.repaired(r: Maybe<&2, T.BItem>, +blame: List<&2, U32>, +why: List<&2, U32>, +its: List<&2, T.BItem>, ds: List<&2, TgtDrop>, +qe: QF.TqEnv) -> TgtSt:
   match r:
     case Some{new}:
-      TgtSt{tgt.replace(its, blame, QF.tqf.item(new, qe)), ds}
+      TgtSt{tgt.fixed(blame, its, QF.tqf.item(new, qe), qe), ds}
     case None{}:
       tgt.alt.or.fail(blame, why, its, ds, qe)
 
@@ -579,6 +606,29 @@ def tgt.keep(on: Bool, +path: String, +n: Nat, +text: List<&2, U32>, +out: List<
     case False{}:
       IO.pure(Unit, Unit{})
 
+def tgt.qe.alt.put(on: Bool, +n: List<&2, U32>, it: T.BItem, qe: QF.TqEnv) -> QF.TqEnv:
+  match on:
+    case True{}:
+      QF.tqf.env.put(n, QF.tqf.sig.of(it), qe)
+    case False{}:
+      qe
+
+# qe with each def in place under its signature as it is now (an
+# alternative in a def's place, a binder a repair raised)
+def tgt.qe.alt(it: T.BItem, +qe: QF.TqEnv) -> QF.TqEnv:
+  match it:
+    case T.BiDef{+n, ps, ret, body, doc}:
+      tgt.qe.alt.put(True{}, n, T.BiDef{n, ps, ret, body, doc}, qe)
+    case _:
+      qe
+
+def tgt.qe.alts(its: List<&2, T.BItem>, +qe: QF.TqEnv) -> QF.TqEnv:
+  match its:
+    case it <> t:
+      tgt.qe.alts(t, tgt.qe.alt(it, qe))
+    case Nil{}:
+      qe
+
 def tgt.round(+bend: String, +secs: U32, +path: String, +head: List<&2, List<&2, U32>>, +ims: List<&2, T.BImport>, +checks: Nat, st: TgtSt, +qe: QF.TqEnv) -> IO(TgtRun):
   match st:
     case TgtSt{+its, ds}:
@@ -588,7 +638,7 @@ def tgt.round(+bend: String, +secs: U32, +path: String, +head: List<&2, List<&2,
         +o : S.Out <- S.run(S.parent(path), Nil{}, secs, bend, [S.base(path), "--check-only"], Nil{})
         +keep : String <- S.env("A2B_GATE_ROUNDS", "")
         tgt.keep(Bool.not(S.eq(S.b(keep), Nil{})), path, checks, text, List.take(&2, U32, S.Out.text(o), 600n))
-        return tgt.round.of(tgt.verdict(S.Out.text(o)), head, ims, 1n+checks, TgtSt{its, ds}, qe)
+        return tgt.round.of(tgt.verdict(S.Out.text(o)), head, ims, 1n+checks, TgtSt{its, ds}, tgt.qe.alts(its, qe))
 
 def tgt.loop(fuel: Nat, +bend: String, +secs: U32, +path: String, +head: List<&2, List<&2, U32>>, +ims: List<&2, T.BImport>, +qe: QF.TqEnv, r: TgtRun) -> IO(TgtRun):
   match fuel r:
