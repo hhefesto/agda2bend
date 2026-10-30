@@ -1531,8 +1531,55 @@ def act.copy.is(c: Maybe<&2, ActCopy>) -> Bool:
     case None{}:
       False{}
 
+# Agda.Builtin.Nat's _-_ at suc^j x and a literal k <= j: suc^(j-k) x, as
+# Bend computes it.  Agda leaves `suc n ∸ 1` (cong pred's implicit) in a
+# self-call, which Bend's termination check does not see shrink
+# (Data.Vec.Base.cast: "a decreasing self-call", 52 dependents in corpus2v).
+def act.monus.is(+m: List<&2, U32>, +n: List<&2, U32>) -> Bool:
+  Bool.and(S.eq(m, S.b("Agda.Builtin.Nat")), S.eq(n, S.b("anon")))
+
+def act.monus.lit(+s: List<&2, U32>) -> Maybe<&2, Nat>:
+  Bool.pick(Maybe<&2, Nat>, S.eq(s, S.b("0")), Some{0n}, Bool.pick(Maybe<&2, Nat>, S.eq(s, S.b("1")), Some{1n}, Bool.pick(Maybe<&2, Nat>, S.eq(s, S.b("2")), Some{2n}, Bool.pick(Maybe<&2, Nat>, S.eq(s, S.b("3")), Some{3n}, None{}))))
+
+def act.monus.k(k: Nat, a: T.Bt) -> Maybe<&2, T.Bt>:
+  match k a:
+    case 0n a:
+      Some{a}
+    case 1n+p T.BtSucc{x}:
+      act.monus.k(p, x)
+    case _ _:
+      None{}
+
+def act.monus.km(m: Maybe<&2, Nat>, a: T.Bt) -> Maybe<&2, T.Bt>:
+  match m:
+    case Some{k}:
+      act.monus.k(k, a)
+    case None{}:
+      None{}
+
+def act.monus.res(m: Maybe<&2, T.Bt>, other: T.Bt) -> T.Bt:
+  match m:
+    case Some{t}:
+      t
+    case None{}:
+      other
+
+def act.monus.args(args: T.Bt, other: T.Bt) -> T.Bt:
+  match args:
+    case T.BtArgs{a, T.BtArgs{T.BtNat{+s}, T.BtANil{}}}:
+      act.monus.res(act.monus.km(act.monus.lit(s), a), other)
+    case _:
+      other
+
+def act.monus.or(on: Bool, args: T.Bt, other: T.Bt) -> T.Bt:
+  match on:
+    case True{}:
+      act.monus.args(args, other)
+    case False{}:
+      other
+
 # a definition applied
-def act.app.def(s: ActSym, +env: ActEnv, args: T.Bt) -> T.Bt:
+def act.app.def(s: ActSym, +env: ActEnv, +args: T.Bt) -> T.Bt:
   match s:
     case ActSym{m, n, k, ms, ar, AbLevel{}, fs, c, cp}:
       Bool.pick(T.Bt, act.quant.on(), act.q1(), act.level())
@@ -1553,7 +1600,7 @@ def act.app.def(s: ActSym, +env: ActEnv, args: T.Bt) -> T.Bt:
     case ActSym{m, n, k, ms, ar, AbEq{}, fs, c, cp}:
       act.eq(act.eq.noq(act.quant.on(), act.keep(args, ms)))
     case ActSym{+m, +n, k, ms, ar, b, fs, c, cp}:
-      act.app.def.kind(k, act.copy.is(cp), act.ref.of(act.is.here(env, m), env, m, n), ms, ar, args)
+      act.monus.or(act.monus.is(m, n), args, act.app.def.kind(k, act.copy.is(cp), act.ref.of(act.is.here(env, m), env, m, n), ms, ar, args))
 
 # suc applied, or unapplied (`cong suc`, `map suc xs`): the function
 # sn => 1n+sn
