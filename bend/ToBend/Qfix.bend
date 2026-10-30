@@ -318,11 +318,37 @@ def tqf.is.some(m: Maybe<&2, T.Bt>) -> Bool:
 
 # a type in weak head form: the type-valued definitions at its head opened
 # (`lt : Rel(a, A, l)` applies as `A -> A -> Kind(l)`, as Bend reduces it)
+# a lambda applied to a spine, reduced (None when the spine outruns it)
+def tqf.beta(fuel: Nat, t: T.Bt, a: T.Bt) -> Maybe<&2, T.Bt>:
+  match fuel t a:
+    case 1n+f T.BtLam{m, +x, b} T.BtArgs{v, rest}:
+      tqf.beta(f, tqf.sub.one(b, x, tqf.undead(v)), rest)
+    case 1n+f T.BtExpr{e} T.BtArgs{v, rest}:
+      tqf.beta(f, e, T.BtArgs{v, rest})
+    case f t T.BtANil{}:
+      Some{t}
+    case _ _ _:
+      None{}
+
+# A type-valued def applied in two steps opens too: `Congruent₂ _≈_ _∙_`
+# is Congruent_2(a, l, A, eq)(dot), whose head opens to a lambda over dot
+# (`eta1 => Monotonic_2(.., eta1)`), reduced at the second spine.  Read
+# only as one, Copy did not know a parameter of that type takes its points
+# and proofs live, so Algebra.Construct.Subst.Equality's cong₂, which
+# passes `from equiv` twice into it, counted equiv once and left it live,
+# where Bend needs a template ("+equiv can be used many times, so its type
+# must be Data"; 13 dependents in the stdlib run, 2026-10-30).
 def tqf.whnf(fuel: Nat, t: T.Bt, +e: TqEnv) -> T.Bt:
   match fuel t:
     case 1n+f T.BtApp{T.BtVar{+fn}, +args}:
       +u = tqf.unf(tqf.sig(e, fn), args)
       Bool.pick(T.Bt, tqf.is.some(u), tqf.whnf(f, tqf.unf.get(u), e), T.BtApp{T.BtVar{fn}, args})
+    case 1n+(+f) T.BtApp{T.BtApp{+g, +a1}, +a2}:
+      +r = tqf.beta(64n, tqf.whnf(f, T.BtApp{g, a1}, e), a2)
+      Bool.pick(T.Bt, tqf.is.some(r), tqf.whnf(f, tqf.unf.get(r), e), T.BtApp{T.BtApp{g, a1}, a2})
+    case 1n+f T.BtApp{T.BtLam{+m, +x, +b}, +a}:
+      +r = tqf.beta(64n, T.BtLam{m, x, b}, a)
+      Bool.pick(T.Bt, tqf.is.some(r), tqf.whnf(f, tqf.unf.get(r), e), T.BtApp{T.BtLam{m, x, b}, a})
     case 1n+f T.BtDead{a}:
       tqf.whnf(f, a, e)
     case f t:
