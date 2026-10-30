@@ -5993,10 +5993,1741 @@ def act.cv.full(+cs: T.Bt, +cls: A.Ag, +scr: List<&2, Bool>, +xs: List<&2, T.Bt>
   +fams = act.cv.fams(n, 0n, rows, cls, scr, env)
   Bool.pick(T.Bt, Bool.and(Nat.is_lt(1n, n), act.cv.simple.rows(rows)), act.cv.fin(act.cv.go(4096n, [CtCol{fams, rows, Nil{}}], Nil{}, env), cs, fams, xs, env, hps, ret), cs)
 
+def act.ps.ps(r: ActPs) -> List<&2, T.BParam>:
+  match r:
+    case ActPs{ps, ret, ctx, es, ok}:
+      ps
+
+def act.ps.ret(r: ActPs) -> T.Bt:
+  match r:
+    case ActPs{ps, ret, ctx, es, ok}:
+      ret
+
+# A constructor's own arguments as fields (a Level one is dropped), each
+# type in the scope of the data type's parameters and the earlier fields.
+def act.cfield.put(lv: Bool, +nm: List<&2, U32>, ty: T.Bt, fs: List<&2, T.BField>) -> List<&2, T.BField>:
+  match lv:
+    case True{}:
+      fs
+    case False{}:
+      T.BField{nm, ty} <> fs
+
+# an indexed family's constructor's equation fields: per index parameter
+# (its name and type) and the index the constructor's type ends at, {i == t : T}
+def act.ix.eqs(ixs: List<&2, T.BParam>, es: A.Ag, +ctx: List<&2, T.Bt>, +seen: List<&2, List<&2, U32>>, +env: ActEnv) -> List<&2, T.BField>:
+  match ixs es:
+    case T.BParam{m, +x, ty} <> pt A.AgEApp{i, a, rest}:
+      +nm = act.fresh.in(S.b("ix_eq"), ctx, seen)
+      T.BField{nm, T.BtEq{ty, T.BtVar{x}, act.t(a, ctx, env)}} <> act.ix.eqs(pt, rest, ctx, nm <> seen, env)
+    case _ _:
+      Nil{}
+
+def act.ix.fields(ixs: List<&2, T.BParam>, +pars: Nat, t: A.Ag, +ctx: List<&2, T.Bt>, +seen: List<&2, List<&2, U32>>, +env: ActEnv) -> List<&2, T.BField>:
+  match t:
+    case A.AgEl{s, A.AgDef{q, es}}:
+      act.ix.eqs(ixs, act.es.after(pars, es), ctx, seen, env)
+    case _:
+      Nil{}
+
+# (the index parameters' names are in seen, so no field hides one)
+def act.cfields(t: A.Ag, +ctx: List<&2, T.Bt>, +seen: List<&2, List<&2, U32>>, +env: ActEnv, +ixs: List<&2, T.BParam>, +pars: Nat) -> List<&2, T.BField>:
+  match t:
+    case A.AgEl{s, A.AgPi{i, +x, +a, d, b}}:
+      +lv = act.ty.level(a)
+      +nm = act.fresh.in(x, ctx, seen)
+      act.cfield.put(lv, nm, act.t(a, ctx, env), act.cfields(b, act.bind(d, Bool.pick(T.Bt, lv, act.level(), T.BtVar{nm}), ctx), nm <> seen, env, ixs, pars))
+    case t:
+      act.ix.fields(ixs, pars, t, ctx, seen, env)
+
+# a TYPE after its first n Pis
+def act.after(n: Nat, t: A.Ag) -> A.Ag:
+  match n t:
+    case 1n+p A.AgEl{s, A.AgPi{i, x, a, d, b}}:
+      act.after(p, b)
+    case _ t:
+      t
+
+def act.ps.ctx(r: ActPs) -> List<&2, T.Bt>:
+  match r:
+    case ActPs{ps, ret, ctx, es, ok}:
+      ctx
+
+def act.ps.names(ps: List<&2, T.BParam>) -> List<&2, List<&2, U32>>:
+  match ps:
+    case Nil{}:
+      Nil{}
+    case T.BParam{m, x, ty} <> t:
+      x <> act.ps.names(t)
+
+def act.ctor.of(s: ActSym, +pars: Nat, +t: A.Ag, +env: ActEnv, +ixs: List<&2, T.BParam>) -> T.BCtor:
+  match s:
+    case ActSym{m, n, k, ms, ar, b, fs, c, cp}:
+      T.BCtor{n, act.cfields(act.after(pars, t), act.ps.ctx(act.params(64n, pars, t, act.modes(t, True{}), Nil{}, env)), act.ps.names(ixs), env, ixs, pars)}
+
+def act.ps.take(n: Nat, ps: List<&2, T.BParam>) -> List<&2, T.BParam>:
+  match n ps:
+    case 1n+p h <> t:
+      h <> act.ps.take(p, t)
+    case _ ps:
+      Nil{}
+
+# the last n of a list of parameters (an indexed family's indices)
+def act.ps.last(+n: Nat, ps: List<&2, T.BParam>) -> List<&2, T.BParam>:
+  List.reverse(&2, T.BParam, act.ps.take(n, List.reverse(&2, T.BParam, ps)))
+
+# Nested patterns (act.nu) -----------------------------------------------------
+
+# A clause with a constructor pattern of an indexed family inside another
+# constructor pattern (`<⇒<ᵇ (s≤s (s≤s m<n))`, `≤-pred₂ (s≤s (s≤s p))`,
+# `¬2≤1 (s≤s ())`) needs the index equations of every level, not only the
+# top one's.  A def any clause of which has one takes this path whole:
+# each constructor pattern binds all its fields (a dotted one as a
+# variable) and its equation fields; the equations are solved as Agda's
+# unification solves them (suc's injectivity, a zero/suc or true/false
+# clash, a variable Agda dotted given its value), each solution with an
+# Equal proof; the case then rewrites the goal and casts (a2b_cast) the
+# pattern variables to the values Agda's clause has, and the body reads
+# Agda's variables as the binders Agda kept.  The combinations of nested
+# patterns the clauses leave out (an absurd clause, or one Agda's coverage
+# saw impossible) are found by Maranget's algorithm and refuted from the
+# same equations, splitting a wildcard of an indexed family when no
+# equation clashes yet.  A def with a pattern this path does not know
+# (refl, a copattern, a literal other than a Nat) takes the other path.
+
+# A pattern: an Agda variable (its telescope position, absurd or not), a
+# dotted one (the telescope position it is exactly, when one) or a
+# wildcard, a constructor (by key; "$z" "$s" "$t" "$f" "$u": zero, suc,
+# true, false, tt) with its arguments as a spine (NuPS ... NuPE), a
+# cubical clause's (NuPR: the clause is left out), or one this path does
+# not write (NuPX).
+type NuP is Data:
+  NuPV{pos: Nat, abs: Bool}
+  NuPD{pos: Maybe<&2, Nat>}
+  NuPC{k: String, ps: NuP}
+  NuPS{p: NuP, rest: NuP}
+  NuPE{}
+  NuPR{}
+  NuPX{}
+
+type NuK is Data:
+  NkReal{}
+  NkZ{}
+  NkS{}
+  NkT{}
+  NkF{}
+  NkU{}
+
+# a constructor pattern's field: its placeholder name (the field types
+# after it name it so), its type, and its type's data key ("$nat",
+# "$bool", "$unit", a data type's key, or "" when none)
+type NuF is Data:
+  NuF{x: List<&2, U32>, ty: T.Bt, hk: String}
+
+# a constructor at a pattern of a given type: whether it could be read,
+# its kind, its Bend name, its fields (the equation fields last)
+type NuCi is Data:
+  NuCi{ok: Bool, k: NuK, ref: List<&2, U32>, fs: List<&2, NuF>}
+
+# an equation {a == b : ty} and its proof
+type NuEq is Data:
+  NuEq{ty: T.Bt, a: T.Bt, b: T.Bt, pf: T.Bt}
+
+# a binder of an Agda variable, its telescope position and Bend type
+type NuVt is Data:
+  NuVt{pos: Nat, x: List<&2, U32>, ty: T.Bt}
+
+# a flexible variable that is exactly the Agda variable at pos (a dotted
+# field `.(m)`, or an erased parameter's variable pattern), its type, and
+# whether it is live
+type NuDot is Data:
+  NuDot{x: List<&2, U32>, pos: Nat, ty: T.Bt, live: Bool}
+
+# a wildcard (a dotted field), its path (innermost first) and its type's data key
+type NuHole is Data:
+  NuHole{path: List<&2, Nat>, dk: String}
+
+type NuSg is Data:
+  NuSg{x: List<&2, U32>, t: T.Bt}
+
+# A row's walk: whether it could be written, the bindings of Agda's
+# variables, the flexible variables, the equations, the binders' types,
+# the dotted fields, the erased parameters' variables, the wildcards, the
+# substitution (placeholders and split parameters to their terms), and
+# the stacks of patterns and terms built.
+type NuSt is Data:
+  NuSt{ok: Bool, bs: List<&2, ActBind>, fl: List<&2, List<&2, U32>>, eqs: List<&2, NuEq>, vts: List<&2, NuVt>, dots: List<&2, NuDot>, weak: List<&2, NuDot>, holes: List<&2, NuHole>, sg: List<&2, NuSg>, ps: List<&2, T.Bt>, ts: List<&2, T.Bt>, vty: List<&2, NuSg>}
+
+type NuTk is Data:
+  NuTk{xs: List<&2, T.Bt>, rest: List<&2, T.Bt>}
+
+# x := t, and its proof pf : {x == t : ty}
+type NuSol is Data:
+  NuSol{x: List<&2, U32>, ty: T.Bt, t: T.Bt, pf: T.Bt}
+
+# the solutions, and the clashes found
+type NuU is Data:
+  NuU{sols: List<&2, NuSol>, cl: List<&2, NuEq>}
+
+# a term and a proof of {t0 == t} for the term t0 it was made from (None: t is t0)
+type NuPf is Data:
+  NuPf{t: T.Bt, pf: Maybe<&2, T.Bt>}
+
+type NuC is Data:
+  NcSame{}
+  NcInj{}
+  NcSuc{}
+  NcClash{}
+  NcVarL{}
+  NcVarR{}
+  NcStuck{}
+
+type NuStm is Data:
+  NsLet{x: List<&2, U32>, v: T.Bt}
+  NsRw{e: T.Bt, p: T.Bt}
+
+type NuCs is Data:
+  NuCs{ss: List<&2, NuStm>, x: List<&2, U32>, ty: T.Bt}
+
+type NuBd is Data:
+  NuBd{ss: List<&2, NuStm>, bs: List<&2, ActBind>}
+
+type NuGl is Data:
+  NuGl{ss: List<&2, NuStm>, g: T.Bt}
+
+type NuCase is Data:
+  NuCase{p: T.Bt, b: T.Bt}
+
+type NuAcc is Data:
+  NuAcc{ok: Bool, cs: List<&2, NuCase>, rows: List<&2, NuP>}
+
+type NuWr is Data:
+  NwWild{}
+  NwCon{k: String, ar: Nat}
+
+type NuMj is Data:
+  NuMj{rows: List<&2, NuP>, w: Nat, cx: List<&2, NuWr>}
+
+type NuRj is Data:
+  NuRj{row: NuP, d: Nat}
+
+type NuCx is Data:
+  NuCx{scr: List<&2, Bool>, ents: List<&2, T.Bt>, ks: List<&2, String>, hps: List<&2, T.BParam>, pnames: List<&2, List<&2, U32>>, env: ActEnv, ret: T.Bt}
+
+# Patterns ---------------------------------------------------------------------
+
+def act.nu.lit(k: Nat) -> NuP:
+  match k:
+    case 0n:
+      NuPC{"$z", NuPE{}}
+    case 1n+p:
+      NuPC{"$s", NuPS{act.nu.lit(p), NuPE{}}}
+
+def act.nu.litp.of(small: Bool, k: Nat) -> NuP:
+  match small:
+    case True{}:
+      act.nu.lit(k)
+    case False{}:
+      NuPX{}
+
+def act.nu.litp(+k: Nat) -> NuP:
+  act.nu.litp.of(Nat.is_lt(k, 65n), k)
+
+def act.nu.dot(t: A.Ag, +n: Nat) -> NuP:
+  match t:
+    case A.AgVar{ix, x, A.AgENil{}}:
+      NuPD{Some{Nat.sub(Nat.sub(n, 1n), ix)}}
+    case _:
+      NuPD{None{}}
+
+def act.nu.con(s: ActSym, k: String, sub: NuP) -> NuP:
+  match s:
+    case ActSym{m, nm, kd, ms, ar, AbZero{}, fs, c, cp}:
+      NuPC{"$z", NuPE{}}
+    case ActSym{m, nm, kd, ms, ar, AbSuc{}, fs, c, cp}:
+      NuPC{"$s", sub}
+    case ActSym{m, nm, kd, ms, ar, AbTrue{}, fs, c, cp}:
+      NuPC{"$t", NuPE{}}
+    case ActSym{m, nm, kd, ms, ar, AbFalse{}, fs, c, cp}:
+      NuPC{"$f", NuPE{}}
+    case ActSym{m, nm, kd, ms, ar, AbTt{}, fs, c, cp}:
+      NuPC{"$u", NuPE{}}
+    case ActSym{m, nm, A.AkConstructor{}, ms, ar, AbNone{}, fs, c, cp}:
+      NuPC{k, sub}
+    case _:
+      NuPX{}
+
+def act.nu.p(a: A.Ag, +n: Nat, +env: ActEnv) -> NuP:
+  match a:
+    case A.AgPArg{i, x, q, rest}:
+      NuPS{act.nu.p(q, n, env), act.nu.p(rest, n, env)}
+    case A.AgPEnd{}:
+      NuPE{}
+    case A.AgPVar{x, ix, o}:
+      NuPV{Nat.sub(Nat.sub(n, 1n), ix), A.aas.kw.eq(o, A.AkAbsurd{})}
+    case A.AgPDot{t}:
+      act.nu.dot(t, n)
+    case A.AgPCon{+q, r, fo, ps}:
+      act.nu.con(act.sym(env, q), act.key(q), act.nu.p(ps, n, env))
+    case A.AgPLit{A.AgLNat{s}}:
+      act.nu.litp(act.cq.digits(s, 0n))
+    case A.AgRaw{c, x}:
+      NuPR{}
+    case _:
+      NuPX{}
+
+def act.nu.raw(p: NuP) -> Bool:
+  match p:
+    case NuPR{}:
+      True{}
+    case NuPC{k, ps}:
+      act.nu.raw(ps)
+    case NuPS{h, t}:
+      Bool.or(act.nu.raw(h), act.nu.raw(t))
+    case _:
+      False{}
+
+def act.nu.bad(p: NuP) -> Bool:
+  match p:
+    case NuPX{}:
+      True{}
+    case NuPC{k, ps}:
+      act.nu.bad(ps)
+    case NuPS{h, t}:
+      Bool.or(act.nu.bad(h), act.nu.bad(t))
+    case _:
+      False{}
+
+def act.nu.absp(p: NuP) -> Bool:
+  match p:
+    case NuPV{pos, ab}:
+      ab
+    case NuPC{k, ps}:
+      act.nu.absp(ps)
+    case NuPS{h, t}:
+      Bool.or(act.nu.absp(h), act.nu.absp(t))
+    case _:
+      False{}
+
+def act.nu.kind(+k: String) -> NuK:
+  Bool.pick(NuK, String.eq(k, "$z"), NkZ{}, Bool.pick(NuK, String.eq(k, "$s"), NkS{}, Bool.pick(NuK, String.eq(k, "$t"), NkT{}, Bool.pick(NuK, String.eq(k, "$f"), NkF{}, Bool.pick(NuK, String.eq(k, "$u"), NkU{}, NkReal{})))))
+
+def act.nu.real(+k: String) -> Bool:
+  Bool.not(S.prefix(S.b(k), S.b("$")))
+
+# the entry of a key in the symbol table
+def act.nu.symk(+env: ActEnv, k: String) -> ActSym:
+  match env:
+    case ActEnv{mod, tab, al, unf}:
+      act.sym.got(Map.get(ActSym, act.sym0(), tab, k))
+
+def act.nu.tag.ix(fs: List<&2, String>) -> Bool:
+  match fs:
+    case h <> t:
+      S.prefix(S.b(h), S.b("ix_eq"))
+    case Nil{}:
+      False{}
+
+def act.nu.ixd.of(s: ActSym) -> Bool:
+  match s:
+    case ActSym{m, n, A.AkConstructor{}, ms, ar, AbNone{}, fs, c, cp}:
+      act.nu.tag.ix(fs)
+    case _:
+      False{}
+
+# an indexed family's constructor (it has equation fields)
+def act.nu.ixd(+env: ActEnv, k: String) -> Bool:
+  act.nu.ixd.of(act.nu.symk(env, k))
+
+# an indexed family's constructor pattern, or an absurd one, inside a constructor pattern
+def act.nu.deep(p: NuP, +under: Bool, +env: ActEnv) -> Bool:
+  match p:
+    case NuPC{+k, ps}:
+      Bool.or(Bool.and(under, act.nu.ixd(env, k)), act.nu.deep(ps, Bool.or(under, act.nu.real(k)), env))
+    case NuPS{h, t}:
+      Bool.or(act.nu.deep(h, under, env), act.nu.deep(t, under, env))
+    case NuPV{pos, ab}:
+      Bool.and(under, ab)
+    case _:
+      False{}
+
+def act.nu.want(cls: A.Ag, +env: ActEnv) -> Bool:
+  match cls:
+    case A.AgCl{+tel, ps, body, ty, ca, rest}:
+      Bool.or(act.nu.deep(act.nu.p(ps, act.tel.len(tel), env), False{}, env), act.nu.want(rest, env))
+    case _:
+      False{}
+
+def act.nu.anybad(cls: A.Ag, +env: ActEnv) -> Bool:
+  match cls:
+    case A.AgCl{+tel, ps, body, ty, ca, rest}:
+      Bool.or(act.nu.bad(act.nu.p(ps, act.tel.len(tel), env)), act.nu.anybad(rest, env))
+    case _:
+      False{}
+
+# Constructors -----------------------------------------------------------------
+
+# A constructor's type (with its data type's parameter count) and its data
+# type's name, in the unfoldings by the constructor's key (Agda2Bend.bend
+# a2b.syms.one), so another module's patterns read them.
+def act.nu.cty.key(k: String) -> String:
+  "cty:" ++ k
+
+def act.nu.cdq.key(k: String) -> String:
+  "cdq:" ++ k
+
+def act.nu.cty.of(d: A.AgDecl) -> Maybe<&2, ActCopy>:
+  match d:
+    case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, fl, lang, ty, A.AgDCon{dq, pars, ar, ck, src}}:
+      Some{ActCopy{pars, ty}}
+    case _:
+      None{}
+
+def act.nu.cdq.of(d: A.AgDecl) -> Maybe<&2, ActCopy>:
+  match d:
+    case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, fl, lang, ty, A.AgDCon{dq, pars, ar, ck, src}}:
+      Some{ActCopy{0n, A.AgDef{dq, A.AgENil{}}}}
+    case _:
+      None{}
+
+def act.nu.unf(+env: ActEnv, k: String) -> ActCopy:
+  match env:
+    case ActEnv{mod, tab, al, unf}:
+      act.unf.got(Map.get(ActCopy, ActCopy{0n, A.AgNone{}}, unf, k))
+
+def act.nu.dkey.of(c: ActCopy) -> String:
+  match c:
+    case ActCopy{n, A.AgDef{q, es}}:
+      act.key(q)
+    case _:
+      ""
+
+def act.nu.dkey.k(c: NuK, +env: ActEnv, k: String) -> String:
+  match c:
+    case NkReal{}:
+      act.nu.dkey.of(act.nu.unf(env, act.nu.cdq.key(k)))
+    case NkZ{}:
+      "$nat"
+    case NkS{}:
+      "$nat"
+    case NkT{}:
+      "$bool"
+    case NkF{}:
+      "$bool"
+    case NkU{}:
+      "$unit"
+
+# the data key of a constructor key
+def act.nu.dkey(+env: ActEnv, +k: String) -> String:
+  act.nu.dkey.k(act.nu.kind(k), env, k)
+
+def act.nu.sym.fields(s: ActSym) -> List<&2, String>:
+  match s:
+    case ActSym{m, n, k, ms, ar, b, fs, c, cp}:
+      fs
+
+# a data key's constructors
+def act.nu.sibs(+env: ActEnv, +dk: String) -> List<&2, String>:
+  Bool.pick(List<&2, String>, String.eq(dk, "$nat"), ["$z", "$s"], Bool.pick(List<&2, String>, String.eq(dk, "$bool"), ["$t", "$f"], Bool.pick(List<&2, String>, String.eq(dk, "$unit"), ["$u"], Bool.pick(List<&2, String>, String.eq(dk, ""), Nil{}, act.nu.sym.fields(act.nu.symk(env, dk))))))
+
+def act.nu.npis(t: A.Ag) -> Nat:
+  match t:
+    case A.AgEl{s, A.AgPi{i, x, a, d, b}}:
+      1n+act.nu.npis(b)
+    case _:
+      0n
+
+def act.nu.ar.of(c: ActCopy) -> Nat:
+  match c:
+    case ActCopy{pars, ty}:
+      act.nu.npis(act.after(pars, ty))
+
+def act.nu.arity.k(c: NuK, +env: ActEnv, k: String) -> Nat:
+  match c:
+    case NkS{}:
+      1n
+    case NkReal{}:
+      act.nu.ar.of(act.nu.unf(env, act.nu.cty.key(k)))
+    case _:
+      0n
+
+# a constructor's argument count (its patterns' spine length)
+def act.nu.arity(+env: ActEnv, +k: String) -> Nat:
+  act.nu.arity.k(act.nu.kind(k), env, k)
+
+def act.nu.spine(a: T.Bt) -> List<&2, T.Bt>:
+  match a:
+    case T.BtArgs{h, t}:
+      h <> act.nu.spine(t)
+    case _:
+      Nil{}
+
+def act.nu.fnames(fs: List<&2, T.BField>) -> List<&2, List<&2, U32>>:
+  match fs:
+    case T.BField{x, ty} <> t:
+      x <> act.nu.fnames(t)
+    case Nil{}:
+      Nil{}
+
+def act.nu.tmps(xs: List<&2, List<&2, U32>>, +b: String, +i: Nat) -> List<&2, List<&2, U32>>:
+  match xs:
+    case x <> t:
+      S.b(b ++ Nat.show(i)) <> act.nu.tmps(t, b, 1n+i)
+    case Nil{}:
+      Nil{}
+
+def act.nu.phs(xs: List<&2, List<&2, U32>>, +pre: List<&2, U32>, +i: Nat) -> List<&2, List<&2, U32>>:
+  match xs:
+    case x <> t:
+      List.append(&2, U32, pre, S.b("_" ++ Nat.show(i))) <> act.nu.phs(t, pre, 1n+i)
+    case Nil{}:
+      Nil{}
+
+def act.nu.vars(xs: List<&2, List<&2, U32>>) -> List<&2, T.Bt>:
+  match xs:
+    case x <> t:
+      T.BtVar{x} <> act.nu.vars(t)
+    case Nil{}:
+      Nil{}
+
+# t with each x replaced by its v, one after another
+def act.nu.ren(xs: List<&2, List<&2, U32>>, vs: List<&2, T.Bt>, t: T.Bt) -> T.Bt:
+  match xs vs:
+    case x <> xt v <> vt:
+      act.nu.ren(xt, vt, T.tba.subst(t, x, v))
+    case _ _:
+      t
+
+def act.nu.head.b(b: ActB, k: String) -> String:
+  match b:
+    case AbNat{}:
+      "$nat"
+    case AbBool{}:
+      "$bool"
+    case AbUnit{}:
+      "$unit"
+    case _:
+      k
+
+def act.nu.head.of(a: A.Ag) -> String:
+  match a:
+    case A.AgEl{s, A.AgDef{+q, es}}:
+      act.nu.head.b(act.builtin(act.qs(q)), act.key(q))
+    case _:
+      ""
+
+def act.nu.heads.put(lv: Bool, h: String, t: List<&2, String>) -> List<&2, String>:
+  match lv:
+    case True{}:
+      t
+    case False{}:
+      h <> t
+
+# a constructor's own arguments' data keys (a Level one is dropped, as a field)
+def act.nu.heads(t: A.Ag) -> List<&2, String>:
+  match t:
+    case A.AgEl{s, A.AgPi{i, x, +a, d, b}}:
+      act.nu.heads.put(act.ty.level(a), act.nu.head.of(a), act.nu.heads(b))
+    case _:
+      Nil{}
+
+def act.nu.hd.or(hs: List<&2, String>) -> String:
+  match hs:
+    case h <> t:
+      h
+    case Nil{}:
+      ""
+
+def act.nu.tl.or(hs: List<&2, String>) -> List<&2, String>:
+  match hs:
+    case h <> t:
+      t
+    case Nil{}:
+      Nil{}
+
+# the fields, their types with the data type's parameters (ps, the
+# scrutinee's type's arguments as) and the fields (fns, the placeholders
+# all) put in, through fresh names first (t1, t2) so none is caught
+def act.nu.fs.inst(fs: List<&2, T.BField>, +ps: List<&2, List<&2, U32>>, +t1: List<&2, List<&2, U32>>, +fns: List<&2, List<&2, U32>>, +t2: List<&2, List<&2, U32>>, +as: List<&2, T.Bt>, phs: List<&2, List<&2, U32>>, +all: List<&2, List<&2, U32>>, +hs: List<&2, String>) -> List<&2, NuF>:
+  match fs phs:
+    case T.BField{x, ty} <> ft ph <> pt:
+      NuF{ph, act.nu.ren(t2, act.nu.vars(all), act.nu.ren(t1, as, act.nu.ren(fns, act.nu.vars(t2), act.nu.ren(ps, act.nu.vars(t1), ty)))), act.nu.hd.or(hs)} <> act.nu.fs.inst(ft, ps, t1, fns, t2, as, pt, all, act.nu.tl.or(hs))
+    case _ _:
+      Nil{}
+
+def act.nu.ci.mk3(+ok: Bool, ref: List<&2, U32>, +ps: List<&2, List<&2, U32>>, fs: List<&2, T.BField>, +fns: List<&2, List<&2, U32>>, +as: List<&2, T.Bt>, +pre: List<&2, U32>, hs: List<&2, String>) -> NuCi:
+  +phs = act.nu.phs(fns, pre, 1n)
+  NuCi{Bool.and(ok, Nat.is_eq(List.length(&2, List<&2, U32>, ps), List.length(&2, T.Bt, as))), NkReal{}, ref, act.nu.fs.inst(fs, ps, act.nu.tmps(ps, "a2b_nut_p", 0n), fns, act.nu.tmps(fns, "a2b_nut_f", 0n), as, phs, phs, hs)}
+
+def act.nu.ci.mk(bc: T.BCtor, ps: List<&2, List<&2, U32>>, ty: T.Bt, ref: List<&2, U32>, hs: List<&2, String>, pre: List<&2, U32>, ok: Bool) -> NuCi:
+  match bc ty:
+    case T.BCtor{c, +fs} T.BtTyApp{tn, args}:
+      act.nu.ci.mk3(ok, ref, ps, fs, act.nu.fnames(fs), act.nu.spine(args), pre, hs)
+    case T.BCtor{c, +fs} T.BtVar{tn}:
+      act.nu.ci.mk3(ok, ref, ps, fs, act.nu.fnames(fs), Nil{}, pre, hs)
+    case _ _:
+      NuCi{False{}, NkReal{}, ref, Nil{}}
+
+def act.nu.cbody(c: ActCopy) -> A.Ag:
+  match c:
+    case ActCopy{n, b}:
+      b
+
+def act.nu.isty(t: A.Ag) -> Bool:
+  match t:
+    case A.AgNone{}:
+      False{}
+    case _:
+      True{}
+
+def act.nu.ci.of(s: ActSym, c: ActCopy, +dt: A.Ag, ds: ActSym, ty: T.Bt, pre: List<&2, U32>, +env: ActEnv) -> NuCi:
+  match s c ds:
+    case ActSym{+m, +nm, kd, ms, ar, b, +tags, cn, cp} ActCopy{+pars, +cty} ActSym{dm, dn, dk, dms, dar, db, dfs, dc, dcp}:
+      +ixs = List.length(&2, String, tags)
+      +ok = Bool.and(act.nu.isty(cty), act.nu.isty(dt))
+      +r = act.params(64n, Nat.add(pars, ixs), act.inline(100000n, dt, env), dms, Nil{}, env)
+      +ict = act.inline(100000n, cty, env)
+      act.nu.ci.mk(act.ctor.of(ActSym{m, nm, kd, ms, ar, b, tags, cn, cp}, pars, ict, env, act.ps.last(ixs, act.ps.ps(r))), act.ps.names(act.ps.ps(r)), ty, act.ref.of(act.is.here(env, m), env, m, nm), act.nu.heads(act.after(pars, ict)), pre, ok)
+
+def act.nu.ci.real(+env: ActEnv, +k: String, ty: T.Bt, pre: List<&2, U32>) -> NuCi:
+  +dk = act.nu.dkey.of(act.nu.unf(env, act.nu.cdq.key(k)))
+  act.nu.ci.of(act.nu.symk(env, k), act.nu.unf(env, act.nu.cty.key(k)), act.nu.cbody(act.nu.unf(env, "fty:" ++ dk)), act.nu.symk(env, dk), ty, pre, env)
+
+def act.nu.ci.k(c: NuK, +env: ActEnv, k: String, ty: T.Bt, pre: List<&2, U32>) -> NuCi:
+  match c:
+    case NkReal{}:
+      act.nu.ci.real(env, k, ty, pre)
+    case NkS{}:
+      NuCi{True{}, NkS{}, Nil{}, [NuF{List.append(&2, U32, pre, S.b("_1")), T.BtVar{S.b("Nat")}, "$nat"}]}
+    case c:
+      NuCi{True{}, c, Nil{}, Nil{}}
+
+# a constructor pattern's constructor at a pattern of type ty (pre: its placeholder)
+def act.nu.ci(+env: ActEnv, +k: String, ty: T.Bt, pre: List<&2, U32>) -> NuCi:
+  act.nu.ci.k(act.nu.kind(k), env, k, ty, pre)
+
+def act.nu.ci.ok(c: NuCi) -> Bool:
+  match c:
+    case NuCi{ok, k, ref, fs}:
+      ok
+
+def act.nu.ci.fs(c: NuCi) -> List<&2, NuF>:
+  match c:
+    case NuCi{ok, k, ref, fs}:
+      fs
+
+# The walk ---------------------------------------------------------------------
+
+def act.nu.st0() -> NuSt:
+  NuSt{True{}, Nil{}, Nil{}, Nil{}, Nil{}, Nil{}, Nil{}, Nil{}, Nil{}, Nil{}, Nil{}, Nil{}}
+
+def act.nu.sgs(sg: List<&2, NuSg>, t: T.Bt) -> T.Bt:
+  match sg:
+    case NuSg{x, v} <> rest:
+      act.nu.sgs(rest, T.tba.subst(t, x, v))
+    case Nil{}:
+      t
+
+# a type with the substitution put in
+def act.nu.st.ty(st: NuSt, t: T.Bt) -> T.Bt:
+  match st:
+    case NuSt{ok, bs, fl, eqs, vts, dots, weak, holes, sg, ps, ts, vty}:
+      act.nu.sgs(List.reverse(&2, NuSg, sg), t)
+
+def act.nu.st.ok(st: NuSt) -> Bool:
+  match st:
+    case NuSt{ok, bs, fl, eqs, vts, dots, weak, holes, sg, ps, ts, vty}:
+      ok
+
+def act.nu.st.bs(st: NuSt) -> List<&2, ActBind>:
+  match st:
+    case NuSt{ok, bs, fl, eqs, vts, dots, weak, holes, sg, ps, ts, vty}:
+      bs
+
+def act.nu.st.fl(st: NuSt) -> List<&2, List<&2, U32>>:
+  match st:
+    case NuSt{ok, bs, fl, eqs, vts, dots, weak, holes, sg, ps, ts, vty}:
+      fl
+
+def act.nu.st.eqs(st: NuSt) -> List<&2, NuEq>:
+  match st:
+    case NuSt{ok, bs, fl, eqs, vts, dots, weak, holes, sg, ps, ts, vty}:
+      eqs
+
+def act.nu.st.vts(st: NuSt) -> List<&2, NuVt>:
+  match st:
+    case NuSt{ok, bs, fl, eqs, vts, dots, weak, holes, sg, ps, ts, vty}:
+      vts
+
+def act.nu.st.dots(st: NuSt) -> List<&2, NuDot>:
+  match st:
+    case NuSt{ok, bs, fl, eqs, vts, dots, weak, holes, sg, ps, ts, vty}:
+      dots
+
+def act.nu.st.weak(st: NuSt) -> List<&2, NuDot>:
+  match st:
+    case NuSt{ok, bs, fl, eqs, vts, dots, weak, holes, sg, ps, ts, vty}:
+      weak
+
+def act.nu.st.vty(st: NuSt) -> List<&2, NuSg>:
+  match st:
+    case NuSt{ok, bs, fl, eqs, vts, dots, weak, holes, sg, ps, ts, vty}:
+      vty
+
+def act.nu.st.holes(st: NuSt) -> List<&2, NuHole>:
+  match st:
+    case NuSt{ok, bs, fl, eqs, vts, dots, weak, holes, sg, ps, ts, vty}:
+      holes
+
+def act.nu.first(xs: List<&2, T.Bt>) -> T.Bt:
+  match xs:
+    case h <> t:
+      h
+    case Nil{}:
+      T.BtWild{}
+
+def act.nu.pop(k: Nat, xs: List<&2, T.Bt>, acc: List<&2, T.Bt>) -> NuTk:
+  match k xs:
+    case 1n+p h <> t:
+      act.nu.pop(p, t, h <> acc)
+    case _ xs:
+      NuTk{acc, xs}
+
+def act.nu.tk.args(t: NuTk) -> T.Bt:
+  match t:
+    case NuTk{xs, rest}:
+      T.tba.args(xs)
+
+# the patterns a row's walk left on its stack: the first n, in order
+def act.nu.st.pats(st: NuSt, n: Nat) -> T.Bt:
+  match st:
+    case NuSt{ok, bs, fl, eqs, vts, dots, weak, holes, sg, ps, ts, vty}:
+      act.nu.tk.args(act.nu.pop(n, ps, Nil{}))
+
+def act.nu.st.bad(st: NuSt) -> NuSt:
+  match st:
+    case NuSt{ok, bs, fl, eqs, vts, dots, weak, holes, sg, ps, ts, vty}:
+      NuSt{False{}, bs, fl, eqs, vts, dots, weak, holes, sg, ps, ts, vty}
+
+def act.nu.st.okif(b: Bool, st: NuSt) -> NuSt:
+  match st:
+    case NuSt{ok, bs, fl, eqs, vts, dots, weak, holes, sg, ps, ts, vty}:
+      NuSt{Bool.and(b, ok), bs, fl, eqs, vts, dots, weak, holes, sg, ps, ts, vty}
+
+def act.nu.st.push(p: T.Bt, t: T.Bt, st: NuSt) -> NuSt:
+  match st:
+    case NuSt{ok, bs, fl, eqs, vts, dots, weak, holes, sg, ps, ts, vty}:
+      NuSt{ok, bs, fl, eqs, vts, dots, weak, holes, sg, p <> ps, t <> ts, vty}
+
+# x stands for the term on top of the stack (a placeholder, a split parameter)
+def act.nu.st.sgtop(x: List<&2, U32>, st: NuSt) -> NuSt:
+  match st:
+    case NuSt{ok, bs, fl, eqs, vts, dots, weak, holes, sg, ps, +ts, vty}:
+      NuSt{ok, bs, fl, eqs, vts, dots, weak, holes, NuSg{x, act.nu.first(ts)} <> sg, ps, ts, vty}
+
+def act.nu.st.var(+pos: Nat, +x: List<&2, U32>, +ty: T.Bt, st: NuSt) -> NuSt:
+  match st:
+    case NuSt{ok, bs, fl, eqs, vts, dots, weak, holes, sg, ps, ts, vty}:
+      NuSt{ok, ActBind{pos, T.BtVar{x}} <> bs, fl, eqs, NuVt{pos, x, ty} <> vts, dots, weak, holes, sg, T.BtPv{T.BmLive{}, x} <> ps, T.BtVar{x} <> ts, NuSg{x, ty} <> vty}
+
+def act.nu.dots.put(m: Maybe<&2, Nat>, x: List<&2, U32>, ty: T.Bt, ds: List<&2, NuDot>) -> List<&2, NuDot>:
+  match m:
+    case Some{p}:
+      NuDot{x, p, ty, True{}} <> ds
+    case None{}:
+      ds
+
+def act.nu.st.dot(m: Maybe<&2, Nat>, +x: List<&2, U32>, +ty: T.Bt, path: List<&2, Nat>, dk: String, st: NuSt) -> NuSt:
+  match st:
+    case NuSt{ok, bs, fl, eqs, vts, dots, weak, holes, sg, ps, ts, vty}:
+      NuSt{ok, bs, x <> fl, eqs, vts, act.nu.dots.put(m, x, ty, dots), weak, NuHole{path, dk} <> holes, sg, T.BtPv{T.BmLive{}, x} <> ps, T.BtVar{x} <> ts, NuSg{x, ty} <> vty}
+
+def act.nu.st.eqv(x0: List<&2, U32>, +x: List<&2, U32>, ty: T.Bt, st: NuSt) -> NuSt:
+  match ty st:
+    case T.BtEq{ety, a, b} NuSt{ok, bs, fl, eqs, vts, dots, weak, holes, sg, ps, ts, vty}:
+      NuSt{ok, bs, fl, List.append(&2, NuEq, eqs, [NuEq{ety, a, b, T.BtVar{x}}]), vts, dots, weak, holes, NuSg{x0, T.BtVar{x}} <> sg, T.BtPv{T.BmLive{}, x} <> ps, T.BtVar{x} <> ts, vty}
+    case _ NuSt{ok, bs, fl, eqs, vts, dots, weak, holes, sg, ps, ts, vty}:
+      NuSt{False{}, bs, fl, eqs, vts, dots, weak, holes, sg, T.BtPv{T.BmLive{}, x} <> ps, T.BtVar{x} <> ts, vty}
+
+# a constructor pattern's equation fields: x_<i>_eq
+def act.nu.eqf(fs: List<&2, NuF>, +nm: List<&2, U32>, +i: Nat, +st: NuSt) -> NuSt:
+  match fs:
+    case NuF{fx, fty, hk} <> ft:
+      act.nu.eqf(ft, nm, 1n+i, act.nu.st.eqv(fx, List.append(&2, U32, nm, S.b("_" ++ Nat.show(i) ++ "_eq")), act.nu.st.ty(st, fty), st))
+    case Nil{}:
+      st
+
+def act.nu.mk(k: NuK, ref: List<&2, U32>, xs: List<&2, T.Bt>) -> T.Bt:
+  match k:
+    case NkReal{}:
+      T.BtCon{ref, T.tba.args(xs)}
+    case NkZ{}:
+      T.BtNat{S.b("0")}
+    case NkS{}:
+      T.BtSucc{act.nu.first(xs)}
+    case NkT{}:
+      T.BtCon{S.b("True"), T.BtANil{}}
+    case NkF{}:
+      T.BtCon{S.b("False"), T.BtANil{}}
+    case NkU{}:
+      T.BtCon{S.b("Unit"), T.BtANil{}}
+
+def act.nu.st.con2(+k: NuK, +ref: List<&2, U32>, a: NuTk, b: NuTk, st: NuSt) -> NuSt:
+  match a b st:
+    case NuTk{xs, ps} NuTk{ys, ts} NuSt{ok, bs, fl, eqs, vts, dots, weak, holes, sg, p0, t0, vty}:
+      NuSt{ok, bs, fl, eqs, vts, dots, weak, holes, sg, act.nu.mk(k, ref, xs) <> ps, act.nu.mk(k, ref, ys) <> ts, vty}
+
+# the constructor pattern (and term) from its fields' on the stacks
+def act.nu.st.con(c: NuCi, st: NuSt) -> NuSt:
+  match c st:
+    case NuCi{ok, +k, +ref, fs} NuSt{ok2, bs, fl, eqs, vts, dots, weak, holes, sg, ps, ts, vty}:
+      +n = List.length(&2, NuF, fs)
+      act.nu.st.con2(k, ref, act.nu.pop(n, ps, Nil{}), act.nu.pop(n, ts, Nil{}), NuSt{Bool.and(ok, ok2), bs, fl, eqs, vts, dots, weak, holes, sg, Nil{}, Nil{}, vty})
+
+# a name for a variable this path makes, apart from Agda's and the parameters'
+def act.nu.fresh(+b: List<&2, U32>, +used: List<&2, List<&2, U32>>) -> List<&2, U32>:
+  Bool.pick(List<&2, U32>, act.used(b, used), List.append(&2, U32, b, S.b("_v")), b)
+
+def act.nu.cnm(+nm: List<&2, U32>, +i: Nat) -> List<&2, U32>:
+  List.append(&2, U32, nm, S.b("_" ++ Nat.show(i)))
+
+# The walk of a pattern p of type ty (pre: its placeholder, nm: the base of
+# its variables' names, hk: its type's data key, path: where it is), or of
+# a constructor pattern's arguments (a spine: fs its fields from the i-th).
+def act.nu.w(p: NuP, fs: List<&2, NuF>, +ty: T.Bt, +pre: List<&2, U32>, +nm: List<&2, U32>, +hk: String, +path: List<&2, Nat>, +i: Nat, +hints: List<&2, List<&2, U32>>, +pnames: List<&2, List<&2, U32>>, +used: List<&2, List<&2, U32>>, +env: ActEnv, +st: NuSt) -> NuSt:
+  match p fs:
+    case NuPS{h, t} NuF{+fx, fty, fhk} <> ft:
+      act.nu.w(t, ft, ty, pre, nm, hk, path, 1n+i, hints, pnames, used, env, act.nu.st.sgtop(fx, act.nu.w(h, Nil{}, act.nu.st.ty(st, fty), fx, act.nu.cnm(nm, i), fhk, i <> path, 0n, hints, pnames, used, env, st)))
+    case NuPS{h, t} Nil{}:
+      act.nu.st.bad(st)
+    case NuPE{} fs:
+      act.nu.eqf(fs, nm, i, st)
+    case NuPV{+pos, ab} fs:
+      act.nu.st.var(pos, act.pv.name(pos, hints, pnames), ty, st)
+    case NuPD{m} fs:
+      act.nu.st.dot(m, act.nu.fresh(nm, used), ty, path, hk, st)
+    case NuPC{+k, ps} fs:
+      +ci = act.nu.ci(env, k, ty, pre)
+      act.nu.st.con(ci, act.nu.w(ps, act.nu.ci.fs(ci), ty, pre, nm, hk, path, 1n, hints, pnames, used, env, act.nu.st.okif(act.nu.ci.ok(ci), st)))
+    case _ fs:
+      act.nu.st.bad(act.nu.st.push(T.BtWild{}, T.BtWild{}, st))
+
+def act.nu.live.m(m: T.BMode) -> Bool:
+  match m:
+    case T.BmErased{}:
+      False{}
+    case _:
+      True{}
+
+# whether parameter x is live (a Level one, absent, is)
+def act.nu.live(ps: List<&2, T.BParam>, +x: List<&2, U32>) -> Bool:
+  match ps:
+    case T.BParam{m, +n, ty} <> t:
+      Bool.pick(Bool, S.eq(n, x), act.nu.live.m(m), act.nu.live(t, x))
+    case Nil{}:
+      True{}
+
+def act.nu.st.topv(live: Bool, +pos: Nat, +x: List<&2, U32>, e: T.Bt, +ty: T.Bt, st: NuSt) -> NuSt:
+  match live st:
+    case True{} NuSt{ok, bs, fl, eqs, vts, dots, weak, holes, sg, ps, ts, vty}:
+      NuSt{ok, ActBind{pos, e} <> bs, fl, eqs, NuVt{pos, x, ty} <> vts, dots, weak, holes, sg, ps, ts, NuSg{x, ty} <> vty}
+    case False{} NuSt{ok, bs, fl, eqs, vts, dots, weak, holes, sg, ps, ts, vty}:
+      NuSt{ok, bs, x <> fl, eqs, vts, dots, NuDot{x, pos, ty, False{}} <> weak, holes, sg, ps, ts, NuSg{x, ty} <> vty}
+
+def act.nu.st.flexd(m: Maybe<&2, Nat>, +x: List<&2, U32>, +ty: T.Bt, st: NuSt) -> NuSt:
+  match st:
+    case NuSt{ok, bs, fl, eqs, vts, dots, weak, holes, sg, ps, ts, vty}:
+      NuSt{ok, bs, x <> fl, eqs, vts, act.nu.dots.put(m, x, ty, dots), weak, holes, sg, ps, ts, NuSg{x, ty} <> vty}
+
+# a parameter the match does not split: Agda's variable there is bound to it
+# (an erased one only when no dotted field is that variable), else it is flexible
+def act.nu.st.top(p: NuP, +x: List<&2, U32>, e: T.Bt, live: Bool, ty: T.Bt, st: NuSt) -> NuSt:
+  match p:
+    case NuPV{pos, ab}:
+      act.nu.st.topv(live, pos, x, e, ty, st)
+    case NuPD{m}:
+      act.nu.st.flexd(m, x, ty, st)
+    case _:
+      act.nu.st.flexd(None{}, x, ty, st)
+
+# A clause's (or a missing case's) patterns, one per parameter: a split
+# one's is walked (its stack holds the case's patterns in order, and the
+# parameter stands for its term after it), another's binds or flexes the
+# parameter.
+def act.nu.row(p: NuP, scr: List<&2, Bool>, ents: List<&2, T.Bt>, ks: List<&2, String>, +hps: List<&2, T.BParam>, +i: Nat, +hints: List<&2, List<&2, U32>>, +pnames: List<&2, List<&2, U32>>, +used: List<&2, List<&2, U32>>, +env: ActEnv, +st: NuSt) -> NuSt:
+  match p scr ents ks:
+    case NuPS{h, t} True{} <> sr e <> er k <> kr:
+      +x = act.var.name(e)
+      act.nu.row(t, sr, er, kr, hps, 1n+i, hints, pnames, used, env, act.nu.st.sgtop(x, act.nu.w(h, Nil{}, act.nu.st.ty(st, act.param.ty(hps, x)), S.b("a2b_nup" ++ Nat.show(i)), x, k, [i], 0n, hints, pnames, used, env, st)))
+    case NuPS{h, t} False{} <> sr +e <> er k <> kr:
+      +x = act.var.name(e)
+      act.nu.row(t, sr, er, kr, hps, 1n+i, hints, pnames, used, env, act.nu.st.top(h, x, e, act.nu.live(hps, x), act.nu.st.ty(st, act.param.ty(hps, x)), st))
+    case _ _ _ _:
+      st
+
+def act.nu.bound(+pos: Nat, bs: List<&2, ActBind>) -> Bool:
+  match bs:
+    case ActBind{p, t} <> rest:
+      Bool.or(Nat.is_eq(p, pos), act.nu.bound(pos, rest))
+    case ActBDot{p, x} <> rest:
+      act.nu.bound(pos, rest)
+    case Nil{}:
+      False{}
+
+def act.nu.rm.put(drop: Bool, h: List<&2, U32>, t: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  match drop:
+    case True{}:
+      t
+    case False{}:
+      h <> t
+
+def act.nu.rm(+x: List<&2, U32>, xs: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  match xs:
+    case +h <> t:
+      act.nu.rm.put(S.eq(h, x), h, act.nu.rm(x, t))
+    case Nil{}:
+      Nil{}
+
+def act.nu.vts.put(live: Bool, v: NuVt, vts: List<&2, NuVt>) -> List<&2, NuVt>:
+  match live:
+    case True{}:
+      v <> vts
+    case False{}:
+      vts
+
+def act.nu.promote1(b: Bool, +x: List<&2, U32>, +pos: Nat, ty: T.Bt, live: Bool, st: NuSt) -> NuSt:
+  match b st:
+    case True{} st:
+      st
+    case False{} NuSt{ok, bs, fl, eqs, vts, dots, weak, holes, sg, ps, ts, vty}:
+      NuSt{ok, ActBind{pos, T.BtVar{x}} <> bs, act.nu.rm(x, fl), eqs, act.nu.vts.put(live, NuVt{pos, x, ty}, vts), dots, weak, holes, sg, ps, ts, vty}
+
+# an Agda variable no pattern binds is bound to a flexible variable that is exactly it
+def act.nu.promote(ds: List<&2, NuDot>, +st: NuSt) -> NuSt:
+  match ds:
+    case NuDot{+x, +pos, ty, live} <> rest:
+      act.nu.promote(rest, act.nu.promote1(act.nu.bound(pos, act.nu.st.bs(st)), x, pos, ty, live, st))
+    case Nil{}:
+      st
+
+def act.nu.prom(+st: NuSt) -> NuSt:
+  +s1 = act.nu.promote(List.reverse(&2, NuDot, act.nu.st.dots(st)), st)
+  act.nu.promote(List.reverse(&2, NuDot, act.nu.st.weak(s1)), s1)
+
+# Equations --------------------------------------------------------------------
+
+def act.nu.nat() -> T.Bt:
+  T.BtVar{S.b("Nat")}
+
+def act.nu.esym(+ty: T.Bt, a: T.Bt, b: T.Bt, e: T.Bt) -> T.Bt:
+  act.bt.app("Equal.sym", [T.BtDead{ty}, T.BtDead{a}, T.BtDead{b}, e])
+
+def act.nu.etrans(ty: T.Bt, a: T.Bt, b: T.Bt, c: T.Bt, p: T.Bt, q: T.Bt) -> T.Bt:
+  act.bt.app("Equal.trans", [T.BtDead{ty}, T.BtDead{a}, T.BtDead{b}, T.BtDead{c}, p, q])
+
+def act.nu.econg(ta: T.Bt, tb: T.Bt, f: T.Bt, a: T.Bt, b: T.Bt, e: T.Bt) -> T.Bt:
+  act.bt.app("Equal.cong", [T.BtDead{ta}, T.BtDead{tb}, T.BtDead{f}, T.BtDead{a}, T.BtDead{b}, e])
+
+def act.nu.sucs(k: Nat) -> T.Bt:
+  match k:
+    case 0n:
+      T.BtNat{S.b("0")}
+    case 1n+p:
+      T.BtSucc{act.nu.sucs(p)}
+
+def act.nu.lit.t(small: Bool, k: Nat, s: List<&2, U32>) -> T.Bt:
+  match small:
+    case True{}:
+      act.nu.sucs(k)
+    case False{}:
+      T.BtNat{s}
+
+# a term with its literals as suc chains (up to 64) and no BtDead
+def act.nu.norm(t: T.Bt) -> T.Bt:
+  match t:
+    case T.BtDead{x}:
+      act.nu.norm(x)
+    case T.BtNat{+s}:
+      +k = act.cq.digits(s, 0n)
+      act.nu.lit.t(Nat.is_lt(k, 65n), k, s)
+    case T.BtSucc{x}:
+      T.BtSucc{act.nu.norm(x)}
+    case T.BtCon{c, as}:
+      T.BtCon{c, act.nu.norm(as)}
+    case T.BtArgs{h, t}:
+      T.BtArgs{act.nu.norm(h), act.nu.norm(t)}
+    case t:
+      t
+
+def act.nu.same(a: T.Bt, b: T.Bt) -> Bool:
+  match a b:
+    case T.BtVar{x} T.BtVar{y}:
+      S.eq(x, y)
+    case T.BtSucc{x} T.BtSucc{y}:
+      act.nu.same(x, y)
+    case T.BtNat{x} T.BtNat{y}:
+      S.eq(x, y)
+    case T.BtDead{x} y:
+      act.nu.same(x, y)
+    case x T.BtDead{y}:
+      act.nu.same(x, y)
+    case T.BtCon{x, xs} T.BtCon{y, ys}:
+      Bool.and(S.eq(x, y), act.nu.same(xs, ys))
+    case T.BtApp{f, xs} T.BtApp{g, ys}:
+      Bool.and(act.nu.same(f, g), act.nu.same(xs, ys))
+    case T.BtArgs{x, xs} T.BtArgs{y, ys}:
+      Bool.and(act.nu.same(x, y), act.nu.same(xs, ys))
+    case T.BtANil{} T.BtANil{}:
+      True{}
+    case T.BtTyApp{x, xs} T.BtTyApp{y, ys}:
+      Bool.and(S.eq(x, y), act.nu.same(xs, ys))
+    case _ _:
+      False{}
+
+def act.nu.pf.chain(m: Maybe<&2, T.Bt>, ty: T.Bt, t0: T.Bt, t: T.Bt, t2: T.Bt, st: T.Bt) -> T.Bt:
+  match m:
+    case None{}:
+      st
+    case Some{p}:
+      act.nu.etrans(ty, t0, t, t2, p, st)
+
+def act.nu.isvar(+x: List<&2, U32>, t: T.Bt) -> Bool:
+  match t:
+    case T.BtVar{y}:
+      S.eq(x, y)
+    case _:
+      False{}
+
+# {t == t[x := s]} from q : {x == s}
+def act.nu.step.pf(b: Bool, +x: List<&2, U32>, xty: T.Bt, +s: T.Bt, q: T.Bt, ty: T.Bt, t: T.Bt) -> T.Bt:
+  match b:
+    case True{}:
+      q
+    case False{}:
+      act.nu.econg(xty, ty, T.BtLam{T.BmLive{}, S.b("a2b_y"), T.tba.subst(t, x, T.BtVar{S.b("a2b_y")})}, T.BtVar{x}, s, q)
+
+def act.nu.sub.step(+x: List<&2, U32>, xty: T.Bt, +s: T.Bt, q: T.Bt, +ty: T.Bt, t0: T.Bt, cur: NuPf) -> NuPf:
+  match cur:
+    case NuPf{+t, m}:
+      +t2 = T.tba.subst(t, x, s)
+      NuPf{t2, Some{act.nu.pf.chain(m, ty, t0, t, t2, act.nu.step.pf(act.nu.isvar(x, t), x, xty, s, q, ty, t))}}
+
+def act.nu.pf.t(c: NuPf) -> T.Bt:
+  match c:
+    case NuPf{t, m}:
+      t
+
+def act.nu.sub.at(b: Bool, +x: List<&2, U32>, xty: T.Bt, +s: T.Bt, q: T.Bt, +ty: T.Bt, t0: T.Bt, cur: NuPf) -> NuPf:
+  match b:
+    case True{}:
+      act.nu.sub.step(x, xty, s, q, ty, t0, cur)
+    case False{}:
+      cur
+
+def act.nu.sub1(sols: List<&2, NuSol>, +ty: T.Bt, +t0: T.Bt, +cur: NuPf) -> NuPf:
+  match sols:
+    case NuSol{+x, xty, s, q} <> rest:
+      act.nu.sub1(rest, ty, t0, act.nu.sub.at(act.occurs(x, act.nu.pf.t(cur)), x, xty, s, q, ty, t0, cur))
+    case Nil{}:
+      cur
+
+# t with the solutions put in until none is left, and its proof
+def act.nu.subn(fuel: Nat, +sols: List<&2, NuSol>, +ty: T.Bt, +t0: T.Bt, cur: NuPf) -> NuPf:
+  match fuel:
+    case 1n+f:
+      act.nu.subn(f, sols, ty, t0, act.nu.sub1(sols, ty, t0, cur))
+    case 0n:
+      cur
+
+def act.nu.pf.join(+ty: T.Bt, +a: T.Bt, +b: T.Bt, +a2: T.Bt, +b2: T.Bt, ma: Maybe<&2, T.Bt>, p: T.Bt, mb: Maybe<&2, T.Bt>) -> T.Bt:
+  match ma mb:
+    case None{} None{}:
+      p
+    case None{} Some{q}:
+      act.nu.etrans(ty, a, b, b2, p, q)
+    case Some{r} None{}:
+      act.nu.etrans(ty, a2, a, b, act.nu.esym(ty, a, a2, r), p)
+    case Some{r} Some{q}:
+      act.nu.etrans(ty, a2, a, b2, act.nu.esym(ty, a, a2, r), act.nu.etrans(ty, a, b, b2, p, q))
+
+def act.nu.eq.mk(+ty: T.Bt, +a: T.Bt, +b: T.Bt, p: T.Bt, ra: NuPf, rb: NuPf) -> NuEq:
+  match ra rb:
+    case NuPf{+a2, ma} NuPf{+b2, mb}:
+      NuEq{ty, a2, b2, act.nu.pf.join(ty, a, b, a2, b2, ma, p, mb)}
+
+def act.nu.eq.sub(+sols: List<&2, NuSol>, e: NuEq) -> NuEq:
+  match e:
+    case NuEq{+ty, +a, +b, p}:
+      +n = Nat.add(1n, List.length(&2, NuSol, sols))
+      act.nu.eq.mk(ty, a, b, p, act.nu.subn(n, sols, ty, a, NuPf{a, None{}}), act.nu.subn(n, sols, ty, b, NuPf{b, None{}}))
+
+def act.nu.eq.norm(e: NuEq) -> NuEq:
+  match e:
+    case NuEq{ty, a, b, p}:
+      NuEq{ty, act.nu.norm(a), act.nu.norm(b), p}
+
+# suc's injectivity: {1n+a == 1n+b} gives {a == b}
+def act.nu.peel(fuel: Nat, e: NuEq) -> NuEq:
+  match fuel e:
+    case 1n+f NuEq{ty, T.BtSucc{+a}, T.BtSucc{+b}, p}:
+      act.nu.peel(f, NuEq{ty, a, b, act.nu.econg(act.nu.nat(), act.nu.nat(), T.BtVar{S.b("a2b_pred")}, T.BtSucc{a}, T.BtSucc{b}, p)})
+    case _ e:
+      e
+
+def act.nu.iszero(t: T.Bt) -> Bool:
+  match t:
+    case T.BtNat{s}:
+      S.eq(s, S.b("0"))
+    case _:
+      False{}
+
+def act.nu.issuc(t: T.Bt) -> Bool:
+  match t:
+    case T.BtSucc{x}:
+      True{}
+    case _:
+      False{}
+
+def act.nu.iscon(+c: String, t: T.Bt) -> Bool:
+  match t:
+    case T.BtCon{x, as}:
+      S.eq(x, S.b(c))
+    case _:
+      False{}
+
+def act.nu.cons2(a: T.Bt, b: T.Bt) -> Nat:
+  match a b:
+    case T.BtCon{x, as} T.BtCon{y, bs}:
+      Bool.pick(Nat, S.eq(x, y), 2n, 1n)
+    case _ _:
+      0n
+
+def act.nu.clash(+a: T.Bt, +b: T.Bt) -> Bool:
+  Bool.or(Bool.or(Bool.and(act.nu.iszero(a), act.nu.issuc(b)), Bool.and(act.nu.issuc(a), act.nu.iszero(b))), Nat.is_eq(act.nu.cons2(a, b), 1n))
+
+# a is a flexible variable b does not mention
+def act.nu.flexv(a: T.Bt, +b: T.Bt, +fl: List<&2, List<&2, U32>>) -> Bool:
+  match a:
+    case T.BtVar{+x}:
+      Bool.and(act.used(x, fl), Bool.not(act.occurs(x, b)))
+    case _:
+      False{}
+
+def act.nu.cls(+a: T.Bt, +b: T.Bt, +fl: List<&2, List<&2, U32>>) -> NuC:
+  Bool.pick(NuC, act.nu.same(a, b), NcSame{}, Bool.pick(NuC, act.nu.flexv(a, b, fl), NcVarL{}, Bool.pick(NuC, act.nu.flexv(b, a, fl), NcVarR{}, Bool.pick(NuC, act.nu.clash(a, b), NcClash{}, Bool.pick(NuC, Nat.is_eq(act.nu.cons2(a, b), 2n), NcInj{}, NcStuck{})))))
+
+def act.nu.cls.e(e: NuEq, +fl: List<&2, List<&2, U32>>) -> NuC:
+  match e:
+    case NuEq{ty, +a, +b, p}:
+      act.nu.cls(a, b, fl)
+
+def act.nu.u.add(c: NuC, e: NuEq, u: NuU) -> NuU:
+  match c e u:
+    case NcVarL{} NuEq{ty, T.BtVar{x}, b, p} NuU{sols, cl}:
+      NuU{List.append(&2, NuSol, sols, [NuSol{x, ty, b, p}]), cl}
+    case NcVarR{} NuEq{+ty, +a, T.BtVar{+y}, p} NuU{sols, cl}:
+      NuU{List.append(&2, NuSol, sols, [NuSol{y, ty, a, act.nu.esym(ty, a, T.BtVar{y}, p)}]), cl}
+    case NcClash{} e NuU{sols, cl}:
+      NuU{sols, List.append(&2, NuEq, cl, [e])}
+    case _ _ u:
+      u
+
+def act.nu.u.sols(u: NuU) -> List<&2, NuSol>:
+  match u:
+    case NuU{sols, cl}:
+      sols
+
+def act.nu.u.cl(u: NuU) -> List<&2, NuEq>:
+  match u:
+    case NuU{sols, cl}:
+      cl
+
+def act.nu.isnat(t: T.Bt) -> Bool:
+  match t:
+    case T.BtSucc{x}:
+      True{}
+    case T.BtNat{s}:
+      True{}
+    case _:
+      False{}
+
+def act.nu.vty.or(b: Bool, ty: T.Bt, m: Maybe<&2, T.Bt>) -> Maybe<&2, T.Bt>:
+  match b:
+    case True{}:
+      Some{ty}
+    case False{}:
+      m
+
+def act.nu.vty.find(tys: List<&2, NuSg>, +x: List<&2, U32>) -> Maybe<&2, T.Bt>:
+  match tys:
+    case NuSg{+y, ty} <> rest:
+      act.nu.vty.or(S.eq(x, y), ty, act.nu.vty.find(rest, x))
+    case Nil{}:
+      None{}
+
+def act.nu.vty.mk(x: List<&2, U32>, m: Maybe<&2, T.Bt>) -> Maybe<&2, NuSg>:
+  match m:
+    case Some{ty}:
+      Some{NuSg{x, ty}}
+    case None{}:
+      None{}
+
+def act.nu.vty.var(+tys: List<&2, NuSg>, t: T.Bt) -> Maybe<&2, NuSg>:
+  match t:
+    case T.BtVar{+x}:
+      act.nu.vty.mk(x, act.nu.vty.find(tys, x))
+    case _:
+      None{}
+
+def act.nu.vty.alt(m: Maybe<&2, NuSg>, n: Maybe<&2, NuSg>) -> Maybe<&2, NuSg>:
+  match m:
+    case Some{v}:
+      Some{v}
+    case None{}:
+      n
+
+def act.nu.iscc(+c: List<&2, U32>, t: T.Bt) -> Bool:
+  match t:
+    case T.BtCon{x, as}:
+      S.eq(x, c)
+    case _:
+      False{}
+
+def act.nu.ty.of(m: Maybe<&2, NuSg>) -> Maybe<&2, T.Bt>:
+  match m:
+    case Some{NuSg{x, ty}}:
+      Some{ty}
+    case None{}:
+      None{}
+
+# a field's type at an equation between two applications of constructor
+# c (of type ty): a side that is a variable of known type, else Nat for a
+# Nat term, else ty itself when a side applies c (a recursive field)
+def act.nu.vty.of(+tys: List<&2, NuSg>, +x: T.Bt, +y: T.Bt, +c: List<&2, U32>, +ty: T.Bt) -> Maybe<&2, T.Bt>:
+  act.nu.ty.of(act.nu.vty.alt(act.nu.vty.var(tys, x), act.nu.vty.alt(act.nu.vty.var(tys, y), Bool.pick(Maybe<&2, NuSg>, Bool.or(act.nu.isnat(x), act.nu.isnat(y)), Some{NuSg{Nil{}, act.nu.nat()}}, Bool.pick(Maybe<&2, NuSg>, Bool.or(act.nu.iscc(c, x), act.nu.iscc(c, y)), Some{NuSg{Nil{}, ty}}, None{})))))
+
+# c's projection of field i of n at type ty -> ti, its other arms the default d
+def act.nu.proj(+c: List<&2, U32>, +n: Nat, +i: Nat, d: T.Bt, +ty: T.Bt, +ti: T.Bt) -> T.Bt:
+  T.BtApp{T.BtAnn{T.BtLam{T.BmLive{}, S.b("a2b_d"), act.inj.prj(c, n, i, S.b("a2b_d"), ty, ti)}, T.BtPi{T.BmLive{}, S.b("_"), False{}, ti, T.BtPi{T.BmLive{}, S.b("_"), False{}, ty, ti}}}, T.tba.args([d])}
+
+def act.nu.inj.one(m: Maybe<&2, T.Bt>, +x: T.Bt, y: T.Bt, +i: Nat, +n: Nat, +c: List<&2, U32>, +ty: T.Bt, +a: T.Bt, +b: T.Bt, +p: T.Bt) -> List<&2, NuEq>:
+  match m:
+    case Some{+ti}:
+      [NuEq{ti, x, y, act.nu.econg(ty, ti, act.nu.proj(c, n, i, x, ty, ti), a, b, p)}]
+    case None{}:
+      Nil{}
+
+def act.nu.inj.eqs(xs: List<&2, T.Bt>, ys: List<&2, T.Bt>, +i: Nat, +n: Nat, +c: List<&2, U32>, +ty: T.Bt, +a: T.Bt, +b: T.Bt, +p: T.Bt, +tys: List<&2, NuSg>) -> List<&2, NuEq>:
+  match xs ys:
+    case +x <> xt +y <> yt:
+      List.append(&2, NuEq, act.nu.inj.one(act.nu.vty.of(tys, x, y, c, ty), x, y, i, n, c, ty, a, b, p), act.nu.inj.eqs(xt, yt, 1n+i, n, c, ty, a, b, p, tys))
+    case _ _:
+      Nil{}
+
+def act.nu.inj(a: T.Bt, b: T.Bt, +ty: T.Bt, +p: T.Bt, +tys: List<&2, NuSg>) -> List<&2, NuEq>:
+  match a b:
+    case T.BtCon{+c, +as} T.BtCon{cb, +bs}:
+      +xs = act.nu.spine(as)
+      act.nu.inj.eqs(xs, act.nu.spine(bs), 1n, List.length(&2, T.Bt, xs), c, ty, T.BtCon{c, as}, T.BtCon{cb, bs}, p, tys)
+    case _ _:
+      Nil{}
+
+# the equations an equation between two applications of one constructor
+# splits into (its fields', by the constructor's projections)
+def act.nu.u.new(c: NuC, e: NuEq, +tys: List<&2, NuSg>) -> List<&2, NuEq>:
+  match c e:
+    case NcInj{} NuEq{ty, a, b, p}:
+      act.nu.inj(a, b, ty, p, tys)
+    case _ _:
+      Nil{}
+
+def act.nu.u.prep(+sols: List<&2, NuSol>, e: NuEq) -> NuEq:
+  act.nu.peel(64n, act.nu.eq.norm(act.nu.eq.sub(sols, e)))
+
+def act.nu.u.eqs(fuel: Nat, eqs: List<&2, NuEq>, +fl: List<&2, List<&2, U32>>, +tys: List<&2, NuSg>, +u: NuU) -> NuU:
+  match fuel eqs:
+    case 1n+f e <> rest:
+      +e2 = act.nu.u.prep(act.nu.u.sols(u), e)
+      +c = act.nu.cls.e(e2, fl)
+      act.nu.u.eqs(f, List.append(&2, NuEq, act.nu.u.new(c, e2, tys), rest), fl, tys, act.nu.u.add(c, e2, u))
+    case _ _:
+      u
+
+# the equations solved for the flexible variables (twice: one stuck the
+# first time may be solved by a later one)
+def act.nu.unify(+eqs: List<&2, NuEq>, +fl: List<&2, List<&2, U32>>, +tys: List<&2, NuSg>) -> NuU:
+  act.nu.u.eqs(512n, List.append(&2, NuEq, eqs, eqs), fl, tys, NuU{Nil{}, Nil{}})
+
+def act.nu.xty(sols: List<&2, NuSol>, +x: List<&2, U32>) -> T.Bt:
+  match sols:
+    case NuSol{+y, ty, t, pf} <> rest:
+      Bool.pick(T.Bt, S.eq(x, y), ty, act.nu.xty(rest, x))
+    case Nil{}:
+      act.nu.nat()
+
+# x's value, and the proof of {x == it} (None: no solution)
+def act.nu.solve(+sols: List<&2, NuSol>, +x: List<&2, U32>) -> NuPf:
+  act.nu.subn(Nat.add(1n, List.length(&2, NuSol, sols)), sols, act.nu.xty(sols, x), T.BtVar{x}, NuPf{T.BtVar{x}, None{}})
+
+# Cases ------------------------------------------------------------------------
+
+def act.nu.wrap(ss: List<&2, NuStm>, body: T.Bt) -> T.Bt:
+  match ss:
+    case NsLet{x, v} <> t:
+      T.BtLet{x, v, act.nu.wrap(t, body)}
+    case NsRw{e, p} <> t:
+      T.BtRw{e, p, act.nu.wrap(t, body)}
+    case Nil{}:
+      body
+
+def act.nu.cs.ty(c: NuCs) -> T.Bt:
+  match c:
+    case NuCs{ss, x, ty}:
+      ty
+
+def act.nu.cast1(b: Bool, +y: List<&2, U32>, r: NuPf, yty: T.Bt, k: Nat, c: NuCs) -> NuCs:
+  match b r c:
+    case True{} NuPf{+t, Some{pf}} NuCs{ss, +x, +ty}:
+      +x2 = List.append(&2, U32, x, S.b("_c" ++ Nat.show(k)))
+      NuCs{List.append(&2, NuStm, ss, [NsLet{x2, act.bt.app("a2b_cast", [T.BtDead{yty}, T.BtDead{T.BtLam{T.BmLive{}, S.b("a2b_k"), T.tba.subst(ty, y, T.BtVar{S.b("a2b_k")})}}, T.BtDead{T.BtVar{y}}, T.BtDead{t}, pf, T.BtVar{x}])}]), x2, T.tba.subst(ty, y, t)}
+    case _ _ c:
+      c
+
+# a binder of type ty cast along each flexible variable ty mentions that has a value
+def act.nu.casts(fl: List<&2, List<&2, U32>>, +sols: List<&2, NuSol>, +k: Nat, +c: NuCs) -> NuCs:
+  match fl:
+    case +y <> rest:
+      act.nu.casts(rest, sols, 1n+k, act.nu.cast1(act.occurs(y, act.nu.cs.ty(c)), y, act.nu.solve(sols, y), act.nu.xty(sols, y), k, c))
+    case Nil{}:
+      c
+
+def act.nu.vcast.put(pos: Nat, c: NuCs, d: NuBd) -> NuBd:
+  match c d:
+    case NuCs{ss, x2, ty2} NuBd{ss0, bs}:
+      NuBd{List.append(&2, NuStm, ss0, ss), ActBind{pos, T.BtVar{x2}} <> bs}
+
+def act.nu.vcasts(vts: List<&2, NuVt>, +fl: List<&2, List<&2, U32>>, +sols: List<&2, NuSol>, d: NuBd) -> NuBd:
+  match vts:
+    case NuVt{pos, x, ty} <> rest:
+      act.nu.vcasts(rest, fl, sols, act.nu.vcast.put(pos, act.nu.casts(fl, sols, 1n, NuCs{Nil{}, x, ty}), d))
+    case Nil{}:
+      d
+
+def act.nu.gl.g(g: NuGl) -> T.Bt:
+  match g:
+    case NuGl{ss, g}:
+      g
+
+def act.nu.rw1(b: Bool, +y: List<&2, U32>, r: NuPf, yty: T.Bt, g: NuGl) -> NuGl:
+  match b r g:
+    case True{} NuPf{+t, Some{pf}} NuGl{ss, +goal}:
+      +h = List.append(&2, U32, y, S.b("_is"))
+      NuGl{List.append(&2, NuStm, ss, [NsLet{h, act.nu.esym(yty, T.BtVar{y}, t, pf)}, NsRw{T.BtVar{h}, T.tba.subst(goal, y, T.BtWild{})}]), T.tba.subst(goal, y, t)}
+    case _ _ g:
+      g
+
+# the goal rewritten along each flexible variable it mentions that has a value
+def act.nu.rws(fl: List<&2, List<&2, U32>>, +sols: List<&2, NuSol>, +g: NuGl) -> NuGl:
+  match fl:
+    case +y <> rest:
+      act.nu.rws(rest, sols, act.nu.rw1(act.occurs(y, act.nu.gl.g(g)), y, act.nu.solve(sols, y), act.nu.xty(sols, y), g))
+    case Nil{}:
+      g
+
+# an impossible case: a clash {a == b} through Bool.pick at the goal
+def act.nu.refute.e(e: NuEq, +g: T.Bt) -> T.Bt:
+  match e:
+    case NuEq{+ty, +a, +b, p}:
+      T.BtLet{S.b("a2b_cl"), p, act.abs.refute.or(act.abs.disc.ty(act.nu.norm(ty), a), act.abs.lm.ab(a, b, ty), S.b("a2b_cl"), g)}
+
+def act.nu.bd.ss(d: NuBd) -> List<&2, NuStm>:
+  match d:
+    case NuBd{ss, bs}:
+      ss
+
+def act.nu.bd.bs(d: NuBd) -> List<&2, ActBind>:
+  match d:
+    case NuBd{ss, bs}:
+      bs
+
+def act.nu.gl.ss(g: NuGl) -> List<&2, NuStm>:
+  match g:
+    case NuGl{ss, g}:
+      ss
+
+def act.nu.clause.of(cl: List<&2, NuEq>, +sols: List<&2, NuSol>, +st: NuSt, body: A.Ag, +n: Nat, +env: ActEnv, +g0: T.Bt) -> T.Bt:
+  match cl:
+    case e <> t:
+      act.nu.refute.e(e, g0)
+    case Nil{}:
+      +fl = act.nu.st.fl(st)
+      +bd = act.nu.vcasts(act.nu.st.vts(st), fl, sols, NuBd{Nil{}, act.nu.st.bs(st)})
+      +gl = act.nu.rws(fl, sols, NuGl{Nil{}, g0})
+      act.nu.wrap(List.append(&2, NuStm, act.nu.bd.ss(bd), act.nu.gl.ss(gl)), act.abs.body(None{}, body, act.ctx.of(n, act.nu.bd.bs(bd)), env, act.nu.gl.g(gl)))
+
+# a clause's case body: its equations solved, the binders cast, the goal
+# rewritten, the body
+def act.nu.clause(+st: NuSt, body: A.Ag, +n: Nat, +env: ActEnv, ret: T.Bt) -> T.Bt:
+  +u = act.nu.unify(act.nu.st.eqs(st), act.nu.st.fl(st), act.nu.st.vty(st))
+  act.nu.clause.of(act.nu.u.cl(u), act.nu.u.sols(u), st, body, n, env, act.nu.st.ty(st, ret))
+
+# Coverage ---------------------------------------------------------------------
+
+def act.nu.app(a: NuP, b: NuP) -> NuP:
+  match a:
+    case NuPS{h, t}:
+      NuPS{h, act.nu.app(t, b)}
+    case _:
+      b
+
+def act.nu.wilds(k: Nat) -> NuP:
+  match k:
+    case 1n+p:
+      NuPS{NuPD{None{}}, act.nu.wilds(p)}
+    case 0n:
+      NuPE{}
+
+def act.nu.takes(k: Nat, p: NuP) -> NuP:
+  match k p:
+    case 1n+q NuPS{h, t}:
+      NuPS{h, act.nu.takes(q, t)}
+    case _ _:
+      NuPE{}
+
+def act.nu.drops(k: Nat, p: NuP) -> NuP:
+  match k p:
+    case 1n+q NuPS{h, t}:
+      act.nu.drops(q, t)
+    case _ p:
+      p
+
+# a clause's patterns at the split parameters
+def act.nu.cols(p: NuP, scr: List<&2, Bool>) -> NuP:
+  match p scr:
+    case NuPS{h, t} True{} <> st:
+      NuPS{h, act.nu.cols(t, st)}
+    case NuPS{h, t} False{} <> st:
+      act.nu.cols(t, st)
+    case _ _:
+      NuPE{}
+
+# a missing case's patterns at every parameter (a wildcard at one not split)
+def act.nu.uncols(scr: List<&2, Bool>, p: NuP) -> NuP:
+  match scr p:
+    case True{} <> st NuPS{h, t}:
+      NuPS{h, act.nu.uncols(st, t)}
+    case False{} <> st p:
+      NuPS{NuPD{None{}}, act.nu.uncols(st, p)}
+    case _ _:
+      NuPE{}
+
+def act.nu.ncols(scr: List<&2, Bool>) -> Nat:
+  match scr:
+    case True{} <> t:
+      1n+act.nu.ncols(t)
+    case False{} <> t:
+      act.nu.ncols(t)
+    case Nil{}:
+      0n
+
+def act.nu.key0(rows: List<&2, NuP>) -> String:
+  match rows:
+    case NuPS{NuPC{k, ps}, t} <> rest:
+      k
+    case r <> rest:
+      act.nu.key0(rest)
+    case Nil{}:
+      ""
+
+def act.nu.tails(rows: List<&2, NuP>) -> List<&2, NuP>:
+  match rows:
+    case NuPS{h, t} <> rest:
+      t <> act.nu.tails(rest)
+    case r <> rest:
+      act.nu.tails(rest)
+    case Nil{}:
+      Nil{}
+
+def act.nu.spec1(r: NuP, +c: String, +ar: Nat) -> List<&2, NuP>:
+  match r:
+    case NuPS{NuPC{k, ps}, t}:
+      Bool.pick(List<&2, NuP>, String.eq(k, c), [act.nu.app(ps, t)], Nil{})
+    case NuPS{NuPV{p, a}, t}:
+      [act.nu.app(act.nu.wilds(ar), t)]
+    case NuPS{NuPD{m}, t}:
+      [act.nu.app(act.nu.wilds(ar), t)]
+    case _:
+      Nil{}
+
+# the rows a constructor c of ar arguments at the first column leaves
+def act.nu.spec(rows: List<&2, NuP>, +c: String, +ar: Nat) -> List<&2, NuP>:
+  match rows:
+    case r <> rest:
+      List.append(&2, NuP, act.nu.spec1(r, c, ar), act.nu.spec(rest, c, ar))
+    case Nil{}:
+      Nil{}
+
+def act.nu.build(cx: List<&2, NuWr>, +sp: NuP) -> NuP:
+  match cx:
+    case NwWild{} <> rest:
+      act.nu.build(rest, NuPS{NuPD{None{}}, sp})
+    case NwCon{k, +ar} <> rest:
+      act.nu.build(rest, NuPS{NuPC{k, act.nu.takes(ar, sp)}, act.nu.drops(ar, sp)})
+    case Nil{}:
+      sp
+
+def act.nu.isnil(rows: List<&2, NuP>) -> Bool:
+  match rows:
+    case Nil{}:
+      True{}
+    case _:
+      False{}
+
+def act.nu.mj.out(j: NuMj) -> List<&2, NuP>:
+  match j:
+    case NuMj{+rows, +w, cx}:
+      Bool.pick(List<&2, NuP>, act.nu.isnil(rows), [act.nu.build(cx, act.nu.wilds(w))], Nil{})
+
+def act.nu.mj.sibs(ks: List<&2, String>, +rows: List<&2, NuP>, +w: Nat, +cx: List<&2, NuWr>, +env: ActEnv) -> List<&2, NuMj>:
+  match ks:
+    case +c <> rest:
+      +ar = act.nu.arity(env, c)
+      NuMj{act.nu.spec(rows, c, ar), Nat.sub(Nat.add(ar, w), 1n), NwCon{c, ar} <> cx} <> act.nu.mj.sibs(rest, rows, w, cx, env)
+    case Nil{}:
+      Nil{}
+
+def act.nu.mj.split(con: Bool, +k0: String, rows: List<&2, NuP>, w: Nat, cx: List<&2, NuWr>, +env: ActEnv) -> List<&2, NuMj>:
+  match con:
+    case False{}:
+      [NuMj{act.nu.tails(rows), Nat.sub(w, 1n), NwWild{} <> cx}]
+    case True{}:
+      act.nu.mj.sibs(act.nu.sibs(env, act.nu.dkey(env, k0)), rows, w, cx, env)
+
+def act.nu.mj.next2(stop: Bool, +rows: List<&2, NuP>, w: Nat, cx: List<&2, NuWr>, +env: ActEnv) -> List<&2, NuMj>:
+  match stop:
+    case True{}:
+      Nil{}
+    case False{}:
+      +k0 = act.nu.key0(rows)
+      act.nu.mj.split(Bool.not(String.eq(k0, "")), k0, rows, w, cx, env)
+
+def act.nu.mj.next(j: NuMj, +env: ActEnv) -> List<&2, NuMj>:
+  match j:
+    case NuMj{+rows, +w, cx}:
+      act.nu.mj.next2(Bool.or(act.nu.isnil(rows), Nat.is_eq(w, 0n)), rows, w, cx, env)
+
+# Maranget's missing patterns: a job is the rows left, their width, and
+# how to put a missing row of them back into the whole (innermost first)
+def act.nu.miss(fuel: Nat, js: List<&2, NuMj>, +env: ActEnv, acc: List<&2, NuP>) -> List<&2, NuP>:
+  match fuel js:
+    case 1n+f +j <> rest:
+      act.nu.miss(f, List.append(&2, NuMj, act.nu.mj.next(j, env), rest), env, List.append(&2, NuP, act.nu.mj.out(j), acc))
+    case _ _:
+      acc
+
+# a pattern with the one at path (from the root: a parameter's place, then
+# a constructor field's, from 1) replaced
+def act.nu.put(p: NuP, sp: Bool, i: Nat, path: List<&2, Nat>, +new: NuP) -> NuP:
+  match p sp i path:
+    case NuPS{h, t} True{} 0n path:
+      NuPS{act.nu.put(h, False{}, 0n, path, new), t}
+    case NuPS{h, t} True{} 1n+q path:
+      NuPS{h, act.nu.put(t, True{}, q, path, new)}
+    case p False{} i Nil{}:
+      new
+    case NuPC{k, ps} False{} i j <> rest:
+      NuPC{k, act.nu.put(ps, True{}, Nat.sub(j, 1n), rest, new)}
+    case p sp i path:
+      p
+
+def act.nu.put.at(row: NuP, path: List<&2, Nat>, new: NuP) -> NuP:
+  match path:
+    case j <> rest:
+      act.nu.put(row, True{}, j, rest, new)
+    case Nil{}:
+      row
+
+def act.nu.hole.ok(+dk: String) -> Bool:
+  Bool.and(act.nu.real(dk), Bool.not(String.eq(dk, "")))
+
+def act.nu.hole.or(b: Bool, h: NuHole, m: Maybe<&2, NuHole>) -> Maybe<&2, NuHole>:
+  match b:
+    case True{}:
+      Some{h}
+    case False{}:
+      m
+
+# the first wildcard of a data type's (not Nat's, Bool's) to split
+def act.nu.hole.pick(hs: List<&2, NuHole>, +env: ActEnv) -> Maybe<&2, NuHole>:
+  match hs:
+    case NuHole{path, +dk} <> rest:
+      act.nu.hole.or(act.nu.hole.ok(dk), NuHole{path, dk}, act.nu.hole.pick(rest, env))
+    case Nil{}:
+      None{}
+
+def act.nu.split.rows(ks: List<&2, String>, +row: NuP, +path: List<&2, Nat>, +d: Nat, +env: ActEnv) -> List<&2, NuRj>:
+  match ks:
+    case +c <> rest:
+      NuRj{act.nu.put.at(row, path, NuPC{c, act.nu.wilds(act.nu.arity(env, c))}), d} <> act.nu.split.rows(rest, row, path, d, env)
+    case Nil{}:
+      Nil{}
+
+def act.nu.cx.row(+cx: NuCx, row: NuP) -> NuSt:
+  match cx:
+    case NuCx{scr, ents, ks, hps, pnames, env, ret}:
+      act.nu.row(row, scr, ents, ks, hps, 0n, Nil{}, pnames, pnames, env, act.nu.st0())
+
+def act.nu.cx.env(cx: NuCx) -> ActEnv:
+  match cx:
+    case NuCx{scr, ents, ks, hps, pnames, env, ret}:
+      env
+
+def act.nu.cx.ret(cx: NuCx) -> T.Bt:
+  match cx:
+    case NuCx{scr, ents, ks, hps, pnames, env, ret}:
+      ret
+
+def act.nu.cx.n(cx: NuCx) -> Nat:
+  match cx:
+    case NuCx{scr, ents, ks, hps, pnames, env, ret}:
+      act.nu.ncols(scr)
+
+# a missing case: refuted by a clash among its equations, else split at a
+# wildcard (depth d), else a gap
+def act.nu.ref.out(cl: List<&2, NuEq>, d: Nat, m: Maybe<&2, NuHole>, +st: NuSt, +cx: NuCx) -> List<&2, NuCase>:
+  match cl d m:
+    case e <> t d m:
+      [NuCase{act.nu.st.pats(st, act.nu.cx.n(cx)), act.nu.refute.e(e, act.nu.st.ty(st, act.nu.cx.ret(cx)))}]
+    case Nil{} 1n+p Some{h}:
+      Nil{}
+    case Nil{} d m:
+      [NuCase{act.nu.st.pats(st, act.nu.cx.n(cx)), T.BtExpr{act.todo("a case nested patterns leave out that no index equation refutes")}}]
+
+def act.nu.ref.more(cl: List<&2, NuEq>, d: Nat, m: Maybe<&2, NuHole>, row: NuP, +cx: NuCx) -> List<&2, NuRj>:
+  match cl d m:
+    case Nil{} 1n+p Some{NuHole{path, +dk}}:
+      +env = act.nu.cx.env(cx)
+      act.nu.split.rows(act.nu.sibs(env, dk), row, List.reverse(&2, Nat, path), p, env)
+    case _ _ _:
+      Nil{}
+
+def act.nu.refs(fuel: Nat, js: List<&2, NuRj>, +cx: NuCx, acc: List<&2, NuCase>) -> List<&2, NuCase>:
+  match fuel js:
+    case 1n+f NuRj{+row, +d} <> rest:
+      +st = act.nu.cx.row(cx, row)
+      +cl = act.nu.u.cl(act.nu.unify(act.nu.st.eqs(st), act.nu.st.fl(st), act.nu.st.vty(st)))
+      +h = act.nu.hole.pick(act.nu.st.holes(st), act.nu.cx.env(cx))
+      act.nu.refs(f, List.append(&2, NuRj, act.nu.ref.more(cl, d, h, row, cx), rest), cx, List.append(&2, NuCase, acc, act.nu.ref.out(cl, d, h, st, cx)))
+    case _ _:
+      acc
+
+def act.nu.rjs(ms: List<&2, NuP>, +scr: List<&2, Bool>) -> List<&2, NuRj>:
+  match ms:
+    case m <> rest:
+      NuRj{act.nu.uncols(scr, m), 3n} <> act.nu.rjs(rest, scr)
+    case Nil{}:
+      Nil{}
+
+# The def ----------------------------------------------------------------------
+
+def act.nu.ks.of(p: NuP, +env: ActEnv) -> List<&2, String>:
+  match p:
+    case NuPS{NuPC{+k, ps}, t}:
+      act.nu.dkey(env, k) <> act.nu.ks.of(t, env)
+    case NuPS{h, t}:
+      "" <> act.nu.ks.of(t, env)
+    case _:
+      Nil{}
+
+def act.nu.ks.merge(a: List<&2, String>, b: List<&2, String>) -> List<&2, String>:
+  match a b:
+    case +x <> xs y <> ys:
+      Bool.pick(String, String.eq(x, ""), y, x) <> act.nu.ks.merge(xs, ys)
+    case Nil{} b:
+      b
+    case a Nil{}:
+      a
+
+# each parameter's data key, from the first constructor pattern there
+def act.nu.ks(cls: A.Ag, +env: ActEnv) -> List<&2, String>:
+  match cls:
+    case A.AgCl{+tel, ps, body, ty, ca, rest}:
+      act.nu.ks.merge(act.nu.ks.of(act.nu.p(ps, act.tel.len(tel), env), env), act.nu.ks(rest, env))
+    case _:
+      Nil{}
+
+def act.nu.pvs(k: Nat, +hints: List<&2, List<&2, U32>>, +pnames: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  match k:
+    case 1n+(+p):
+      act.pv.name(p, hints, pnames) <> act.nu.pvs(p, hints, pnames)
+    case 0n:
+      pnames
+
+def act.nu.acc.put(ok: Bool, c: NuCase, row: NuP, acc: NuAcc) -> NuAcc:
+  match acc:
+    case NuAcc{o, cs, rows}:
+      NuAcc{Bool.and(ok, o), List.append(&2, NuCase, cs, [c]), List.append(&2, NuP, rows, [row])}
+
+def act.nu.cl.add(skip: Bool, +p: NuP, +n: Nat, +hints: List<&2, List<&2, U32>>, body: A.Ag, +scr: List<&2, Bool>, ents: List<&2, T.Bt>, ks: List<&2, String>, +pnames: List<&2, List<&2, U32>>, +env: ActEnv, hps: List<&2, T.BParam>, ret: T.Bt, acc: NuAcc) -> NuAcc:
+  match skip:
+    case True{}:
+      acc
+    case False{}:
+      +st = act.nu.prom(act.nu.row(p, scr, ents, ks, hps, 0n, hints, pnames, act.nu.pvs(n, hints, pnames), env, act.nu.st0()))
+      act.nu.acc.put(act.nu.st.ok(st), NuCase{act.nu.st.pats(st, act.nu.ncols(scr)), act.nu.clause(st, body, n, env, ret)}, act.nu.cols(p, scr), acc)
+
+def act.nu.cases(cls: A.Ag, +scr: List<&2, Bool>, +ents: List<&2, T.Bt>, +ks: List<&2, String>, +pnames: List<&2, List<&2, U32>>, +env: ActEnv, +hps: List<&2, T.BParam>, +ret: T.Bt, acc: NuAcc) -> NuAcc:
+  match cls:
+    case A.AgCl{+tel, ps, body, ty, ca, rest}:
+      +n = act.tel.len(tel)
+      +p = act.nu.p(ps, n, env)
+      act.nu.cases(rest, scr, ents, ks, pnames, env, hps, ret, act.nu.cl.add(Bool.or(act.nu.raw(p), act.nu.absp(p)), p, n, act.tel.hints(tel), body, scr, ents, ks, pnames, env, hps, ret, acc))
+    case _:
+      acc
+
+def act.nu.chain(cs: List<&2, NuCase>) -> T.Bt:
+  match cs:
+    case NuCase{p, b} <> rest:
+      T.BtCase{p, b, act.nu.chain(rest)}
+    case Nil{}:
+      T.BtCEnd{}
+
+def act.nu.body.of(acc: NuAcc, +scr: List<&2, Bool>, +ents: List<&2, T.Bt>, ks: List<&2, String>, +pnames: List<&2, List<&2, U32>>, +env: ActEnv, hps: List<&2, T.BParam>, ret: T.Bt) -> Maybe<&2, T.Bt>:
+  match acc:
+    case NuAcc{True{}, cs, rows}:
+      +ms = act.nu.miss(4096n, [NuMj{rows, act.nu.ncols(scr), Nil{}}], env, Nil{})
+      Some{T.BtMatch{T.tba.args(act.scr.vars(scr, ents)), act.nu.chain(List.append(&2, NuCase, cs, act.nu.refs(512n, act.nu.rjs(ms, scr), NuCx{scr, ents, ks, hps, pnames, env, ret}, Nil{})))}}
+    case NuAcc{False{}, cs, rows}:
+      None{}
+
+# the def's match by this path, or None when a clause cannot be written so
+def act.nu.body(+cls: A.Ag, +scr: List<&2, Bool>, +ents: List<&2, T.Bt>, +pnames: List<&2, List<&2, U32>>, +env: ActEnv, +hps: List<&2, T.BParam>, +ret: T.Bt) -> Maybe<&2, T.Bt>:
+  +ks = act.nu.ks(cls, env)
+  act.nu.body.of(act.nu.cases(cls, scr, ents, ks, pnames, env, hps, ret, NuAcc{True{}, Nil{}, Nil{}}), scr, ents, ks, pnames, env, hps, ret)
+
+
+# the match the clauses make (act.cases, then the coverage passes)
+def act.body.split(+scr: List<&2, Bool>, +cls: A.Ag, +ents: List<&2, T.Bt>, +pnames: List<&2, List<&2, U32>>, +env: ActEnv, +hps: List<&2, T.BParam>, +ret: T.Bt, +uhps: List<&2, T.BParam>) -> T.Bt:
+  T.BtMatch{T.tba.args(act.scr.vars(scr, ents)), act.cv.full(act.cov.full(act.cases(cls, scr, ents, pnames, env, hps, ret, uhps), act.cov.data(act.cov.q(cls, scr), env), act.scr.vars(scr, ents), env, uhps, ret), cls, scr, act.scr.vars(scr, ents), env, uhps, ret)}
+
+def act.body.nu2(m: Maybe<&2, T.Bt>, +scr: List<&2, Bool>, +cls: A.Ag, +ents: List<&2, T.Bt>, +pnames: List<&2, List<&2, U32>>, +env: ActEnv, +hps: List<&2, T.BParam>, +ret: T.Bt, +uhps: List<&2, T.BParam>) -> T.Bt:
+  match m:
+    case Some{b}:
+      b
+    case None{}:
+      act.body.split(scr, cls, ents, pnames, env, hps, ret, uhps)
+
+# a def with nested patterns of an indexed family takes act.nu's path
+def act.body.nu(nu: Bool, +scr: List<&2, Bool>, +cls: A.Ag, +ents: List<&2, T.Bt>, +pnames: List<&2, List<&2, U32>>, +env: ActEnv, +hps: List<&2, T.BParam>, +ret: T.Bt, +uhps: List<&2, T.BParam>) -> T.Bt:
+  match nu:
+    case True{}:
+      act.body.nu2(act.nu.body(cls, scr, ents, pnames, env, uhps, ret), scr, cls, ents, pnames, env, hps, ret, uhps)
+    case False{}:
+      act.body.split(scr, cls, ents, pnames, env, hps, ret, uhps)
+
 def act.body.of(split: Bool, +scr: List<&2, Bool>, +cls: A.Ag, +ents: List<&2, T.Bt>, +pnames: List<&2, List<&2, U32>>, +env: ActEnv, +hps: List<&2, T.BParam>, +ret: T.Bt, +uhps: List<&2, T.BParam>) -> T.Bt:
   match split:
     case True{}:
-      T.BtMatch{T.tba.args(act.scr.vars(scr, ents)), act.cv.full(act.cov.full(act.cases(cls, scr, ents, pnames, env, hps, ret, uhps), act.cov.data(act.cov.q(cls, scr), env), act.scr.vars(scr, ents), env, uhps, ret), cls, scr, act.scr.vars(scr, ents), env, uhps, ret)}
+      act.body.nu(Bool.and(act.nu.want(cls, env), Bool.not(act.nu.anybad(cls, env))), scr, cls, ents, pnames, env, hps, ret, uhps)
     case False{}:
       act.body.first(act.cases(cls, scr, ents, pnames, env, hps, ret, uhps))
 
@@ -6928,16 +8659,6 @@ def act.ps.ents(r: ActPs) -> List<&2, T.Bt>:
     case ActPs{ps, ret, ctx, es, ok}:
       es
 
-def act.ps.ps(r: ActPs) -> List<&2, T.BParam>:
-  match r:
-    case ActPs{ps, ret, ctx, es, ok}:
-      ps
-
-def act.ps.ret(r: ActPs) -> T.Bt:
-  match r:
-    case ActPs{ps, ret, ctx, es, ok}:
-      ret
-
 # a function: its header from its type, its body from its clauses (or, for
 # a record field, a match on the record; for copattern clauses, the
 # record's constructor)
@@ -7545,67 +9266,6 @@ def act.item.rec(s: ActSym, d: A.AgD, +env: ActEnv, doc: List<&2, List<&2, U32>>
     case _ _:
       Nil{}
 
-# A constructor's own arguments as fields (a Level one is dropped), each
-# type in the scope of the data type's parameters and the earlier fields.
-def act.cfield.put(lv: Bool, +nm: List<&2, U32>, ty: T.Bt, fs: List<&2, T.BField>) -> List<&2, T.BField>:
-  match lv:
-    case True{}:
-      fs
-    case False{}:
-      T.BField{nm, ty} <> fs
-
-# an indexed family's constructor's equation fields: per index parameter
-# (its name and type) and the index the constructor's type ends at, {i == t : T}
-def act.ix.eqs(ixs: List<&2, T.BParam>, es: A.Ag, +ctx: List<&2, T.Bt>, +seen: List<&2, List<&2, U32>>, +env: ActEnv) -> List<&2, T.BField>:
-  match ixs es:
-    case T.BParam{m, +x, ty} <> pt A.AgEApp{i, a, rest}:
-      +nm = act.fresh.in(S.b("ix_eq"), ctx, seen)
-      T.BField{nm, T.BtEq{ty, T.BtVar{x}, act.t(a, ctx, env)}} <> act.ix.eqs(pt, rest, ctx, nm <> seen, env)
-    case _ _:
-      Nil{}
-
-def act.ix.fields(ixs: List<&2, T.BParam>, +pars: Nat, t: A.Ag, +ctx: List<&2, T.Bt>, +seen: List<&2, List<&2, U32>>, +env: ActEnv) -> List<&2, T.BField>:
-  match t:
-    case A.AgEl{s, A.AgDef{q, es}}:
-      act.ix.eqs(ixs, act.es.after(pars, es), ctx, seen, env)
-    case _:
-      Nil{}
-
-# (the index parameters' names are in seen, so no field hides one)
-def act.cfields(t: A.Ag, +ctx: List<&2, T.Bt>, +seen: List<&2, List<&2, U32>>, +env: ActEnv, +ixs: List<&2, T.BParam>, +pars: Nat) -> List<&2, T.BField>:
-  match t:
-    case A.AgEl{s, A.AgPi{i, +x, +a, d, b}}:
-      +lv = act.ty.level(a)
-      +nm = act.fresh.in(x, ctx, seen)
-      act.cfield.put(lv, nm, act.t(a, ctx, env), act.cfields(b, act.bind(d, Bool.pick(T.Bt, lv, act.level(), T.BtVar{nm}), ctx), nm <> seen, env, ixs, pars))
-    case t:
-      act.ix.fields(ixs, pars, t, ctx, seen, env)
-
-# a TYPE after its first n Pis
-def act.after(n: Nat, t: A.Ag) -> A.Ag:
-  match n t:
-    case 1n+p A.AgEl{s, A.AgPi{i, x, a, d, b}}:
-      act.after(p, b)
-    case _ t:
-      t
-
-def act.ps.ctx(r: ActPs) -> List<&2, T.Bt>:
-  match r:
-    case ActPs{ps, ret, ctx, es, ok}:
-      ctx
-
-def act.ps.names(ps: List<&2, T.BParam>) -> List<&2, List<&2, U32>>:
-  match ps:
-    case Nil{}:
-      Nil{}
-    case T.BParam{m, x, ty} <> t:
-      x <> act.ps.names(t)
-
-def act.ctor.of(s: ActSym, +pars: Nat, +t: A.Ag, +env: ActEnv, +ixs: List<&2, T.BParam>) -> T.BCtor:
-  match s:
-    case ActSym{m, n, k, ms, ar, b, fs, c, cp}:
-      T.BCtor{n, act.cfields(act.after(pars, t), act.ps.ctx(act.params(64n, pars, t, act.modes(t, True{}), Nil{}, env)), act.ps.names(ixs), env, ixs, pars)}
-
 def act.decl.got(r: Map<&2, A.AgDecl> & A.AgDecl) -> A.AgDecl:
   (m, d) = r
   d
@@ -7651,17 +9311,6 @@ def act.dataish.cs(+self: List<&2, U32>, cs: List<&2, T.BCtor>) -> Bool:
       True{}
     case T.BCtor{c, fs} <> t:
       Bool.and(act.dataish.fs(self, fs), act.dataish.cs(self, t))
-
-def act.ps.take(n: Nat, ps: List<&2, T.BParam>) -> List<&2, T.BParam>:
-  match n ps:
-    case 1n+p h <> t:
-      h <> act.ps.take(p, t)
-    case _ ps:
-      Nil{}
-
-# the last n of a list of parameters (an indexed family's indices)
-def act.ps.last(+n: Nat, ps: List<&2, T.BParam>) -> List<&2, T.BParam>:
-  List.reverse(&2, T.BParam, act.ps.take(n, List.reverse(&2, T.BParam, ps)))
 
 def act.item.data.of(+nm: List<&2, U32>, r: ActPs, +cs: List<&2, T.BCtor>, doc: List<&2, List<&2, U32>>) -> List<&2, T.BItem>:
   match r:
