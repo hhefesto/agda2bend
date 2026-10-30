@@ -331,6 +331,24 @@ def gt.on() -> T.BItem:
   T.BiDef{S.b("on"), [T.BParam{T.BmErased{}, S.b("A"), T.BtType{}}, T.BParam{T.BmErased{}, S.b("B"), T.BtType{}}, T.BParam{T.BmErased{}, S.b("C"), T.BtType{}}, T.BParam{T.BmLive{}, S.b("x"), gt.arr(v("B"), gt.arr(v("B"), v("C")))}, T.BParam{T.BmLive{}, S.b("f"), gt.arr(v("A"), v("B"))}, T.BParam{T.BmLive{}, S.b("a"), v("A")}, T.BParam{T.BmLive{}, S.b("b"), v("A")}],
     v("C"), T.BtExpr{app("x", [gt.dd(app("f", [gt.dd(v("a"))])), gt.dd(app("f", [gt.dd(v("b"))]))])}, Nil{}}
 
+# def sub(-A: Type, -R: A -> A -> Type, -x: A, -y: A, h: R(x, y) -> Nat -> Nat,
+# -K: Type, k: K, xRy: R(x, y)) -> Nat: h(xRy, k(xRy, xRy)), xRy once live and
+# twice at a variable's arguments of unknown mode (Reasoning.Syntax's
+# begin-subrelation): live, as before e2ccd09; typed Rel2(x, y), a template
+def gt.subt(ty: T.Bt) -> T.BItem:
+  T.BiDef{S.b("sub"), [T.BParam{T.BmErased{}, S.b("A"), T.BtType{}}, T.BParam{T.BmErased{}, S.b("R"), pr.rel("A")}, T.BParam{T.BmErased{}, S.b("x"), v("A")}, T.BParam{T.BmErased{}, S.b("y"), v("A")}, T.BParam{T.BmLive{}, S.b("h"), gt.arr(app("R", [v("x"), v("y")]), gt.arr(v("Nat"), v("Nat")))}, T.BParam{T.BmErased{}, S.b("K"), T.BtType{}}, T.BParam{T.BmLive{}, S.b("k"), v("K")}, T.BParam{T.BmLive{}, S.b("xRy"), ty}],
+    v("Nat"), T.BtExpr{app("h", [v("xRy"), app("k", [gt.dd(v("xRy")), gt.dd(v("xRy"))])])}, Nil{}}
+
+def gt.sub() -> T.BItem:
+  gt.subt(app("R", [v("x"), v("y")]))
+
+def gt.sub2() -> T.BItem:
+  gt.subt(app("Rel2", [v("x"), v("y")]))
+
+# def caller(y: Nat) -> Nat: Other.anon.f(y), another module's template applied
+def gt.tplcall() -> T.BItem:
+  T.BiDef{S.b("caller"), [T.BParam{T.BmLive{}, S.b("y"), v("Nat")}], v("Nat"), T.BtExpr{app("Other.anon.f", [v("y")])}, Nil{}}
+
 # def use(-B: Type, y: B) -> B: y
 def gt.use() -> T.BItem:
   T.BiDef{S.b("use"), [T.BParam{T.BmErased{}, S.b("B"), T.BtType{}}, T.BParam{T.BmLive{}, S.b("y"), v("B")}], v("B"), T.BtExpr{v("y")}, Nil{}}
@@ -504,6 +522,10 @@ def gate.laws() -> IO(Unit):
     IO.print(verdict("only a type parameter is declared Data", S.eq(gt.prm(Q.tcp.data.raise(gt.use(), S.b("y"))), S.b("none"))))
     IO.print(verdict("a point-free def's type parameter is declared Data", S.eq(gt.prm(Q.tcp.data.raise(gt.lb(), S.b("eta1"))), S.b("import Base\n\ndef lb() -> @-A:Data -> A -> A:\n  eta1 => x => x\n"))))
     IO.print(verdict("a field is no use of the def it is named like", Bool.not(G.tgt.mem(S.b("to"), T.tba.item.refs(ord.box())))))
+    IO.print(verdict("a parameter typed by a family parameter applied keeps its known count: no template", Bool.not(S.infix(gt.pr(Q.tcp.finish(gt.sub(), Q.tcp.decide(gt.sub(), Nil{}, Q.tcp.qe0()))), S.b("~")))))
+    IO.print(verdict("one typed by a def applied is a template", S.infix(gt.pr(Q.tcp.finish(gt.sub2(), Q.tcp.decide(gt.sub2(), Nil{}, Q.tcp.qe0()))), S.b("~xRy"))))
+    IO.print(verdict("another module's template failing at its instance (f~0) blames the item that calls it", S.eq(G.tgt.blame(S.b("anon.f~0"), [gt.use(), gt.tplcall()], 0n, 47n), S.b("caller"))))
+    IO.print(verdict("this module's template failing keeps the marked line", S.eq(G.tgt.blame(S.b("use~0"), [gt.use(), gt.tplcall()], 0n, 3n), S.b("use"))))
     IO.print(verdict("Order writes a type above the def that names it", S.eq(ord.first(O.tor.names(O.tor.order([ord.to(), ord.box()]))), S.b("anon.Box"))))
     IO.print(verdict("a quantity argument is its type's kind: a function type &1, Nat &2", S.eq(gt.pr(QF.tqf.item(qf.f(), qf.env())), S.b("import Base\n\ndef f(g: Nat -> Nat) -> Nat:\n  id(&1, Nat -> Nat, g)(id(&2, Nat, 3n))\n"))))
     IO.print(verdict("a record value's type takes its quantities from its fields", S.eq(gt.pr(QF.tqf.item(qf.s(), qf.env())), S.b("import Base\n\ndef s() -> Cat<&2, &1>:\n  Cat{Nat, x => y => Nat -> Nat}\n"))))
