@@ -6070,15 +6070,94 @@ def act.cfield.put(lv: Bool, +nm: List<&2, U32>, ty: T.Bt, fs: List<&2, T.BField
     case False{}:
       T.BField{nm, ty} <> fs
 
+# An index whose type ends at an earlier index (Vec A n's x after n, in
+# Data.Vec's Any and _[_]=_): its equation's right side, a constructor of
+# that family (`x ∷ xs`, Fin's zero), has its own equation field at the
+# earlier index ({n == 1n+m}), which only the earlier index's equation field
+# proves (ix_eq : {n == 1n+n_6}); {==} there was "expected : n observed :
+# 1n+n_6" (Data.Vec.Relation.Unary.Any: 41 dependents in corpus1u).  Only a
+# constructor with one equation field, at a type whose last argument is an
+# earlier index (2026-10-30).
+type ActIxe is Data:
+  ActIxe{x: List<&2, U32>, e: List<&2, U32>}
+
+def act.ix.prev(+v: List<&2, U32>, ps: List<&2, ActIxe>) -> List<&2, U32>:
+  match ps:
+    case ActIxe{+x, +e} <> t:
+      Bool.pick(List<&2, U32>, S.eq(x, v), e, act.ix.prev(v, t))
+    case Nil{}:
+      Nil{}
+
+def act.ix.vname(t: T.Bt) -> List<&2, U32>:
+  match t:
+    case T.BtVar{v}:
+      v
+    case T.BtDead{a}:
+      act.ix.vname(a)
+    case T.BtTplArg{a}:
+      act.ix.vname(a)
+    case _:
+      Nil{}
+
+def act.ix.last(a: T.Bt) -> List<&2, U32>:
+  match a:
+    case T.BtArgs{h, T.BtANil{}}:
+      act.ix.vname(h)
+    case T.BtArgs{h, rest}:
+      act.ix.last(rest)
+    case _:
+      Nil{}
+
+def act.ix.ty.prev(ty: T.Bt, +ps: List<&2, ActIxe>) -> List<&2, U32>:
+  match ty:
+    case T.BtTyApp{t, a}:
+      act.ix.prev(act.ix.last(a), ps)
+    case _:
+      Nil{}
+
+def act.ix.refls(a: T.Bt) -> Nat:
+  match a:
+    case T.BtArgs{T.BtRefl{}, rest}:
+      1n+act.ix.refls(rest)
+    case T.BtArgs{T.BtDead{T.BtRefl{}}, rest}:
+      1n+act.ix.refls(rest)
+    case T.BtArgs{h, rest}:
+      act.ix.refls(rest)
+    case _:
+      0n
+
+def act.ix.refl.args(a: T.Bt, +e: List<&2, U32>) -> T.Bt:
+  match a:
+    case T.BtArgs{T.BtRefl{}, rest}:
+      T.BtArgs{T.BtVar{e}, act.ix.refl.args(rest, e)}
+    case T.BtArgs{T.BtDead{T.BtRefl{}}, rest}:
+      T.BtArgs{T.BtDead{T.BtVar{e}}, act.ix.refl.args(rest, e)}
+    case T.BtArgs{h, rest}:
+      T.BtArgs{h, act.ix.refl.args(rest, e)}
+    case a:
+      a
+
+def act.ix.refl.of(t: T.Bt, +e: List<&2, U32>) -> T.Bt:
+  match t:
+    case T.BtDead{a}:
+      T.BtDead{act.ix.refl.of(a, e)}
+    case T.BtCon{+c, +a}:
+      Bool.pick(T.Bt, Bool.and(Nat.is_eq(act.ix.refls(a), 1n), Bool.not(S.eq(e, Nil{}))), T.BtCon{c, act.ix.refl.args(a, e)}, T.BtCon{c, a})
+    case t:
+      t
+
 # an indexed family's constructor's equation fields: per index parameter
 # (its name and type) and the index the constructor's type ends at, {i == t : T}
-def act.ix.eqs(ixs: List<&2, T.BParam>, es: A.Ag, +ctx: List<&2, T.Bt>, +seen: List<&2, List<&2, U32>>, +env: ActEnv) -> List<&2, T.BField>:
+def act.ix.eqs.go(ixs: List<&2, T.BParam>, es: A.Ag, +ctx: List<&2, T.Bt>, +seen: List<&2, List<&2, U32>>, +env: ActEnv, +ps: List<&2, ActIxe>) -> List<&2, T.BField>:
   match ixs es:
-    case T.BParam{m, +x, ty} <> pt A.AgEApp{i, a, rest}:
+    case T.BParam{m, +x, +ty} <> pt A.AgEApp{i, a, rest}:
       +nm = act.fresh.in(S.b("ix_eq"), ctx, seen)
-      T.BField{nm, T.BtEq{ty, T.BtVar{x}, act.t(a, ctx, env)}} <> act.ix.eqs(pt, rest, ctx, nm <> seen, env)
+      T.BField{nm, T.BtEq{ty, T.BtVar{x}, act.ix.refl.of(act.t(a, ctx, env), act.ix.ty.prev(ty, ps))}} <> act.ix.eqs.go(pt, rest, ctx, nm <> seen, env, ActIxe{x, nm} <> ps)
     case _ _:
       Nil{}
+
+def act.ix.eqs(ixs: List<&2, T.BParam>, es: A.Ag, +ctx: List<&2, T.Bt>, +seen: List<&2, List<&2, U32>>, +env: ActEnv) -> List<&2, T.BField>:
+  act.ix.eqs.go(ixs, es, ctx, seen, env, Nil{})
 
 def act.ix.fields(ixs: List<&2, T.BParam>, +pars: Nat, t: A.Ag, +ctx: List<&2, T.Bt>, +seen: List<&2, List<&2, U32>>, +env: ActEnv) -> List<&2, T.BField>:
   match t:
