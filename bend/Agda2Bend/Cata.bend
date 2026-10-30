@@ -1209,7 +1209,17 @@ def act.ms.tail(ms: Maybe<&2, List<&2, ActM>>) -> Maybe<&2, List<&2, ActM>>:
       ms
 
 # Every copy in a term inlined, through chains of copies of copies, and
-# the lambda redexes substitution leaves reduced.  Each expansion or
+# the lambda redexes substitution leaves reduced.  A projection of a
+# record-valued definition's call reduced to its field's value (act.cop.at)
+# is inlined as a record constructor's argument (at), as the field was in
+# its own definition, so it takes the same eta unfolding: DirectProduct's
+# semigroup has `_∙_ = Magma._∙_ (magma ...)`, which reduced to
+# `zip M._∙_ N._∙_` and stayed a call, while magma's own field (a
+# constructor's argument, partial, building a pair) is in projection form,
+# and `isMagma = Magma.isMagma (magma ...)` has that form in its type
+# (2026-10-30: 9 of DirectProduct's 45 items checked before, 36 after; over
+# the 56 modules emitted with it, 27 more check and none is lost against
+# algvm14).  Each expansion or
 # reduction spends one unit of fuel (a resolved definition too), and the
 # fuel bounds the nesting: what is left when it runs out stays as it is
 # and fails at the translation as an unknown copy.
@@ -1224,7 +1234,7 @@ def act.inline.go(+fuel: Nat, a: A.Ag, +at: Bool, +ty: Bool, +ms: Maybe<&2, List
     case 1n+p A.AgDefX{+q, es}:
       +es2 = act.inline.go(p, es, False{}, ty, Some{act.sym.ms(act.sym(env, q))}, env)
       +r = act.cop.at(env, q, es2)
-      Bool.pick(A.Ag, act.ag.none(r), A.AgDef{q, es2}, act.inline.go(p, r, False{}, ty, None{}, env))
+      Bool.pick(A.Ag, act.ag.none(r), A.AgDef{q, es2}, act.inline.go(p, r, True{}, ty, None{}, env))
     case f A.AgVar{i, x, es}:
       A.AgVar{i, x, act.inline.go(f, es, False{}, ty, None{}, env)}
     case f A.AgCon{q, o, es}:
