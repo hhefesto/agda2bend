@@ -2,6 +2,12 @@
 
 Working notes, so the work can continue from another machine or agent. Newest first. Times are UTC-6. agda2bend was split out of ana (github:hhefesto/ana) on 2026-10-22. ana's HANDOFF.md, before that date, has the rest of the history.
 
+## The gate's drop-only rounds; Setoids with law points erased (2026-10-30, 00:00-01:35 UTC-6)
+
+- **72fdeef (master): the gate writes only a file that checks.** Past its repairs' fuel (8 + 4 per item) it keeps dropping the failing item and its users until the file passes. Before, Data.Fin.Base spent its 220 checks with fold′ failing and was written failing, so every importer failed whole ("unlocated"): Data.List.Base 0/121 (O0-v5747 too), now 104/121. Category.Product the same in yoneda25/26 (66 "unlocated" drops). Every run before 72fdeef from O0-v5747 on is suspect where a module's checks ran out; the requeue (stdlib export4, PLFA, aa, hs, prelude) runs O0-big2 = 72fdeef since 23:55.
+- **Setoids, the user's ask (10-29: "there should be a sane way to implement Setoid in bend"):** branch wip/law-points (6f5ae89, pushed, no PR). It erases the points of IsEquivalence's/IsPartialEquivalence's sym and trans, of Congruent, and of LeftInverse's/RightInverse's from-cong, and eta-expands those projections when unapplied. With it (O0-law3) Categories.Category.Instance.Setoids checks. Cost so far, 90 modules of the Yoneda cone: 2035 checked vs 2051 (O0-big2). The losses are Relation.Binary.Construct.On's isEquivalence (its `symmetric` takes a `Symmetric _∼_` whose points Bend opens live; 10 dependents in Construct.On, 2 in IsoEquiv) and RightInverse's Preserves-vs-Congruent (O0-law4 fixes it). Gains past Setoids (Presheaves, Functor.Hom, NT.Hom, Yoneda) still to come.
+- **Runs:** run/a2b/yonbig2 (baseline, O0-big2), yonlaw3, yonlaw4 (Categories.Yoneda from export2). Compare with /tmp/bx/ser/cmp.py yonbig2.log yonlawN.log. yoneda25/26 (old binaries, before 72fdeef) are still running.
+
 ## The reruns with 5747eec: the whole standard library, Product, agda2hs-base, agda-prelude (2026-10-29, 22:40-22:55 UTC-6; no translator change)
 
 - **Category.Product was never in corpus1t/1u.** export2s keeps export2's exports of 20 MB or less; Categories.Category.Product is 27.9 MB, so every item naming it dropped as "a name the symbol table does not have" (corpus1u: 61 dropped, 274 hanging; Monoidal.Core alone 182, Bifunctor 66). Categories.Yoneda (21.6 MB), Bicategory, Data.Fin.Properties and Data.List.Relation.Unary.Any/All.Properties were missing the same way.
