@@ -1187,6 +1187,231 @@ def tcp.pjr.item(it: T.BItem, +e: TcpEnv) -> T.BItem:
     case it:
       it
 
+# Record patterns read as projections (2026-10-30) -----------------------------
+#
+# agda-unimath's is-equiv-is-invertible' takes an invertible map as one
+# record, `(g , H , K)`, and returns `((g , H) , (g , K))`: g, a function,
+# is used twice, `+g` needs Data and a closure is affine, so it dropped
+# ("expected : Data observed : Type"), and 956 items with it (every
+# equivalence built from an inverse).  Agda reads a pattern on a record
+# with eta as the record's projections; so does this: when a def's body is
+# one match on a parameter x by one record constructor (nested ones too),
+# and a field variable of function type is used live twice, each field
+# variable becomes its projection of x (`Sigma_.pr1(.., x)`).  x, used
+# more than once, is then a template (a record of functions cannot be +),
+# inlined at each call, so each projection reads its own copy.  Not when
+# the return type mentions x (Bend has no record eta: `pair{pr1(x),
+# pr2(x)}` is not x to it), nor when the body matches a field variable (a
+# match takes a parameter or a field, not a projection).  The hand version
+# (through map-inv-is-invertible and its two homotopies, /tmp/bx/eqi):
+# ALL PROOFS CHECK, and is-equiv-is-invertible and
+# is-equiv-is-coherently-invertible over it.
+
+# a pattern still to read, at its term (a projection chain of x) and type
+type TcpRw is Data:
+  TcpRw{p: T.Bt, v: T.Bt, ty: T.Bt}
+
+# a field variable, its projection and its type
+type TcpRb is Data:
+  TcpRb{x: List<&2, U32>, v: T.Bt, ty: T.Bt}
+
+def tcp.rp.no() -> TcpRw:
+  TcpRw{T.BtTodo{S.b("not a record pattern")}, T.BtWild{}, T.BtWild{}}
+
+# a projection's arguments: the record type's (dead), then the record
+def tcp.rp.args(a: T.Bt, +r: T.Bt) -> T.Bt:
+  match a:
+    case T.BtArgs{h, rest}:
+      T.BtArgs{T.BtDead{h}, tcp.rp.args(rest, r)}
+    case _:
+      T.BtArgs{r, T.BtANil{}}
+
+# t with each earlier field's name its projection
+def tcp.rp.subs(done: List<&2, TcpRb>, t: T.Bt) -> T.Bt:
+  match done:
+    case Nil{}:
+      t
+    case TcpRb{+x, +v, ty} <> rest:
+      tcp.rp.subs(rest, QF.tqf.sub.one(t, x, v))
+
+# whether a projection is field j of a record of k
+def tcp.rp.isj(p: TcpProj, +j: Nat, +k: Nat) -> Bool:
+  match p:
+    case TcpProj{c, +i, +n}:
+      Bool.and(Nat.is_eq(i, j), Nat.is_eq(n, k))
+
+# a record pattern's fields (the spine a) to read at v, of type tn<targs>
+# (the record's parameters ps, its fields fs from the j-th, k in all)
+def tcp.rp.fl(fs: List<&2, T.BField>, +ps: List<&2, T.BParam>, +targs: T.Bt, a: T.Bt, +v: T.Bt, +tn: List<&2, U32>, +e: TcpEnv, +j: Nat, +k: Nat, +done: List<&2, TcpRb>) -> List<&2, TcpRw>:
+  match fs a:
+    case Nil{} T.BtANil{}:
+      Nil{}
+    case T.BField{+fx, fty} <> ft T.BtArgs{pa, rest}:
+      +pj = List.append(&2, U32, tn, 46 <> fx)
+      +term : T.Bt = T.BtApp{T.BtVar{pj}, tcp.rp.args(targs, v)}
+      +ty : T.Bt = tcp.rp.subs(done, QF.tqf.inst(fty, ps, targs))
+      Bool.pick(List<&2, TcpRw>, tcp.rp.isj(tcp.pj.of(e, pj), j, k), TcpRw{pa, term, ty} <> tcp.rp.fl(ft, ps, targs, rest, v, tn, e, 1n+j, k, TcpRb{fx, term, T.BtWild{}} <> done), [tcp.rp.no()])
+    case _ _:
+      [tcp.rp.no()]
+
+def tcp.rp.flds(s: QF.TqSig, +tn: List<&2, U32>, +targs: T.Bt, a: T.Bt, +v: T.Bt, +e: TcpEnv) -> List<&2, TcpRw>:
+  match s:
+    case QF.TqType{ps, kind, T.BCtor{c, +fs} <> Nil{}}:
+      tcp.rp.fl(fs, ps, targs, a, v, tn, e, 0n, List.length(&2, T.BField, fs), Nil{})
+    case _:
+      [tcp.rp.no()]
+
+# a constructor pattern's fields, its type w (in whnf) a record's
+def tcp.rp.con(+a: T.Bt, +v: T.Bt, w: T.Bt, +e: TcpEnv, +qe: QF.TqEnv) -> List<&2, TcpRw>:
+  match w:
+    case T.BtTyApp{+tn, targs}:
+      tcp.rp.flds(QF.tqf.sig(qe, tn), tn, targs, a, v, e)
+    case _:
+      [tcp.rp.no()]
+
+# the field variables of the patterns in work, with their projections and
+# types (None when a pattern is not a variable, a wildcard or a record's
+# constructor, or a record's projections are not known)
+def tcp.rp.go(fuel: Nat, work: List<&2, TcpRw>, +e: TcpEnv, +qe: QF.TqEnv, acc: List<&2, TcpRb>) -> Maybe<&2, List<&2, TcpRb>>:
+  match fuel work:
+    case _ Nil{}:
+      Some{acc}
+    case 1n+f TcpRw{T.BtPv{m, x}, v, ty} <> t:
+      tcp.rp.go(f, t, e, qe, TcpRb{x, v, ty} <> acc)
+    case 1n+f TcpRw{T.BtVar{x}, v, ty} <> t:
+      tcp.rp.go(f, t, e, qe, TcpRb{x, v, ty} <> acc)
+    case 1n+f TcpRw{T.BtWild{}, v, ty} <> t:
+      tcp.rp.go(f, t, e, qe, acc)
+    case 1n+f TcpRw{T.BtCon{c, +a}, +v, ty} <> t:
+      tcp.rp.go(f, List.append(&2, TcpRw, tcp.rp.con(a, v, QF.tqf.whnf(16n, ty, qe), e, qe), t), e, qe, acc)
+    case _ _:
+      None{}
+
+def tcp.rp.fn(t: T.Bt) -> Bool:
+  match t:
+    case T.BtPi{m, x, d, a, b}:
+      True{}
+    case _:
+      False{}
+
+# whether a field variable of function type is used live twice in b
+def tcp.rp.dup(bs: List<&2, TcpRb>, +b: T.Bt, +qe: QF.TqEnv) -> Bool:
+  match bs:
+    case Nil{}:
+      False{}
+    case TcpRb{+x, v, ty} <> t:
+      Bool.or(Bool.and(Bool.not(Nat.is_lt(tcp.uses(x, b), 2n)), tcp.rp.fn(QF.tqf.whnf(16n, ty, qe))), tcp.rp.dup(t, b, qe))
+
+# whether b matches a field variable
+def tcp.rp.scr(bs: List<&2, TcpRb>, +b: T.Bt) -> Bool:
+  match bs:
+    case Nil{}:
+      False{}
+    case TcpRb{+x, v, ty} <> t:
+      Bool.or(tcp.scrut(x, b), tcp.rp.scr(t, b))
+
+def tcp.rp.ok(m: Maybe<&2, List<&2, TcpRb>>, +b: T.Bt, +x: List<&2, U32>, +ret: T.Bt, +qe: QF.TqEnv) -> Bool:
+  match m:
+    case Some{+bs}:
+      Bool.and(tcp.rp.dup(bs, b, qe), Bool.and(Bool.not(tcp.mem(x, T.tba.refs(ret, Nil{}))), Bool.not(tcp.rp.scr(bs, b))))
+    case None{}:
+      False{}
+
+# whether a pattern binds x
+def tcp.rp.binds(p: T.Bt, +x: List<&2, U32>) -> Bool:
+  match p:
+    case T.BtPv{m, +y}:
+      S.eq(x, y)
+    case T.BtVar{+y}:
+      S.eq(x, y)
+    case T.BtCon{c, a}:
+      tcp.rp.binds(a, x)
+    case T.BtSucc{a}:
+      tcp.rp.binds(a, x)
+    case T.BtArgs{a, rest}:
+      Bool.or(tcp.rp.binds(a, x), tcp.rp.binds(rest, x))
+    case _:
+      False{}
+
+# t with the variable x its value v (a body: matches, lets and rewrites too)
+def tcp.rp.sub(t: T.Bt, +x: List<&2, U32>, +v: T.Bt) -> T.Bt:
+  match t:
+    case T.BtVar{+y}:
+      Bool.pick(T.Bt, S.eq(x, y), v, T.BtVar{y})
+    case T.BtApp{f, a}:
+      T.BtApp{tcp.rp.sub(f, x, v), tcp.rp.sub(a, x, v)}
+    case T.BtArgs{a, rest}:
+      T.BtArgs{tcp.rp.sub(a, x, v), tcp.rp.sub(rest, x, v)}
+    case T.BtTplArg{a}:
+      T.BtTplArg{tcp.rp.sub(a, x, v)}
+    case T.BtLam{m, +y, +b}:
+      T.BtLam{m, y, Bool.pick(T.Bt, S.eq(x, y), b, tcp.rp.sub(b, x, v))}
+    case T.BtPi{m, +y, d, a, +b}:
+      T.BtPi{m, y, d, tcp.rp.sub(a, x, v), Bool.pick(T.Bt, S.eq(x, y), b, tcp.rp.sub(b, x, v))}
+    case T.BtCon{c, a}:
+      T.BtCon{c, tcp.rp.sub(a, x, v)}
+    case T.BtTyApp{c, a}:
+      T.BtTyApp{c, tcp.rp.sub(a, x, v)}
+    case T.BtEq{ty, a, b}:
+      T.BtEq{tcp.rp.sub(ty, x, v), tcp.rp.sub(a, x, v), tcp.rp.sub(b, x, v)}
+    case T.BtSucc{a}:
+      T.BtSucc{tcp.rp.sub(a, x, v)}
+    case T.BtAnn{a, ty}:
+      T.BtAnn{tcp.rp.sub(a, x, v), tcp.rp.sub(ty, x, v)}
+    case T.BtDead{a}:
+      T.BtDead{tcp.rp.sub(a, x, v)}
+    case T.BtMatch{xs, cs}:
+      T.BtMatch{tcp.rp.sub(xs, x, v), tcp.rp.sub(cs, x, v)}
+    case T.BtCase{+p, +b, rest}:
+      T.BtCase{p, Bool.pick(T.Bt, tcp.rp.binds(p, x), b, tcp.rp.sub(b, x, v)), tcp.rp.sub(rest, x, v)}
+    case T.BtExpr{e}:
+      T.BtExpr{tcp.rp.sub(e, x, v)}
+    case T.BtRw{e, p, b}:
+      T.BtRw{tcp.rp.sub(e, x, v), tcp.rp.sub(p, x, v), tcp.rp.sub(b, x, v)}
+    case T.BtLet{+y, w, +b}:
+      T.BtLet{y, tcp.rp.sub(w, x, v), Bool.pick(T.Bt, S.eq(x, y), b, tcp.rp.sub(b, x, v))}
+    case t:
+      t
+
+def tcp.rp.subst(bs: List<&2, TcpRb>, b: T.Bt) -> T.Bt:
+  match bs:
+    case Nil{}:
+      b
+    case TcpRb{+x, +v, ty} <> t:
+      tcp.rp.subst(t, tcp.rp.sub(b, x, v))
+
+def tcp.rp.body(m: Maybe<&2, List<&2, TcpRb>>, b: T.Bt) -> T.Bt:
+  match m:
+    case Some{bs}:
+      tcp.rp.subst(bs, b)
+    case None{}:
+      b
+
+# the parameters with x renamed y (in the later ones' types too; seen: x passed)
+def tcp.rp.ren(ps: List<&2, T.BParam>, +x: List<&2, U32>, +y: List<&2, U32>, +seen: Bool) -> List<&2, T.BParam>:
+  match ps:
+    case Nil{}:
+      Nil{}
+    case T.BParam{m, +z, +ty} <> t:
+      +hit = Bool.and(Bool.not(seen), S.eq(z, x))
+      T.BParam{m, Bool.pick(List<&2, U32>, hit, y, z), Bool.pick(T.Bt, seen, tcp.rp.sub(ty, x, T.BtVar{y}), ty)} <> tcp.rp.ren(t, x, y, Bool.or(seen, hit))
+
+# A def whose body is one match on a record parameter, as projections.  The
+# parameter is renamed x_rp first: the projections' record arguments are
+# put into field types and the body, under binders Agda often names x too
+# (Σ's λ x → B in A × B), and the substitutions do not rename binders, so
+# is-equiv-is-invertible's K read pr2 of H (2026-10-30).
+def tcp.rp.item(it: T.BItem, +e: TcpEnv, +qe: QF.TqEnv) -> T.BItem:
+  match it:
+    case T.BiDef{+n, +ps, +ret, T.BtMatch{T.BtArgs{T.BtVar{+x0}, T.BtANil{}}, T.BtCase{T.BtArgs{+p, T.BtANil{}}, +b, T.BtCEnd{}}}, +doc}:
+      +x = List.append(&2, U32, x0, S.b("_rp"))
+      +ps2 = tcp.rp.ren(ps, x0, x, False{})
+      +b2 = tcp.rp.sub(b, x0, T.BtVar{x})
+      +bs : Maybe<&2, List<&2, TcpRb>> = tcp.rp.go(64n, [TcpRw{p, T.BtVar{x}, tcp.vty(ps2, x)}], e, qe, Nil{})
+      Bool.pick(T.BItem, tcp.rp.ok(bs, b2, x0, ret, qe), T.BiDef{n, ps2, ret, tcp.rp.body(bs, b2), doc}, T.BiDef{n, ps, ret, T.BtMatch{T.BtArgs{T.BtVar{x0}, T.BtANil{}}, T.BtCase{T.BtArgs{p, T.BtANil{}}, b, T.BtCEnd{}}}, doc})
+    case it:
+      it
+
 # Unit's eta (2026-10-22) -------------------------------------------------------
 #
 # Agda's ⊤ is a record with eta: any two of its values are equal, so

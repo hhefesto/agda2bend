@@ -893,18 +893,31 @@ def a2b.destr(it: T.BItem, +te: Q.TcpEnv) -> T.BItem:
 
 # an item as Copy counts its uses: Unit's eta done by matching (Q.tcp.unit,
 # 2026-10-22: Bend has no eta for Unit), projections of constructor values
-# reduced (Q.tcp.pjr, 2026-10-29), and the unwired destructuring
-def a2b.shape(it: T.BItem, +te: Q.TcpEnv) -> T.BItem:
-  Q.tcp.unit(Q.tcp.pjr.item(a2b.destr(it, te), te))
+# reduced (Q.tcp.pjr, 2026-10-29), a match on a record parameter whose
+# function field is used twice read as projections (Q.tcp.rp.item,
+# 2026-10-30), and the unwired destructuring
+def a2b.shape(it: T.BItem, +te: Q.TcpEnv, +qo: QF.TqEnv) -> T.BItem:
+  Q.tcp.unit(Q.tcp.pjr.item(Q.tcp.rp.item(a2b.destr(it, te), te, qo), te))
 
-def a2b.re.items(its: List<&2, T.BItem>, +nk: Map<&2, String>, +datas: List<&2, List<&2, U32>>, +te: Q.TcpEnv, +qe: QF.TqEnv, r: A2bRe) -> A2bRe:
+# qe with the module's own items' signatures, by their bare names, for
+# Q.tcp.rp.item to open a record parameter's type that is one of them
+# (foundation-core.equivalences' is-equiv-htpy matches x : is-equiv g,
+# is-equiv defined there; 2026-10-30)
+def a2b.qe.own(its: List<&2, T.BItem>, e: QF.TqEnv) -> QF.TqEnv:
+  match its:
+    case Nil{}:
+      e
+    case +it <> t:
+      a2b.qe.own(t, QF.tqf.env.put(QF.tqf.name.of(it), QF.tqf.sig.of(it), e))
+
+def a2b.re.items(its: List<&2, T.BItem>, +nk: Map<&2, String>, +datas: List<&2, List<&2, U32>>, +te: Q.TcpEnv, +qe: QF.TqEnv, +qo: QF.TqEnv, r: A2bRe) -> A2bRe:
   match its:
     case Nil{}:
       r
     case T.BiDef{+n, ps, ret, body, doc} <> t:
-      a2b.re.items(t, nk, datas, te, qe, a2b.re.one(a2b.nk.got(Map.get(String, "", nk, S.str(n))), Q.tcp.decide(a2b.shape(T.BiDef{n, ps, ret, body, doc}, te), datas, qe), r))
+      a2b.re.items(t, nk, datas, te, qe, qo, a2b.re.one(a2b.nk.got(Map.get(String, "", nk, S.str(n))), Q.tcp.decide(a2b.shape(T.BiDef{n, ps, ret, body, doc}, te, qo), datas, qe), r))
     case i <> t:
-      a2b.re.items(t, nk, datas, te, qe, r)
+      a2b.re.items(t, nk, datas, te, qe, qo, r)
 
 type A2bRound is Data:
   A2bRound{tab: Map<&2, C.ActSym>, its: List<&2, T.BItem>}
@@ -923,22 +936,22 @@ def a2b.round(fuel: Nat, +ds: List<&2, A.AgDecl>, +m: List<&2, U32>, +al: Map<&2
   match fuel st:
     case 1n+p A2bRst{+tab, its, True{}}:
       +its2 = a2b.items(ds, C.ActEnv{m, tab, al, unf}, dm)
-      a2b.round(p, ds, m, al, unf, dm, nk, te, qe, a2b.rst.of(a2b.re.items(its2, nk, Q.tcp.datas(its2), te, qe, A2bRe{tab, False{}}), its2))
+      a2b.round(p, ds, m, al, unf, dm, nk, te, qe, a2b.rst.of(a2b.re.items(its2, nk, Q.tcp.datas(its2), te, qe, a2b.qe.own(its2, qe), A2bRe{tab, False{}}), its2))
     case _ A2bRst{tab, its, c}:
       A2bRound{tab, its}
 
-def a2b.finish(its: List<&2, T.BItem>, +datas: List<&2, List<&2, U32>>, +te: Q.TcpEnv, +qe: QF.TqEnv) -> List<&2, T.BItem>:
+def a2b.finish(its: List<&2, T.BItem>, +datas: List<&2, List<&2, U32>>, +te: Q.TcpEnv, +qe: QF.TqEnv, +qo: QF.TqEnv) -> List<&2, T.BItem>:
   match its:
     case Nil{}:
       Nil{}
     case it <> t:
-      +d = a2b.shape(it, te)
-      Q.tcp.finish(d, Q.tcp.decide(d, datas, qe)) <> a2b.finish(t, datas, te, qe)
+      +d = a2b.shape(it, te, qo)
+      Q.tcp.finish(d, Q.tcp.decide(d, datas, qe)) <> a2b.finish(t, datas, te, qe, qo)
 
 # (a mutual with-function's cycle broken first, WL.twl.items, and a
 # recursion on a later parameter split, RO.tro.items)
 def a2b.finish.of(+its: List<&2, T.BItem>, +te: Q.TcpEnv, +qe: QF.TqEnv) -> List<&2, T.BItem>:
-  a2b.finish(RO.tro.items(WL.twl.items(its)), Q.tcp.datas(its), te, qe)
+  a2b.finish(RO.tro.items(WL.twl.items(its)), Q.tcp.datas(its), te, qe, a2b.qe.own(its, qe))
 
 # Qfix (ToBend/Qfix.bend) over a module's finished items, in Bend's order, when
 # levels are quantities (C.act.quant.on): each quantity argument solved

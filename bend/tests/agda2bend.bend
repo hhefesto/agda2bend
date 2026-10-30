@@ -388,6 +388,24 @@ def ds.f(twice: Bool) -> T.BItem:
   +b = Bool.pick(String, twice, "M.R.a", "M.R.b")
   T.BiDef{S.b("f"), [T.BParam{T.BmLive{}, S.b("r"), T.BtTyApp{S.b("M.R"), T.BtANil{}}}], v("T"), T.BtExpr{app("g", [app("M.R.a", [v("r")]), app(b, [v("r")])])}, Nil{}}
 
+# Record patterns read as projections (2026-10-30, is-equiv-is-invertible'):
+# M.Inv<-A: Type> a record of g: A -> A and h: Nat; def f(-A: Type, r:
+# M.Inv<A>, a: A) -> A: match r: case M.Inv{g, h}: g(g(a)) (or g(a))
+def rp.env() -> Q.TcpEnv:
+  Q.TcpEnv{Map.set(&2, Q.TcpProj, Map.set(&2, Q.TcpProj, Map.new(&2, Q.TcpProj), "M.Inv.g", Q.TcpProj{S.b("M.Inv"), 0n, 2n}), "M.Inv.h", Q.TcpProj{S.b("M.Inv"), 1n, 2n}), S.b("N.")}
+
+def rp.qe() -> QF.TqEnv:
+  +inv : QF.TqSig = QF.TqType{[T.BParam{T.BmErased{}, S.b("A"), T.BtType{}}], T.BtType{}, [T.BCtor{S.b("M.Inv"), [T.BField{S.b("g"), gt.arr(v("A"), v("A"))}, T.BField{S.b("h"), v("Nat")}]}]}
+  QF.TqEnv{Map.set(&2, QF.TqSig, Map.new(&2, QF.TqSig), "M.Inv", inv), S.b("N."), Nil{}}
+
+def rp.f(twice: Bool) -> T.BItem:
+  +b : T.Bt = Bool.pick(T.Bt, twice, app("g", [app("g", [v("a")])]), app("g", [v("a")]))
+  +pat : T.Bt = T.BtCon{S.b("M.Inv"), T.tba.args([T.BtPv{T.BmLive{}, S.b("g")}, T.BtPv{T.BmLive{}, S.b("h")}])}
+  T.BiDef{S.b("f"), [T.BParam{T.BmErased{}, S.b("A"), T.BtType{}}, T.BParam{T.BmLive{}, S.b("r"), T.BtTyApp{S.b("M.Inv"), T.tba.args([v("A")])}}, T.BParam{T.BmLive{}, S.b("a"), v("A")}], v("A"), T.BtMatch{T.tba.args([v("r")]), T.BtCase{T.tba.args([pat]), T.BtExpr{b}, T.BtCEnd{}}}, Nil{}}
+
+def rp.out(twice: Bool) -> List<&2, U32>:
+  gt.pr(Q.tcp.rp.item(rp.f(twice), rp.env(), rp.qe()))
+
 # Quantity solving: id takes a quantity and a type of that kind; a record
 # Cat<o, l> with Obj: Kind(o), Arr: Obj -> Obj -> Kind(l)
 def qf.q(+n: String) -> T.BParam:
@@ -553,6 +571,8 @@ def gate.laws() -> IO(Unit):
     IO.print(verdict("a def returning a type-valued call keeps it when its body is of its kind", S.eq(gt.pr(QF.tqf.item(qf.rel.ret("erel", "&2", v("Nat")), qf.env2())), S.b("import Base\n\ndef erel(-a: Quant, -A: Kind(a)) -> Rel(a, A, &2):\n  x => y => Nat\n"))))
     IO.print(verdict("a record used through two fields is matched once", S.eq(gt.pr(Q.tcp.destr(ds.f(False{}), ds.env())), S.b("import Base\n\ndef f(r: M.R) -> T:\n  match r:\n    case M.R{r_f0, r_f1}:\n      g(r_f0, r_f1)\n"))))
     IO.print(verdict("a field used twice keeps the record whole", S.eq(gt.pr(Q.tcp.destr(ds.f(True{}), ds.env())), gt.pr(ds.f(True{})))))
+    IO.print(verdict("a record pattern whose function field is used twice reads as its projections", S.eq(rp.out(True{}), S.b("import Base\n\ndef f(-A: Type, r_rp: M.Inv<A>, a: A) -> A:\n  M.Inv.g(A, r_rp)(M.Inv.g(A, r_rp)(a))\n"))))
+    IO.print(verdict("one used once keeps its match", S.eq(rp.out(False{}), gt.pr(rp.f(False{})))))
 
 # Translation --------------------------------------------------------------------
 #
