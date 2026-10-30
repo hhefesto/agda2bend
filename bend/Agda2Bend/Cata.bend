@@ -9208,6 +9208,58 @@ def act.rf.live(ms: List<&2, ActM>, ps: List<&2, T.BParam>) -> List<&2, Bool>:
     case _ _:
       Nil{}
 
+# A recursive def's erased parameters too (2026-10-30): `<-asym (s<s n<m)
+# (s<s m<n) = <-asym n<m m<n` passes n<m's and m<n's fields at its hidden
+# {m} {n}, which Bend's termination check reads first and finds not
+# smaller (Data.Nat.Properties: 109 dependents in npnu11, <-irrefl 11).
+# Split at the parameter, `.(suc v)` binds v there, the parameter goes
+# live (a split one must), and v shrinks it.  Only when a clause calls the
+# def itself: a caller that has the index erased gets the gate's live
+# repair.
+def act.ag.calls(t: A.Ag, +k: String) -> Bool:
+  match t:
+    case A.AgDef{+q, es}:
+      Bool.or(String.eq(act.key(q), k), act.ag.calls(es, k))
+    case A.AgCon{q, o, es}:
+      act.ag.calls(es, k)
+    case A.AgVar{i, x, es}:
+      act.ag.calls(es, k)
+    case A.AgLam{i, x, d, b}:
+      act.ag.calls(b, k)
+    case A.AgEApp{i, a, rest}:
+      Bool.or(act.ag.calls(a, k), act.ag.calls(rest, k))
+    case A.AgEProj{q, rest}:
+      act.ag.calls(rest, k)
+    case A.AgDontCare{a}:
+      act.ag.calls(a, k)
+    case A.AgStored{a}:
+      act.ag.calls(a, k)
+    case A.AgEl{s, a}:
+      act.ag.calls(a, k)
+    case A.AgCl{tel, ps, body, ty, ca, rest}:
+      Bool.or(act.ag.calls(body, k), act.ag.calls(rest, k))
+    case _:
+      False{}
+
+def act.rf.all(ms: List<&2, ActM>, ps: List<&2, T.BParam>) -> List<&2, Bool>:
+  match ms ps:
+    case AmDrop{} <> mt ps:
+      False{} <> act.rf.all(mt, ps)
+    case m <> mt p <> pt:
+      True{} <> act.rf.all(mt, pt)
+    case _ _:
+      Nil{}
+
+def act.rf.lv(rec: Bool, +ms: List<&2, ActM>, +ps: List<&2, T.BParam>) -> List<&2, Bool>:
+  match rec:
+    case True{}:
+      act.rf.all(ms, ps)
+    case False{}:
+      act.rf.live(ms, ps)
+
+def act.rf.of(+cls: A.Ag, +key: String, +ms: List<&2, ActM>, +ps: List<&2, T.BParam>) -> A.Ag:
+  act.rf.cls(cls, act.rf.lv(act.ag.calls(cls, key), ms, ps))
+
 # The header's parameters with each split one's type opened (`x : m < n`
 # is `suc m ≤ n`: the indices the coverage, the dotted fields and the
 # refutations read are le's, not _<_'s arguments); the others as the
@@ -9264,7 +9316,7 @@ def act.fun.body(p: A.AgProj, +cls: A.Ag, +key: String, +ar: Nat, +t: A.Ag, +ent
     case _ True{}:
       act.copat.body(act.copat.recq(4n, act.cod.q(ar, t), act.copat.isrec(env, act.cod.q(ar, t)), env), env, cls, ents, key)
     case _ False{}:
-      +cls2 = act.rf.cls(cls, act.rf.live(ms, act.ps.ps(r)))
+      +cls2 = act.rf.of(cls, key, ms, act.ps.ps(r))
       act.lift.app(List.drop(&2, T.BParam, act.ps.ps(r), act.kept.n(act.cls.arity(cls), ms)), act.body(cls2, ents, env, act.ps.ps(r), act.ps.ret(r), act.uty.go(64n, ar, t, ms, act.scr(cls2, env), Nil{}, Nil{}, env)))
 
 def act.fun.item(+nm: List<&2, U32>, +ms: List<&2, ActM>, +cls: A.Ag, body: T.Bt, r: ActPs, doc: List<&2, List<&2, U32>>, +env: ActEnv) -> List<&2, T.BItem>:
@@ -9307,12 +9359,12 @@ def act.fun.alt(p: A.AgProj, copat: Bool, +nm: List<&2, U32>, +ms: List<&2, ActM
       Nil{}
     case _ False{}:
       +env2 = act.cmb.env(key, env)
-      +cls2 = act.rf.cls(cls, act.rf.live(ms, act.ps.ps(r)))
+      +cls2 = act.rf.of(cls, key, ms, act.ps.ps(r))
       +scr = act.scr(cls2, env2)
       act.fun.alt.on(Bool.and(Bool.and(act.any(scr), act.nu.wantall(cls2, env2)), Bool.and(Bool.not(act.nu.want(cls2, env2)), Bool.not(act.nu.anybad(cls2, env2)))), cls2, scr, env2, nm, ms, ar, cls, t, env, doc, r)
 
 def act.fun.with(+nm: List<&2, U32>, +ms: List<&2, ActM>, +ar: Nat, +p: A.AgProj, +cls: A.Ag, +key: String, +t: A.Ag, +env: ActEnv, +doc: List<&2, List<&2, U32>>, +r: ActPs) -> List<&2, T.BItem>:
-  List.append(&2, T.BItem, act.fun.item(nm, ms, cls, act.fun.body(p, cls, key, ar, t, act.ps.ents(r), act.cmb.env(key, env), act.copat.is(cls), r, ms), r, doc, env), act.fun.alt(p, act.copat.is(cls), nm, ms, ar, cls, key, t, env, doc, r))
+  List.append(&2, T.BItem, act.fun.item(nm, ms, act.rf.of(cls, key, ms, act.ps.ps(r)), act.fun.body(p, cls, key, ar, t, act.ps.ents(r), act.cmb.env(key, env), act.copat.is(cls), r, ms), r, doc, env), act.fun.alt(p, act.copat.is(cls), nm, ms, ar, cls, key, t, env, doc, r))
 
 # Sorts by place (with quantities on): Kind(q) is a requirement in Bend (every
 # value copyable at q), where Agda's Set ℓ is only a bound, so a definition
