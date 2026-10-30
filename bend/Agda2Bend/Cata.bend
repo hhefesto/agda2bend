@@ -7716,18 +7716,49 @@ def act.body.nu2(m: Maybe<&2, T.Bt>, +scr: List<&2, Bool>, +cls: A.Ag, +ents: Li
     case None{}:
       act.body.split(scr, cls, ents, pnames, env, hps, ret, uhps)
 
+def act.nu.hasgap(t: T.Bt) -> Bool:
+  Bool.not(List.is_empty(&2, List<&2, U32>, T.tba.todos(t, Nil{})))
+
+def act.body.pick2(gap: Bool, b: T.Bt, old: T.Bt) -> T.Bt:
+  match gap:
+    case True{}:
+      old
+    case False{}:
+      b
+
+# act.nu's match when it has no gap, else the other path's
+def act.body.pick(m: Maybe<&2, T.Bt>, old: T.Bt) -> T.Bt:
+  match m:
+    case Some{+b}:
+      act.body.pick2(act.nu.hasgap(b), b, old)
+    case None{}:
+      old
+
+def act.body.old2(try: Bool, old: T.Bt, +scr: List<&2, Bool>, +cls: A.Ag, +ents: List<&2, T.Bt>, +pnames: List<&2, List<&2, U32>>, +env: ActEnv, +uhps: List<&2, T.BParam>, +ret: T.Bt) -> T.Bt:
+  match try:
+    case True{}:
+      act.body.pick(act.nu.body(cls, scr, ents, pnames, env, uhps, ret), old)
+    case False{}:
+      old
+
+# a match the clauses make with a gap (an absurd pattern or a missing case
+# act.cv could not refute) is written by act.nu too, and its taken when it has none
+def act.body.old(ok: Bool, +old: T.Bt, +scr: List<&2, Bool>, +cls: A.Ag, +ents: List<&2, T.Bt>, +pnames: List<&2, List<&2, U32>>, +env: ActEnv, +uhps: List<&2, T.BParam>, +ret: T.Bt) -> T.Bt:
+  act.body.old2(Bool.and(ok, act.nu.hasgap(old)), old, scr, cls, ents, pnames, env, uhps, ret)
+
 # a def with nested patterns of an indexed family takes act.nu's path
-def act.body.nu(nu: Bool, +scr: List<&2, Bool>, +cls: A.Ag, +ents: List<&2, T.Bt>, +pnames: List<&2, List<&2, U32>>, +env: ActEnv, +hps: List<&2, T.BParam>, +ret: T.Bt, +uhps: List<&2, T.BParam>) -> T.Bt:
+def act.body.nu(nu: Bool, ok: Bool, +scr: List<&2, Bool>, +cls: A.Ag, +ents: List<&2, T.Bt>, +pnames: List<&2, List<&2, U32>>, +env: ActEnv, +hps: List<&2, T.BParam>, +ret: T.Bt, +uhps: List<&2, T.BParam>) -> T.Bt:
   match nu:
     case True{}:
       act.body.nu2(act.nu.body(cls, scr, ents, pnames, env, uhps, ret), scr, cls, ents, pnames, env, hps, ret, uhps)
     case False{}:
-      act.body.split(scr, cls, ents, pnames, env, hps, ret, uhps)
+      act.body.old(ok, act.body.split(scr, cls, ents, pnames, env, hps, ret, uhps), scr, cls, ents, pnames, env, uhps, ret)
 
 def act.body.of(split: Bool, +scr: List<&2, Bool>, +cls: A.Ag, +ents: List<&2, T.Bt>, +pnames: List<&2, List<&2, U32>>, +env: ActEnv, +hps: List<&2, T.BParam>, +ret: T.Bt, +uhps: List<&2, T.BParam>) -> T.Bt:
   match split:
     case True{}:
-      act.body.nu(Bool.and(act.nu.want(cls, env), Bool.not(act.nu.anybad(cls, env))), scr, cls, ents, pnames, env, hps, ret, uhps)
+      +ok = Bool.not(act.nu.anybad(cls, env))
+      act.body.nu(Bool.and(act.nu.want(cls, env), ok), ok, scr, cls, ents, pnames, env, hps, ret, uhps)
     case False{}:
       act.body.first(act.cases(cls, scr, ents, pnames, env, hps, ret, uhps))
 
