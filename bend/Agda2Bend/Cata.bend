@@ -8206,8 +8206,47 @@ def act.nu.cx.n(cx: NuCx) -> Nat:
     case NuCx{scr, ents, ks, hps, pnames, env, ret}:
       act.nu.ncols(scr)
 
+# A missing case none of whose equations clashes at the head, one with a
+# side a call agda2bend cannot reduce and the other a 0n, 1n+_, True or
+# False head (PLFA DeBruijn's lookup at ∅: n < length ∅), is refuted
+# through that equation for Bend to check, which computes the call (as
+# act.cv.spec does for a match on several parameters).
+def act.nu.chd(t: T.Bt) -> Bool:
+  match t:
+    case T.BtNat{s}:
+      True{}
+    case T.BtSucc{x}:
+      True{}
+    case T.BtCon{+c, as}:
+      Bool.or(S.eq(c, S.b("True")), S.eq(c, S.b("False")))
+    case _:
+      False{}
+
+def act.nu.ccall(+t: T.Bt) -> Bool:
+  act.cv.call1(act.abs.hd(t))
+
+def act.nu.cs1(e: NuEq) -> Bool:
+  match e:
+    case NuEq{ty, +a, +b, p}:
+      Bool.or(Bool.and(act.nu.ccall(a), act.nu.chd(b)), Bool.and(act.nu.ccall(b), act.nu.chd(a)))
+
+def act.nu.css(es: List<&2, NuEq>) -> List<&2, NuEq>:
+  match es:
+    case Nil{}:
+      Nil{}
+    case +e <> t:
+      Bool.pick(List<&2, NuEq>, act.nu.cs1(e), [e], act.nu.css(t))
+
+def act.nu.ref.gap(sp: List<&2, NuEq>, +st: NuSt, +cx: NuCx) -> List<&2, NuCase>:
+  match sp:
+    case e <> t:
+      [NuCase{act.nu.st.pats(st, act.nu.cx.n(cx)), act.nu.refute.e(e, act.nu.st.ty(st, act.nu.cx.ret(cx)))}]
+    case Nil{}:
+      [NuCase{act.nu.st.pats(st, act.nu.cx.n(cx)), T.BtExpr{act.todo("a case nested patterns leave out that no index equation refutes")}}]
+
 # a missing case: refuted by a clash among its equations, else split at a
-# wildcard (depth d), else a gap
+# wildcard (depth d), else a call against a head (act.nu.ref.gap), else a
+# gap
 def act.nu.ref.out(cl: List<&2, NuEq>, d: Nat, m: Maybe<&2, NuHole>, +st: NuSt, +cx: NuCx) -> List<&2, NuCase>:
   match cl d m:
     case e <> t d m:
@@ -8215,7 +8254,7 @@ def act.nu.ref.out(cl: List<&2, NuEq>, d: Nat, m: Maybe<&2, NuHole>, +st: NuSt, 
     case Nil{} 1n+p Some{h}:
       Nil{}
     case Nil{} d m:
-      [NuCase{act.nu.st.pats(st, act.nu.cx.n(cx)), T.BtExpr{act.todo("a case nested patterns leave out that no index equation refutes")}}]
+      act.nu.ref.gap(act.nu.css(act.nu.st.eqs(st)), st, cx)
 
 def act.nu.ref.more(cl: List<&2, NuEq>, d: Nat, m: Maybe<&2, NuHole>, row: NuP, +cx: NuCx) -> List<&2, NuRj>:
   match cl d m:
