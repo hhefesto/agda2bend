@@ -5400,12 +5400,41 @@ def act.cq.dv.of(c: ActCq) -> List<&2, List<&2, U32>>:
     case ActCq{eqs, on, bs, dv, con, cds}:
       dv
 
+# An absurd pattern at a split parameter (`T→≡ false ()` with x : T false,
+# `≤ᵇ→≤ (suc m) zero ()`): the clause was left out, and Bend, not seeing
+# that T false is empty, asked for its case ('expected : cases for
+# Bool_.false observed : \{}'; PLFA's Decidable).  When the variable's
+# type opens to a data type with no constructors (act.abs.done) the case is
+# written, an empty match on it; otherwise it stays out (2026-10-30).
+def act.abs.done(fuel: Nat, st: ActAbsSt, +env: ActEnv) -> Bool:
+  match fuel st:
+    case _ AbsDone{}:
+      True{}
+    case 1n+f AbsOpen{t}:
+      act.abs.done(f, act.abs.step(t, env), env)
+    case _ _:
+      False{}
+
+def act.case.abs.of(ok: Bool, +p: T.Bt, +x: T.Bt, rest: T.Bt) -> T.Bt:
+  match ok:
+    case True{}:
+      T.BtCase{p, act.abs.match(act.var.name(x), T.BtCEnd{}), rest}
+    case False{}:
+      rest
+
+def act.case.abs(m: Maybe<&2, ActAbs>, +p: T.Bt, +bs: List<&2, ActBind>, +n: Nat, +env: ActEnv, rest: T.Bt) -> T.Bt:
+  match m:
+    case Some{ActAbs{x, +ty, +ix}}:
+      act.case.abs.of(act.abs.done(16n, act.abs.step(ty, env), env), p, act.bind.find(Nat.sub(Nat.sub(n, 1n), ix), bs), rest)
+    case None{}:
+      rest
+
 # a case: its patterns, and its body after the rewrites its refl patterns
 # need (an absurd or cubical clause is left out)
 def act.case.of(a: ActPat, +n: Nat, body: A.Ag, +env: ActEnv, rest: T.Bt, +rw: ActRw, abs: Maybe<&2, ActAbs>, +dots: List<&2, ActDot>, +svars: List<&2, T.Bt>, +hps: List<&2, T.BParam>, +ret: T.Bt, +tel: A.Ag, +uhps: List<&2, T.BParam>, +aps: List<&2, A.Ag>) -> T.Bt:
   match a:
-    case ActPat{p, +bs, True{}}:
-      rest
+    case ActPat{+p, +bs, True{}}:
+      act.case.abs(abs, p, bs, n, env, rest)
     case ActPat{+p, +bs, False{}}:
       +q00 = act.eq.spine(p, svars)
       +nr = act.nrf.has(q00, svars)
