@@ -2,6 +2,15 @@
 
 Working notes, so the work can continue from another machine or agent. Newest first. Times are UTC-6. agda2bend was split out of ana (github:hhefesto/ana) on 2026-10-22. ana's HANDOFF.md, before that date, has the rest of the history.
 
+## Data.Nat.Properties had dropped whole in the 29da3f1 corpus; corpus runs restarted on d9975ad (2026-10-30, 08:00-08:45)
+
+- **Found:** the 29da3f1 PLFA run (and npvm9) had Data.Nat.Properties at 0 of 502 items (418 dropped "unlocated", 84 dependents); b9f9a87 had checked 232.  Every other module of the PLFA and stdlib runs lost 0-2 items against b9f9a87.
+- **Cause 1, Copy:** Relation.Binary.Reasoning.Syntax's begin-subrelation had `~x ~y ~xRy` (templates): xRy, of type R(x, y), is used live twice (at extract's and IsS?'s Pis, live since 6b3402f), a non-Data parameter used twice is a template, and tcp.close raises the points its type mentions.  Every equational proof passes those points a variable, so its own points became templates in turn (67 headers of Data.Nat.Properties: `plus_comm(~y: Nat, x: Nat)`).  **d9975ad (tcp.fam.app):** a parameter whose type is another parameter applied is taken as Data: used twice it is copied, and the gate specialises the family (`~A: Data, ~R: Binary_Core.Rel(&2, A, &2), +x, +y, +xRy`), b9f9a87's header.  (096e2cd only kept its known count; not enough here.)
+- **Cause 2, Gate:** with +-comm and *-comm checkable, *-distribˡ-+ instantiates Algebra.Consequences.Propositional's comm∧distrʳ⇒distrˡ, whose eta-expansion passes its lambda's variables to Setoid's template points: Bend says "Location: anon.comm_and_distr_r_Arr_distr_l~0" with that module's line, which named no item here, and the gate dropped the whole module.  **096e2cd (tgt.blame.tpl):** when the Location is a template instance `f~0` and f is no kept item, the first kept item calling f (under any alias) is blamed.
+- **Tests:** 75 ok (5 new).
+- **Runs:** ev-nu/requeued997.sh (unit a2b-requeue5747, 08:42, bin/agda2bend-O0-vd9975ad), PLFA then agda-algebras, agda2hs-base, agda-prelude, and the stdlib beside them.  The 29da3f1 outputs are *.v29da-part, 096e2cd's (08:24-08:42) *.v096e-part.  corpus-um (agda-unimath, a2b-umemit) still runs on 29da3f1: it has no "unlocated" drops.
+- **Left:** points as templates elsewhere still make templates that callers cannot apply to variables (Algebra.Consequences.Setoid's comm∧distrʳ⇒distrˡ has ~x ~y ~z); the gate now drops their callers only.
+
 ## Record eta and the Yoneda lemma the Bend way, by hand (2026-10-30, 07:00-08:00)
 
 The user (10-30): "there should be a way to model record eta that's natural for bend (and not the same way agda solves it)"; "I want the math to be sane. Bend should be able to do all that Agda can do, but in other ways. Find a sound way for Bend to demonstrate the same thing Agda proofs in bend's way of doing proofs."
