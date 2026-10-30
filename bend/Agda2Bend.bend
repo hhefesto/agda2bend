@@ -804,10 +804,16 @@ def a2b.cast.item() -> T.BItem:
   +f : T.Bt = T.BtVar{S.b("F")}
   T.BiDef{S.b("a2b_cast"), [T.BParam{T.BmErased{}, S.b("T"), T.BtType{}}, T.BParam{T.BmErased{}, S.b("F"), T.BtPi{T.BmLive{}, S.b("_"), False{}, ty, T.BtType{}}}, T.BParam{T.BmErased{}, S.b("a"), ty}, T.BParam{T.BmErased{}, S.b("b"), ty}, T.BParam{T.BmLive{}, S.b("e"), T.BtEq{ty, T.BtVar{S.b("a")}, T.BtVar{S.b("b")}}}, T.BParam{T.BmLive{}, S.b("x"), T.BtApp{f, T.tba.args([T.BtVar{S.b("a")}])}}], T.BtApp{f, T.tba.args([T.BtVar{S.b("b")}])}, T.BtRw{T.BtVar{S.b("e")}, T.BtApp{f, T.tba.args([T.BtWild{}])}, T.BtExpr{T.BtVar{S.b("x")}}}, [S.b("agda2bend: a value of F(a) as one of F(b), for the fields of a dotted constructor field at another pattern's variable")]}
 
-def a2b.helpers(+its: List<&2, T.BItem>) -> List<&2, T.BItem>:
-  +ns = a2b.fold.items(its, False{}, Nil{})
+def a2b.helpers.of(+ns: List<&2, List<&2, U32>>, +its: List<&2, T.BItem>) -> List<&2, T.BItem>:
   +its2 = Bool.pick(List<&2, T.BItem>, a2b.uses(ns, S.b("a2b_pred")), a2b.pred.item() <> its, its)
   Bool.pick(List<&2, T.BItem>, a2b.uses(ns, S.b("a2b_cast")), a2b.cast.item() <> its2, its2)
+
+def a2b.helpers(+its: List<&2, T.BItem>) -> List<&2, T.BItem>:
+  a2b.helpers.of(a2b.fold.items(its, False{}, Nil{}), its)
+
+# the helpers the items or their act.nu alternatives use (alts)
+def a2b.helpers.alts(+its: List<&2, T.BItem>, +alts: List<&2, T.BItem>) -> List<&2, T.BItem>:
+  a2b.helpers.of(a2b.fold.items(List.append(&2, T.BItem, its, alts), False{}, Nil{}), its)
 
 # Agda.Builtin.Nat's div-helper and mod-helper recurse on n with k
 # changed first, which Bend's termination check (arguments read left to
@@ -851,9 +857,9 @@ def a2b.nat.items(its: List<&2, T.BItem>) -> List<&2, T.BItem>:
 def a2b.builtin.nat(+m: List<&2, U32>, +its: List<&2, T.BItem>) -> List<&2, T.BItem>:
   Bool.pick(List<&2, T.BItem>, S.eq(m, S.b("Agda.Builtin.Nat")), a2b.go.item("a2b_div_go", T.BtSucc{a2b.v("k")}, a2b.v("k")) <> a2b.go.item("a2b_mod_go", T.BtNat{S.b("0")}, T.BtSucc{a2b.v("k")}) <> a2b.nat.items(its), its)
 
-def a2b.em.items(+out: String, +m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +kept: Map<&2, Bool>, +nd: Nat, its0: List<&2, T.BItem>, +qe: QF.TqEnv) -> IO(List<&2, T.BItem>):
-  +its = a2b.helpers(a2b.builtin.nat(m, its0))
-  a2b.em.write(out, m, kept, ral, its, a2b.imports(a2b.snd(a2b.imps(a2b.fold.items(its, False{}, Nil{}), ral, (Map.new(&2, Bool), Nil{}))), m, al), nd, a2b.fold.items(its, True{}, Nil{}), a2b.defs.n(its), qe)
+def a2b.em.items(+out: String, +m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +kept: Map<&2, Bool>, +nd: Nat, its0: List<&2, T.BItem>, +qe: QF.TqEnv, +alts: List<&2, T.BItem>) -> IO(List<&2, T.BItem>):
+  +its = a2b.helpers.alts(a2b.builtin.nat(m, its0), alts)
+  a2b.em.write(out, m, kept, ral, its, a2b.imports(a2b.snd(a2b.imps(a2b.fold.items(List.append(&2, T.BItem, its, alts), False{}, Nil{}), ral, (Map.new(&2, Bool), Nil{}))), m, al), nd, a2b.fold.items(its, True{}, Nil{}), a2b.defs.n(its), qe)
 
 # The quantity rounds (ToBend/Copy.bend): the module is translated, each
 # def's parameters' modes are read off its body and put into its symbol,
@@ -1000,9 +1006,9 @@ def a2b.qs.add(+its: List<&2, T.BItem>, +al: Map<&2, List<&2, U32>>, +m: List<&2
   a2b.qs.go(its, al, m, a2b.names.map(its, Map.new(&2, Bool)), qs)
 
 def a2b.em.round2(+out: String, +m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +nd: Nat, +kept: Map<&2, Bool>, +unf: Map<&2, C.ActCopy>, +pj: Map<&2, Q.TcpProj>, +qs: Map<&2, QF.TqSig>, +tab: Map<&2, C.ActSym>, p: List<&2, T.BItem> & List<&2, T.BItem>) -> IO(A2bG):
-  (+fits, alts) = p
+  (+fits, +alts) = p
   do IO<A2bG>:
-    +gs : List<&2, T.BItem> <- a2b.em.items(out, m, al, ral, kept, nd, fits, a2b.qe.alts(a2b.qs.add(fits, al, m, qs), al, m, alts))
+    +gs : List<&2, T.BItem> <- a2b.em.items(out, m, al, ral, kept, nd, fits, a2b.qe.alts(a2b.qs.add(fits, al, m, qs), al, m, alts), alts)
     return A2bG{tab, unf, a2b.kept.add(a2b.kept.of(a2b.ral.got(Map.get(List<&2, U32>, Nil{}, al, S.str(m))), gs), kept), pj, a2b.qs.add(gs, al, m, qs)}
 
 def a2b.em.round(+out: String, +m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +nd: Nat, +kept: Map<&2, Bool>, +unf: Map<&2, C.ActCopy>, +pj: Map<&2, Q.TcpProj>, +qs: Map<&2, QF.TqSig>, r: A2bRound) -> IO(A2bG):
