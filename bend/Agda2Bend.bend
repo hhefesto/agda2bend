@@ -421,17 +421,30 @@ def a2b.uniq.of(+n: Nat, +b: List<&2, U32>) -> List<&2, U32>:
 # the third `.absurdlambda` of a module counts two before it and is _3 (it
 # was _2 again, and the module's later λ() replaced its earlier ones:
 # Triple's IsEquality? called IsStrict?'s, 166 dependents); a candidate
-# some def already has (a natural `x_2`) moves on to the next number
-def a2b.uniq.go(fuel: Nat, +n: Nat, +b: List<&2, U32>, +used: List<&2, List<&2, U32>>) -> List<&2, U32>:
-  match fuel:
+# some def already has (a natural `x_2`) moves on to the next number.
+# The next candidate is tried under a match, not as a Bool.pick argument:
+# compiled Bend evaluates both of Bool.pick's branches, so the old
+# a2b.uniq.go(f, 1n+n, ...) branch ran all 64 steps, each counting the
+# whole used list, for every def (Algebra.Structures 1 min -> 20 min)
+def a2b.uniq.taken(+n: Nat, +b: List<&2, U32>, +used: List<&2, List<&2, U32>>) -> Bool:
+  match n:
     case 0n:
+      False{}
+    case 1n+p:
+      Bool.not(Nat.is_eq(a2b.count(a2b.uniq.of(n, b), used), 0n))
+
+def a2b.uniq.go(fuel: Nat, taken: Bool, +n: Nat, +b: List<&2, U32>, +used: List<&2, List<&2, U32>>) -> List<&2, U32>:
+  match fuel taken:
+    case _ False{}:
       a2b.uniq.of(n, b)
-    case 1n+f:
-      +c = a2b.uniq.of(n, b)
-      Bool.pick(List<&2, U32>, Bool.and(Bool.not(Nat.is_eq(n, 0n)), Bool.not(Nat.is_eq(a2b.count(c, used), 0n))), a2b.uniq.go(f, 1n+n, b, used), c)
+    case 0n True{}:
+      a2b.uniq.of(n, b)
+    case 1n+f True{}:
+      a2b.uniq.go(f, a2b.uniq.taken(1n+n, b, used), 1n+n, b, used)
 
 def a2b.uniq(+b: List<&2, U32>, +used: List<&2, List<&2, U32>>) -> List<&2, U32>:
-  a2b.uniq.go(64n, a2b.count(b, used), b, used)
+  +n = a2b.count(b, used)
+  a2b.uniq.go(64n, a2b.uniq.taken(n, b, used), n, b, used)
 
 def a2b.used.put(+b: List<&2, U32>, +nm: List<&2, U32>, +used: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
   Bool.pick(List<&2, List<&2, U32>>, S.eq(b, nm), used, b <> used)

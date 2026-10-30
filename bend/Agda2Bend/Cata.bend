@@ -3497,7 +3497,8 @@ def act.ixp.keep(eqs: List<&2, T.BParam>, +goal: T.Bt) -> List<&2, T.BParam>:
     case Nil{}:
       Nil{}
     case T.BParam{+m, +x, +ty} <> +t:
-      Bool.pick(List<&2, T.BParam>, Bool.and(act.occurs(x, goal), Bool.not(act.ixp.rvar(ty))), act.ixp.keep(t, goal), T.BParam{m, x, ty} <> act.ixp.keep(t, goal))
+      +r = act.ixp.keep(t, goal)
+      Bool.pick(List<&2, T.BParam>, Bool.and(act.occurs(x, goal), Bool.not(act.ixp.rvar(ty))), r, T.BParam{m, x, ty} <> r)
 
 def act.case.body.or(m: Maybe<&2, T.Bt>, +eqs: List<&2, T.BParam>, +rs: List<&2, T.Bt>, +ds: List<&2, List<&2, U32>>, +goal: T.Bt, +hps: List<&2, T.BParam>, +svs: List<&2, List<&2, U32>>, +body: T.Bt) -> T.Bt:
   match m:
@@ -4233,7 +4234,9 @@ def act.ds.eqs(fs: List<&2, T.Bt>, +j: Nat, +o: Nat) -> List<&2, ActDe>:
     case Nil{}:
       Nil{}
     case T.BtPv{m, +nm} <> +t:
-      Bool.pick(List<&2, ActDe>, act.is.ph(nm), ActDe{j, o, S.str(nm)} <> act.ds.eqs(t, 1n+j, 1n+o), act.ds.eqs(t, 1n+j, o))
+      +ph = act.is.ph(nm)
+      +r = act.ds.eqs(t, 1n+j, Nat.add(Bool.pick(Nat, ph, 1n, 0n), o))
+      Bool.pick(List<&2, ActDe>, ph, ActDe{j, o, S.str(nm)} <> r, r)
     case h <> t:
       act.ds.eqs(t, 1n+j, o)
 
@@ -4337,7 +4340,8 @@ def act.ds.uniq(ds: List<&2, ActDs>, +bs: List<&2, ActBind>) -> List<&2, ActDs>:
     case Nil{}:
       Nil{}
     case ActDs{+d, +s, +k, +e, +i} <> +t:
-      Bool.pick(List<&2, ActDs>, Nat.is_eq(act.ds.npos(bs, act.ds.dot(bs, d)), 1n), ActDs{d, s, k, e, i} <> act.ds.uniq(t, bs), act.ds.uniq(t, bs))
+      +r = act.ds.uniq(t, bs)
+      Bool.pick(List<&2, ActDs>, Nat.is_eq(act.ds.npos(bs, act.ds.dot(bs, d)), 1n), ActDs{d, s, k, e, i} <> r, r)
 
 def act.ds.names(ds: List<&2, ActDs>) -> List<&2, List<&2, U32>>:
   match ds:
@@ -4510,7 +4514,8 @@ def act.sd.vs(fs: List<&2, T.Bt>) -> List<&2, List<&2, U32>>:
     case Nil{}:
       Nil{}
     case T.BtPv{m, +nm} <> +t:
-      Bool.pick(List<&2, List<&2, U32>>, act.is.ph(nm), act.sd.vs(t), nm <> act.sd.vs(t))
+      +r = act.sd.vs(t)
+      Bool.pick(List<&2, List<&2, U32>>, act.is.ph(nm), r, nm <> r)
     case h <> t:
       act.sd.vs(t)
 
@@ -4568,7 +4573,8 @@ def act.sd.uniq(ds: List<&2, ActSd>, +bs: List<&2, ActBind>) -> List<&2, ActSd>:
     case Nil{}:
       Nil{}
     case ActSd{+d, +s, +h, +vs} <> +t:
-      Bool.pick(List<&2, ActSd>, Nat.is_eq(act.ds.count(bs, d), 1n), ActSd{d, s, h, vs} <> act.sd.uniq(t, bs), act.sd.uniq(t, bs))
+      +r = act.sd.uniq(t, bs)
+      Bool.pick(List<&2, ActSd>, Nat.is_eq(act.ds.count(bs, d), 1n), ActSd{d, s, h, vs} <> r, r)
 
 def act.sd.names(ds: List<&2, ActSd>) -> List<&2, List<&2, U32>>:
   match ds:
@@ -7002,13 +7008,16 @@ def act.alpha(t: T.Bt, +n: List<&2, U32>, +n2: List<&2, U32>) -> T.Bt:
       Bool.pick(T.Bt, S.eq(y, n), T.BtLam{m, n2, T.tba.subst(b2, n, T.BtVar{n2})}, T.BtLam{m, y, b2})
     case T.BtPi{+m, +y, +d, +a, b}:
       +b2 = act.alpha(b, n, n2)
-      Bool.pick(T.Bt, S.eq(y, n), T.BtPi{m, n2, d, act.alpha(a, n, n2), T.tba.subst(b2, n, T.BtVar{n2})}, T.BtPi{m, y, d, act.alpha(a, n, n2), b2})
+      +a2 = act.alpha(a, n, n2)
+      Bool.pick(T.Bt, S.eq(y, n), T.BtPi{m, n2, d, a2, T.tba.subst(b2, n, T.BtVar{n2})}, T.BtPi{m, y, d, a2, b2})
     case T.BtLet{+y, +v, b}:
       +b2 = act.alpha(b, n, n2)
-      Bool.pick(T.Bt, S.eq(y, n), T.BtLet{n2, act.alpha(v, n, n2), T.tba.subst(b2, n, T.BtVar{n2})}, T.BtLet{y, act.alpha(v, n, n2), b2})
+      +v2 = act.alpha(v, n, n2)
+      Bool.pick(T.Bt, S.eq(y, n), T.BtLet{n2, v2, T.tba.subst(b2, n, T.BtVar{n2})}, T.BtLet{y, v2, b2})
     case T.BtCase{+p, b, +rest}:
       +b2 = act.alpha(b, n, n2)
-      Bool.pick(T.Bt, act.mem.name(n, T.tba.pvars(p, Nil{})), T.BtCase{act.alpha.pat(p, n, n2), act.sub.deep(b2, n, n2), act.alpha(rest, n, n2)}, T.BtCase{p, b2, act.alpha(rest, n, n2)})
+      +r2 = act.alpha(rest, n, n2)
+      Bool.pick(T.Bt, act.mem.name(n, T.tba.pvars(p, Nil{})), T.BtCase{act.alpha.pat(p, n, n2), act.sub.deep(b2, n, n2), r2}, T.BtCase{p, b2, r2})
     case T.BtApp{f, a}:
       T.BtApp{act.alpha(f, n, n2), act.alpha(a, n, n2)}
     case T.BtArgs{a, rest}:
