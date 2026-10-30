@@ -9815,17 +9815,39 @@ def act.dataish.cs(+self: List<&2, U32>, cs: List<&2, T.BCtor>) -> Bool:
     case T.BCtor{c, fs} <> t:
       Bool.and(act.dataish.fs(self, fs), act.dataish.cs(self, t))
 
-def act.item.data.of(+nm: List<&2, U32>, r: ActPs, +cs: List<&2, T.BCtor>, doc: List<&2, List<&2, U32>>) -> List<&2, T.BItem>:
+# A data type's kind is read from its parameters with their sorts opened
+# (2026-10-30), as a record's are (act.rtel): `_<_ : Rel A ℓ₃` counts as
+# A -> A -> Kind(ℓ₃), not as an opaque Type.  Triple's _IsRelatedTo_, whose
+# fields are x < y, x ≤ y and x ≈ y, was Type, so ≤-Reasoning's
+# begin-equality_ (a subrelation's begin, which copies its x IsRelatedTo y,
+# so takes it as Data) refused every chain over ℕ: +-comm and 128 dependents,
+# "expected Data observed Type".  The declaration keeps its parameters as
+# Agda wrote them.
+def act.unfold.doms(fuel: Nat, t: A.Ag, +env: ActEnv) -> A.Ag:
+  match fuel t:
+    case 1n+f A.AgEl{s, A.AgPi{i, x, a, dep, b}}:
+      A.AgEl{s, A.AgPi{i, x, act.unfold.sorts(8n, a, env), dep, act.unfold.doms(f, b, env)}}
+    case f t:
+      t
+
+def act.data.kps(on: Bool, +n: Nat, +t: A.Ag, +ms: List<&2, ActM>, +env: ActEnv, +r: ActPs) -> List<&2, T.BParam>:
+  match on:
+    case True{}:
+      act.ps.ps(act.params(64n, n, act.unfold.doms(64n, t, env), ms, Nil{}, env))
+    case False{}:
+      act.ps.ps(r)
+
+def act.item.data.of(+nm: List<&2, U32>, r: ActPs, +kps: List<&2, T.BParam>, +cs: List<&2, T.BCtor>, doc: List<&2, List<&2, U32>>) -> List<&2, T.BItem>:
   match r:
     case ActPs{+ps, ret, ctx, es, ok}:
-      [T.BiType{nm, ps, act.kind.term(act.kind.cs(nm, cs, ps)), cs, doc}]
+      [T.BiType{nm, ps, act.kind.term(act.kind.cs(nm, cs, kps)), cs, doc}]
 
 def act.item.data(s: ActSym, d: A.AgD, ty: A.Ag, +env: ActEnv, +decls: Map<&2, A.AgDecl>, doc: List<&2, List<&2, U32>>) -> List<&2, T.BItem>:
   match s d:
     case ActSym{m, +n, k, +ms, ar, b, fs, c, cp} A.AgDData{+pars, +ixs, cons, sort, dcl}:
       +t = act.inline(100000n, ty, env)
       +r = act.params(64n, Nat.add(pars, ixs), t, ms, Nil{}, env)
-      act.item.data.of(n, r, act.ctors(act.keys(cons), pars, env, decls, act.ps.last(ixs, act.ps.ps(r))), doc)
+      act.item.data.of(n, r, act.data.kps(act.quant.on(), Nat.add(pars, ixs), t, ms, env, r), act.ctors(act.keys(cons), pars, env, decls, act.ps.last(ixs, act.ps.ps(r))), doc)
     case _ _:
       Nil{}
 
