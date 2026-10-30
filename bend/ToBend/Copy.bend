@@ -1310,10 +1310,47 @@ def tcp.rp.scr(bs: List<&2, TcpRb>, +b: T.Bt) -> Bool:
     case TcpRb{+x, v, ty} <> t:
       Bool.or(tcp.scrut(x, b), tcp.rp.scr(t, b))
 
-def tcp.rp.ok(m: Maybe<&2, List<&2, TcpRb>>, +b: T.Bt, +x: List<&2, U32>, +ret: T.Bt, +qe: QF.TqEnv) -> Bool:
+# the field variables' uses in b, all told (those at a variable's
+# arguments, f's a in `f a`, counted: tcp.uses.unk)
+def tcp.rp.uses(bs: List<&2, TcpRb>, +b: T.Bt) -> Nat:
+  match bs:
+    case Nil{}:
+      0n
+    case TcpRb{+x, v, ty} <> t:
+      Nat.add(tcp.uses.unk(x, b), tcp.rp.uses(t, b))
+
+# the name a projection term calls ("" none)
+def tcp.rp.head(v: T.Bt) -> List<&2, U32>:
+  match v:
+    case T.BtApp{T.BtVar{+f}, a}:
+      f
+    case _:
+      Nil{}
+
+# whether a field's projection is the def n itself (Pair.fst's own body,
+# `comma f s = f`, read as projections would be its own call)
+def tcp.rp.self(bs: List<&2, TcpRb>, +n: List<&2, U32>) -> Bool:
+  match bs:
+    case Nil{}:
+      False{}
+    case TcpRb{x, +v, ty} <> t:
+      Bool.or(S.eq(tcp.rp.head(v), n), tcp.rp.self(t, n))
+
+# one field used once, the record (x, renamed x_rp) nowhere else, the def
+# not the projection itself: `center (c , C) = c` is Agda's pr1, which
+# reduces at a variable where a match does not, so contraction's type,
+# which says pr1 of the record, met its body's center of it, and Bend
+# refused it (2026-10-30)
+def tcp.rp.one(+bs: List<&2, TcpRb>, +b: T.Bt, +x: List<&2, U32>, +n: List<&2, U32>) -> Bool:
+  Bool.and(Nat.is_eq(tcp.rp.uses(bs, b), 1n), Bool.and(Nat.is_eq(tcp.uses.unk(List.append(&2, U32, x, S.b("_rp")), b), 0n), Bool.not(tcp.rp.self(bs, n))))
+
+# read as projections: a field of function type used twice (tcp.rp.dup), or
+# one field used once (tcp.rp.one); the result's type not the record's, no
+# field matched
+def tcp.rp.ok(m: Maybe<&2, List<&2, TcpRb>>, +b: T.Bt, +x: List<&2, U32>, +ret: T.Bt, +qe: QF.TqEnv, +n: List<&2, U32>) -> Bool:
   match m:
     case Some{+bs}:
-      Bool.and(tcp.rp.dup(bs, b, qe), Bool.and(Bool.not(tcp.mem(x, T.tba.refs(ret, Nil{}))), Bool.not(tcp.rp.scr(bs, b))))
+      Bool.and(Bool.or(tcp.rp.dup(bs, b, qe), tcp.rp.one(bs, b, x, n)), Bool.and(Bool.not(tcp.mem(x, T.tba.refs(ret, Nil{}))), Bool.not(tcp.rp.scr(bs, b))))
     case None{}:
       False{}
 
@@ -1408,7 +1445,7 @@ def tcp.rp.item(it: T.BItem, +e: TcpEnv, +qe: QF.TqEnv) -> T.BItem:
       +ps2 = tcp.rp.ren(ps, x0, x, False{})
       +b2 = tcp.rp.sub(b, x0, T.BtVar{x})
       +bs : Maybe<&2, List<&2, TcpRb>> = tcp.rp.go(64n, [TcpRw{p, T.BtVar{x}, tcp.vty(ps2, x)}], e, qe, Nil{})
-      Bool.pick(T.BItem, tcp.rp.ok(bs, b2, x0, ret, qe), T.BiDef{n, ps2, ret, tcp.rp.body(bs, b2), doc}, T.BiDef{n, ps, ret, T.BtMatch{T.BtArgs{T.BtVar{x0}, T.BtANil{}}, T.BtCase{T.BtArgs{p, T.BtANil{}}, b, T.BtCEnd{}}}, doc})
+      Bool.pick(T.BItem, tcp.rp.ok(bs, b2, x0, ret, qe, n), T.BiDef{n, ps2, ret, tcp.rp.body(bs, b2), doc}, T.BiDef{n, ps, ret, T.BtMatch{T.BtArgs{T.BtVar{x0}, T.BtANil{}}, T.BtCase{T.BtArgs{p, T.BtANil{}}, b, T.BtCEnd{}}}, doc})
     case it:
       it
 

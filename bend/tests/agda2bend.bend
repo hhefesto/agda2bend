@@ -572,7 +572,7 @@ def gate.laws() -> IO(Unit):
     IO.print(verdict("a record used through two fields is matched once", S.eq(gt.pr(Q.tcp.destr(ds.f(False{}), ds.env())), S.b("import Base\n\ndef f(r: M.R) -> T:\n  match r:\n    case M.R{r_f0, r_f1}:\n      g(r_f0, r_f1)\n"))))
     IO.print(verdict("a field used twice keeps the record whole", S.eq(gt.pr(Q.tcp.destr(ds.f(True{}), ds.env())), gt.pr(ds.f(True{})))))
     IO.print(verdict("a record pattern whose function field is used twice reads as its projections", S.eq(rp.out(True{}), S.b("import Base\n\ndef f(-A: Type, r_rp: M.Inv<A>, a: A) -> A:\n  M.Inv.g(A, r_rp)(M.Inv.g(A, r_rp)(a))\n"))))
-    IO.print(verdict("one used once keeps its match", S.eq(rp.out(False{}), gt.pr(rp.f(False{})))))
+    IO.print(verdict("a record pattern whose one field is used once reads as its projection", S.eq(rp.out(False{}), S.b("import Base\n\ndef f(-A: Type, r_rp: M.Inv<A>, a: A) -> A:\n  M.Inv.g(A, r_rp)(a)\n"))))
 
 # Translation --------------------------------------------------------------------
 #
