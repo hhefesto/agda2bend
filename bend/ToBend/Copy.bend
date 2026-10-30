@@ -360,7 +360,10 @@ def tcp.mode.low(m: T.BMode, low: Bool) -> T.BMode:
 # still pass it; its uses become &2.  A caller that passes its own quantity
 # where &2 is now expected is specialised the same way.  The result is
 # weaker than the Agda original (it holds for Data homs only), as the user
-# chose on 2026-10-20; the def's comment says so.
+# chose on 2026-10-20; the def's comment says so.  A type (a record whose
+# field passes its Category to Bifunctor's Data-hom Product:
+# DinaturalTransformation, Adjoint) is specialised the same way
+# (2026-10-30).
 
 def tcp.q.params(ps: List<&2, T.BParam>) -> List<&2, List<&2, U32>>:
   match ps:
@@ -448,6 +451,20 @@ def tcp.qsub.ps(ps: List<&2, T.BParam>, +q: List<&2, U32>, +lit: List<&2, U32>) 
     case T.BParam{m, x, ty} <> t:
       T.BParam{m, x, tcp.qsub(ty, q, lit)} <> tcp.qsub.ps(t, q, lit)
 
+def tcp.qsub.fs(fs: List<&2, T.BField>, +q: List<&2, U32>, +lit: List<&2, U32>) -> List<&2, T.BField>:
+  match fs:
+    case Nil{}:
+      Nil{}
+    case T.BField{x, ty} <> t:
+      T.BField{x, tcp.qsub(ty, q, lit)} <> tcp.qsub.fs(t, q, lit)
+
+def tcp.qsub.cs(cs: List<&2, T.BCtor>, +q: List<&2, U32>, +lit: List<&2, U32>) -> List<&2, T.BCtor>:
+  match cs:
+    case Nil{}:
+      Nil{}
+    case T.BCtor{c, fs} <> t:
+      T.BCtor{c, tcp.qsub.fs(fs, q, lit)} <> tcp.qsub.cs(t, q, lit)
+
 def tcp.q.note(+lit: List<&2, U32>) -> String:
   Bool.pick(String, S.eq(lit, S.b("&2")), " (Data), weaker than the Agda original", " (Type)")
 
@@ -455,6 +472,8 @@ def tcp.q.one(it: T.BItem, +q: List<&2, U32>, +lit: List<&2, U32>) -> T.BItem:
   match it:
     case T.BiDef{n, ps, ret, body, doc}:
       T.BiDef{n, tcp.qsub.ps(ps, q, lit), tcp.qsub(ret, q, lit), tcp.qsub(body, q, lit), List.append(&2, List<&2, U32>, doc, [S.b("specialised: quantity " ++ S.str(q) ++ " is " ++ S.str(lit) ++ tcp.q.note(lit))])}
+    case T.BiType{n, ps, k, cs, doc}:
+      T.BiType{n, tcp.qsub.ps(ps, q, lit), tcp.qsub(k, q, lit), tcp.qsub.cs(cs, q, lit), List.append(&2, List<&2, U32>, doc, [S.b("specialised: quantity " ++ S.str(q) ++ " is " ++ S.str(lit) ++ tcp.q.note(lit))])}
     case it:
       it
 
@@ -478,6 +497,8 @@ def tcp.q.done(+qs: List<&2, List<&2, U32>>, it: T.BItem, +lit: List<&2, U32>) -
 def tcp.q.spec(+it: T.BItem, +why: List<&2, U32>) -> Maybe<&2, T.BItem>:
   match it:
     case T.BiDef{n, +ps, ret, body, doc}:
+      tcp.q.done(tcp.q.cands(tcp.q.params(ps), tcp.exp.of(S.find(why, S.b("observed : "), 0n), why), tcp.obs(why)), it, S.b("&2"))
+    case T.BiType{n, +ps, k, cs, doc}:
       tcp.q.done(tcp.q.cands(tcp.q.params(ps), tcp.exp.of(S.find(why, S.b("observed : "), 0n), why), tcp.obs(why)), it, S.b("&2"))
     case _:
       None{}

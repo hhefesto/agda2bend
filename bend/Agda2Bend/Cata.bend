@@ -414,7 +414,7 @@ def act.info.hid(i: A.AgI) -> Bool:
 # the definition's own mode, live (Function.Bundles' Func.isCongruent:
 # "expected @x observed @-x"; Consequences' total⇒refl, wlog)
 def act.mode.v(+i: A.AgI, +a: A.Ag, tylevel: Bool) -> ActM:
-  act.mode.of(act.ty.level(a), Bool.or(Bool.or(act.info.erased.v(i), act.ends.sort(a)), Bool.and(tylevel, Bool.not(act.info.hid(i)))))
+  act.mode.of(act.ty.level(a), Bool.or(act.info.erased.v(i), act.ends.sort(a)))
 
 # a Pi binder's mode: a Level is dropped; it is erased when hidden,
 # instance, irrelevant or @0, when it is a type or a type family, or when
