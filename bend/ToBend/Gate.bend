@@ -468,12 +468,49 @@ def tgt.q.of(m: Maybe<&2, T.BItem>, +why: List<&2, U32>) -> Maybe<&2, T.BItem>:
     case None{}:
       None{}
 
+# A def's other translation (act.nu's, ToBend/Qfix.bend tqf.alt): a def that
+# fails for good is checked once more as it before it is dropped; the
+# alternative carries a doc line saying so, which keeps it from a second try.
+def tgt.alt.mark() -> List<&2, U32>:
+  S.b("agda2bend: the nested-pattern translation (act.nu), tried when the other did not check")
+
+def tgt.doc.has(ls: List<&2, List<&2, U32>>, +x: List<&2, U32>) -> Bool:
+  match ls:
+    case h <> t:
+      Bool.or(S.eq(h, x), tgt.doc.has(t, x))
+    case Nil{}:
+      False{}
+
+def tgt.is.alt(m: Maybe<&2, T.BItem>) -> Bool:
+  match m:
+    case Some{T.BiDef{n, ps, ret, body, doc}}:
+      tgt.doc.has(doc, tgt.alt.mark())
+    case _:
+      False{}
+
+def tgt.alt.use(m: Maybe<&2, T.BItem>, +blame: List<&2, U32>, +why: List<&2, U32>, +its: List<&2, T.BItem>, ds: List<&2, TgtDrop>, +qe: QF.TqEnv) -> TgtSt:
+  match m:
+    case Some{alt}:
+      TgtSt{tgt.replace(its, blame, QF.tqf.item(alt, qe)), ds}
+    case None{}:
+      tgt.after.fail(blame, why, TgtSt{its, ds})
+
+def tgt.alt.try(cur: Bool, +blame: List<&2, U32>, +why: List<&2, U32>, +its: List<&2, T.BItem>, ds: List<&2, TgtDrop>, +qe: QF.TqEnv) -> TgtSt:
+  match cur:
+    case True{}:
+      tgt.after.fail(blame, why, TgtSt{its, ds})
+    case False{}:
+      tgt.alt.use(QF.tqf.alt(qe, blame), blame, why, its, ds, qe)
+
+def tgt.alt.or.fail(+blame: List<&2, U32>, +why: List<&2, U32>, +its: List<&2, T.BItem>, ds: List<&2, TgtDrop>, +qe: QF.TqEnv) -> TgtSt:
+  tgt.alt.try(tgt.is.alt(tgt.find(its, blame)), blame, why, its, ds, qe)
+
 def tgt.repaired(r: Maybe<&2, T.BItem>, +blame: List<&2, U32>, +why: List<&2, U32>, +its: List<&2, T.BItem>, ds: List<&2, TgtDrop>, +qe: QF.TqEnv) -> TgtSt:
   match r:
     case Some{new}:
       TgtSt{tgt.replace(its, blame, QF.tqf.item(new, qe)), ds}
     case None{}:
-      tgt.after.fail(blame, why, TgtSt{its, ds})
+      tgt.alt.or.fail(blame, why, its, ds, qe)
 
 # A copied pattern variable (+x, a constructor's field) whose type must be
 # Data: Bend names no type, so the def's first type parameter (Type or a
@@ -503,7 +540,7 @@ def tgt.data.v(+v: List<&2, U32>, m: Maybe<&2, T.BItem>) -> List<&2, U32>:
 def tgt.on.fail(+k: Nat, +blame: List<&2, U32>, +why: List<&2, U32>, +sp: List<&2, U32>, +its: List<&2, T.BItem>, ds: List<&2, TgtDrop>, +qe: QF.TqEnv) -> TgtSt:
   match k:
     case 0n:
-      tgt.after.fail(blame, why, TgtSt{its, ds})
+      tgt.alt.or.fail(blame, why, its, ds, qe)
     case 3n:
       tgt.repaired(tgt.data.of(tgt.find(its, blame), tgt.data.v(S.strip(S.strip(sp, S.b("~")), S.b("-")), tgt.find(its, blame)), why), blame, why, its, ds, qe)
     case 4n:

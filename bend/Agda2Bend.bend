@@ -944,7 +944,40 @@ def a2b.qfix(on: Bool, +its: List<&2, T.BItem>, +qe: QF.TqEnv) -> List<&2, T.BIt
       its
 
 def a2b.qe(+qs: Map<&2, QF.TqSig>, +al: Map<&2, List<&2, U32>>, +m: List<&2, U32>) -> QF.TqEnv:
-  QF.TqEnv{qs, a2b.qual(al, m, Nil{})}
+  QF.TqEnv{qs, a2b.qual(al, m, Nil{}), Nil{}}
+
+# act.nu's alternatives among a module's items (Cata.bend act.fun.alt:
+# NAME__a2b_nu) go beside them, under their def's name, for the gate
+def a2b.alt.is(it: T.BItem) -> Bool:
+  S.suffix(QF.tqf.name.of(it), S.b("__a2b_nu"))
+
+def a2b.alt.name(it: T.BItem) -> T.BItem:
+  match it:
+    case T.BiDef{+n, ps, ret, body, doc}:
+      T.BiDef{List.take(&2, U32, n, Nat.sub(S.len(n), 8n)), ps, ret, body, doc}
+    case it:
+      it
+
+def a2b.alt.put2(alt: Bool, +it: T.BItem, its: List<&2, T.BItem>, alts: List<&2, T.BItem>) -> List<&2, T.BItem> & List<&2, T.BItem>:
+  match alt:
+    case True{}:
+      (its, a2b.alt.name(it) <> alts)
+    case False{}:
+      (it <> its, alts)
+
+def a2b.alt.put(alt: Bool, +it: T.BItem, r: List<&2, T.BItem> & List<&2, T.BItem>) -> List<&2, T.BItem> & List<&2, T.BItem>:
+  (its, alts) = r
+  a2b.alt.put2(alt, it, its, alts)
+
+def a2b.alts.split(its: List<&2, T.BItem>) -> List<&2, T.BItem> & List<&2, T.BItem>:
+  match its:
+    case +it <> t:
+      a2b.alt.put(a2b.alt.is(it), it, a2b.alts.split(t))
+    case Nil{}:
+      (Nil{}, Nil{})
+
+def a2b.qe.alts(+qs: Map<&2, QF.TqSig>, +al: Map<&2, List<&2, U32>>, +m: List<&2, U32>, alts: List<&2, T.BItem>) -> QF.TqEnv:
+  QF.TqEnv{qs, a2b.qual(al, m, Nil{}), alts}
 
 # the module's items' signatures, by the names other modules print
 # (each qualified by QF.tqf.sig.home: the module's own names in it as
@@ -966,13 +999,16 @@ def a2b.qs.go(its: List<&2, T.BItem>, +al: Map<&2, List<&2, U32>>, +m: List<&2, 
 def a2b.qs.add(+its: List<&2, T.BItem>, +al: Map<&2, List<&2, U32>>, +m: List<&2, U32>, qs: Map<&2, QF.TqSig>) -> Map<&2, QF.TqSig>:
   a2b.qs.go(its, al, m, a2b.names.map(its, Map.new(&2, Bool)), qs)
 
+def a2b.em.round2(+out: String, +m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +nd: Nat, +kept: Map<&2, Bool>, +unf: Map<&2, C.ActCopy>, +pj: Map<&2, Q.TcpProj>, +qs: Map<&2, QF.TqSig>, +tab: Map<&2, C.ActSym>, p: List<&2, T.BItem> & List<&2, T.BItem>) -> IO(A2bG):
+  (+fits, alts) = p
+  do IO<A2bG>:
+    +gs : List<&2, T.BItem> <- a2b.em.items(out, m, al, ral, kept, nd, fits, a2b.qe.alts(a2b.qs.add(fits, al, m, qs), al, m, alts))
+    return A2bG{tab, unf, a2b.kept.add(a2b.kept.of(a2b.ral.got(Map.get(List<&2, U32>, Nil{}, al, S.str(m))), gs), kept), pj, a2b.qs.add(gs, al, m, qs)}
+
 def a2b.em.round(+out: String, +m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +nd: Nat, +kept: Map<&2, Bool>, +unf: Map<&2, C.ActCopy>, +pj: Map<&2, Q.TcpProj>, +qs: Map<&2, QF.TqSig>, r: A2bRound) -> IO(A2bG):
   match r:
     case A2bRound{+tab, its}:
-      +fits = a2b.qfix(C.act.quant.on(), O.tor.order(a2b.finish.of(its, a2b.te(pj, al, m), a2b.qe(qs, al, m))), a2b.qe(qs, al, m))
-      do IO<A2bG>:
-        +gs : List<&2, T.BItem> <- a2b.em.items(out, m, al, ral, kept, nd, fits, a2b.qe(a2b.qs.add(fits, al, m, qs), al, m))
-        return A2bG{tab, unf, a2b.kept.add(a2b.kept.of(a2b.ral.got(Map.get(List<&2, U32>, Nil{}, al, S.str(m))), gs), kept), pj, a2b.qs.add(gs, al, m, qs)}
+      a2b.em.round2(out, m, al, ral, nd, kept, unf, pj, qs, tab, a2b.alts.split(a2b.qfix(C.act.quant.on(), O.tor.order(a2b.finish.of(its, a2b.te(pj, al, m), a2b.qe(qs, al, m))), a2b.qe(qs, al, m))))
 
 def a2b.em.tabs(+out: String, +m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, +kept: Map<&2, Bool>, t: A2bTabs) -> IO(A2bG):
   match t:
@@ -1018,8 +1054,26 @@ def a2b.mod.items(+m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +ds: List<&2, 
       a2b.cop.items(m, al, ds, kept, a2b.syms(ds, m, al, A2bTabs{tab, unf, Map.new(&2, A.AgDecl), Nil{}, Map.new(&2, String), pj, qs}))
 
 # the text of a module's file before the gate (OUT/raw/<path>.bend)
-def a2b.raw.text(+m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +nd: Nat, +its: List<&2, T.BItem>) -> List<&2, U32>:
+def a2b.alts.keep.put(alt: Bool, it: T.BItem, t: List<&2, T.BItem>) -> List<&2, T.BItem>:
+  match alt:
+    case True{}:
+      t
+    case False{}:
+      it <> t
+
+# the items without act.nu's alternatives
+def a2b.alts.keep(its: List<&2, T.BItem>) -> List<&2, T.BItem>:
+  match its:
+    case +it <> t:
+      a2b.alts.keep.put(a2b.alt.is(it), it, a2b.alts.keep(t))
+    case Nil{}:
+      Nil{}
+
+def a2b.raw.text.of(+m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +nd: Nat, +its: List<&2, T.BItem>) -> List<&2, U32>:
   P.tpr.file(T.BFile{a2b.head.doc(m, nd), a2b.imports(a2b.snd(a2b.imps(a2b.fold.items(its, False{}, Nil{}), ral, (Map.new(&2, Bool), Nil{}))), m, al), its})
+
+def a2b.raw.text(+m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +nd: Nat, its: List<&2, T.BItem>) -> List<&2, U32>:
+  a2b.raw.text.of(m, al, ral, nd, a2b.alts.keep(its))
 
 def a2b.mod.file(m: A2bMod) -> List<&2, U32>:
   match m:

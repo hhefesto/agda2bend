@@ -633,7 +633,7 @@ def tcp.open(t: T.Bt, +qe: QF.TqEnv) -> T.Bt:
 
 # no signatures: types read as written (the tests' entry)
 def tcp.qe0() -> QF.TqEnv:
-  QF.TqEnv{Map.new(&2, QF.TqSig), Nil{}}
+  QF.TqEnv{Map.new(&2, QF.TqSig), Nil{}, Nil{}}
 
 # t read with the arguments of each parameter applied at its type's live
 # Pis as live (ty: the type an argument spine t is applied at, BtWild for

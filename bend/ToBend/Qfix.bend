@@ -32,7 +32,7 @@ type TqSig is Data:
 # the signatures (by the name other modules print) and the module's own
 # alias with its dot (its own names are printed bare)
 type TqEnv is Data:
-  TqEnv{sig: Map<&2, TqSig>, here: List<&2, U32>}
+  TqEnv{sig: Map<&2, TqSig>, here: List<&2, U32>, alts: List<&2, T.BItem>}
 
 def tqf.got(r: Map<&2, TqSig> & TqSig) -> TqSig:
   (m, s) = r
@@ -51,7 +51,7 @@ def tqf.pick(hit: Bool, +n: List<&2, U32>, +sig: Map<&2, TqSig>, +here: List<&2,
 
 def tqf.sig(+e: TqEnv, +n: List<&2, U32>) -> TqSig:
   match e:
-    case TqEnv{+sig, +here}:
+    case TqEnv{+sig, +here, alts}:
       tqf.pick(tqf.has(Map.has(&2, TqSig, sig, S.str(n))), n, sig, here)
 
 # a name's signature unless the context binds it (m: its type there), for a
@@ -1201,8 +1201,8 @@ def tqf.name.of(it: T.BItem) -> List<&2, U32>:
 
 def tqf.env.put(+n: List<&2, U32>, s: TqSig, e: TqEnv) -> TqEnv:
   match e:
-    case TqEnv{sig, here}:
-      TqEnv{Map.set(&2, TqSig, sig, S.str(n), s), here}
+    case TqEnv{sig, here, alts}:
+      TqEnv{Map.set(&2, TqSig, sig, S.str(n), s), here, alts}
 
 # The module's items solved in order, each one's signature added for those
 # after it (their own names are printed bare).
@@ -1214,3 +1214,24 @@ def tqf.items(its: List<&2, T.BItem>, +e: TqEnv) -> List<&2, T.BItem>:
       +it2 = tqf.item(it, e)
       it2 <> tqf.items(t, tqf.env.put(tqf.name.of(it2), tqf.sig.of(it2), e))
 
+
+def tqf.alt.or(b: Bool, it: T.BItem, m: Maybe<&2, T.BItem>) -> Maybe<&2, T.BItem>:
+  match b:
+    case True{}:
+      Some{it}
+    case False{}:
+      m
+
+# A def's other translation (agda2bend's act.nu, Agda2Bend.bend a2b.alts),
+# which the gate tries before it drops the def
+def tqf.alt.find(its: List<&2, T.BItem>, +n: List<&2, U32>) -> Maybe<&2, T.BItem>:
+  match its:
+    case +it <> t:
+      tqf.alt.or(S.eq(tqf.name.of(it), n), it, tqf.alt.find(t, n))
+    case Nil{}:
+      None{}
+
+def tqf.alt(+e: TqEnv, +n: List<&2, U32>) -> Maybe<&2, T.BItem>:
+  match e:
+    case TqEnv{sig, here, alts}:
+      tqf.alt.find(alts, n)

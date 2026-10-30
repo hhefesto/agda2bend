@@ -375,7 +375,7 @@ def qf.kind(+q: String) -> T.Bt:
 def qf.env() -> QF.TqEnv:
   +id : QF.TqSig = QF.TqDef{[qf.q("a"), T.BParam{T.BmErased{}, S.b("A"), qf.kind("a")}, T.BParam{T.BmLive{}, S.b("x"), v("A")}], v("A"), T.BtExpr{v("x")}}
   +cat : QF.TqSig = QF.TqType{[qf.q("o"), qf.q("l")], T.BtType{}, [T.BCtor{S.b("Cat"), [T.BField{S.b("Obj"), qf.kind("o")}, T.BField{S.b("Arr"), T.BtPi{T.BmLive{}, S.b("_"), False{}, v("Obj"), T.BtPi{T.BmLive{}, S.b("_"), False{}, v("Obj"), qf.kind("l")}}}]}]}
-  QF.TqEnv{Map.set(&2, QF.TqSig, Map.set(&2, QF.TqSig, Map.new(&2, QF.TqSig), "id", id), "Cat", cat), S.b("N.")}
+  QF.TqEnv{Map.set(&2, QF.TqSig, Map.set(&2, QF.TqSig, Map.new(&2, QF.TqSig), "id", id), "Cat", cat), S.b("N."), Nil{}}
 
 # def f(g: Nat -> Nat) -> Nat: id(q, Nat -> Nat, g)(id(q, Nat, 3n))
 def qf.f() -> T.BItem:
@@ -404,7 +404,7 @@ def qf.env2() -> QF.TqEnv:
   +pr : QF.TqSig = QF.TqType{[qf.q("a"), qf.q("b"), T.BParam{T.BmErased{}, S.b("A"), qf.kind("a")}, T.BParam{T.BmErased{}, S.b("B"), qf.kind("b")}], qf.kind("(a <&> b)"), Nil{}}
   +mk : QF.TqSig = QF.TqDef{[qf.q("a")], T.BtTyApp{S.b("Pr"), qf.dead(["a", "&2", "Nat", "Nat"])}, T.BtExpr{v("x")}}
   +ex : QF.TqSig = QF.TqDef{[qf.q("a"), qf.q("b"), T.BParam{T.BmErased{}, S.b("A"), qf.kind("a")}], T.BtPi{T.BmErased{}, S.b("x"), True{}, qf.pi(v("A"), qf.kind("b")), qf.kind("(a <&> b)")}, T.BtExpr{v("x")}}
-  QF.TqEnv{Map.set(&2, QF.TqSig, Map.set(&2, QF.TqSig, Map.set(&2, QF.TqSig, Map.set(&2, QF.TqSig, Map.set(&2, QF.TqSig, Map.new(&2, QF.TqSig), "Rel", rel), "IsE", ise), "Pr", pr), "mk", mk), "ex", ex), S.b("N.")}
+  QF.TqEnv{Map.set(&2, QF.TqSig, Map.set(&2, QF.TqSig, Map.set(&2, QF.TqSig, Map.set(&2, QF.TqSig, Map.set(&2, QF.TqSig, Map.new(&2, QF.TqSig), "Rel", rel), "IsE", ise), "Pr", pr), "mk", mk), "ex", ex), S.b("N."), Nil{}}
 
 # type C<o, l>: C{Obj: Kind(o), Arr: Obj -> Obj -> Kind(l), eqv: @-x:Obj -> Pr<qa, qb, Obj, Arr(x, x)>}
 def qf.c() -> T.BItem:
@@ -436,7 +436,7 @@ def qf.m.ise() -> T.BItem:
 
 def qf.env3() -> QF.TqEnv:
   +names : Map<&2, Bool> = Map.set(&2, Bool, Map.set(&2, Bool, Map.set(&2, Bool, Map.new(&2, Bool), "Rel", True{}), "REL", True{}), "IsE", True{})
-  QF.TqEnv{Map.set(&2, QF.TqSig, Map.set(&2, QF.TqSig, Map.set(&2, QF.TqSig, Map.new(&2, QF.TqSig), "M.Rel", QF.tqf.sig.home(qf.m.rel(), names, S.b("M."))), "M.REL", QF.tqf.sig.home(qf.m.rel2(), names, S.b("M."))), "M.IsE", QF.tqf.sig.home(qf.m.ise(), names, S.b("M."))), S.b("N.")}
+  QF.TqEnv{Map.set(&2, QF.TqSig, Map.set(&2, QF.TqSig, Map.set(&2, QF.TqSig, Map.new(&2, QF.TqSig), "M.Rel", QF.tqf.sig.home(qf.m.rel(), names, S.b("M."))), "M.REL", QF.tqf.sig.home(qf.m.rel2(), names, S.b("M."))), "M.IsE", QF.tqf.sig.home(qf.m.ise(), names, S.b("M."))), S.b("N."), Nil{}}
 
 # in module N: def p(-a, -l, -A: Kind(a), -eq: M.Rel(a, A, l), r: M.IsE<a, q, A, eq>) -> Nat: 0n
 def qf.np() -> T.BItem:
@@ -477,7 +477,7 @@ def qf.ra() -> T.BItem:
 
 def qf.env.ra() -> QF.TqEnv:
   +ra : QF.TqSig = QF.TqType{[qf.q("f"), qf.q("g"), T.BParam{T.BmErased{}, S.b("F"), qf.tc(T.BtType{})}], T.BtType{}, Nil{}}
-  QF.TqEnv{Map.set(&2, QF.TqSig, Map.new(&2, QF.TqSig), "RA", ra), S.b("N.")}
+  QF.TqEnv{Map.set(&2, QF.TqSig, Map.new(&2, QF.TqSig), "RA", ra), S.b("N."), Nil{}}
 
 def qf.pr() -> T.BItem:
   T.BiDef{S.b("pr"), [qf.q("f"), qf.q("g"), T.BParam{T.BmErased{}, S.b("F"), qf.tc(qf.kind("f"))}, T.BParam{T.BmLive{}, S.b("r"), T.BtTyApp{S.b("RA"), qf.dead(["f", "g", "F"])}}], v("Nat"), T.BtExpr{T.BtNat{S.b("0")}}, Nil{}}

@@ -6357,6 +6357,23 @@ def act.nu.want(cls: A.Ag, +env: ActEnv) -> Bool:
     case _:
       False{}
 
+# any indexed family's constructor pattern, at any depth (act.fun.alt)
+def act.nu.deepall(p: NuP, +env: ActEnv) -> Bool:
+  match p:
+    case NuPC{+k, ps}:
+      Bool.or(act.nu.ixd(env, k), act.nu.deepall(ps, env))
+    case NuPS{h, t}:
+      Bool.or(act.nu.deepall(h, env), act.nu.deepall(t, env))
+    case _:
+      False{}
+
+def act.nu.wantall(cls: A.Ag, +env: ActEnv) -> Bool:
+  match cls:
+    case A.AgCl{+tel, ps, body, ty, ca, rest}:
+      Bool.or(act.nu.deepall(act.nu.p(ps, act.tel.len(tel), env), env), act.nu.wantall(rest, env))
+    case _:
+      False{}
+
 def act.nu.anybad(cls: A.Ag, +env: ActEnv) -> Bool:
   match cls:
     case A.AgCl{+tel, ps, body, ty, ca, rest}:
@@ -9073,8 +9090,47 @@ def act.fun.item(+nm: List<&2, U32>, +ms: List<&2, ActM>, +cls: A.Ag, body: T.Bt
     case ActPs{ps, ret, ctx, es, ok}:
       [T.BiDef{nm, act.live.ps(ps, act.or.lists(act.scr(cls, env), act.abs.pos(cls)), ms), ret, body, doc}]
 
-def act.fun.with(+nm: List<&2, U32>, +ms: List<&2, ActM>, +ar: Nat, p: A.AgProj, +cls: A.Ag, +key: String, +t: A.Ag, +env: ActEnv, doc: List<&2, List<&2, U32>>, +r: ActPs) -> List<&2, T.BItem>:
-  act.fun.item(nm, ms, cls, act.fun.body(p, cls, key, ar, t, act.ps.ents(r), act.cmb.env(key, env), act.copat.is(cls), r, ms), r, doc, env)
+# act.nu's translation of a def the other path wrote (one with an indexed
+# family's constructor pattern), as NAME__a2b_nu with a doc line saying so:
+# Agda2Bend.bend puts it beside the module's items for the gate, which
+# checks it in the def's place before it drops the def (ToBend/Gate.bend
+# tgt.alt.or.fail).  None when act.nu wrote the def already, cannot write
+# it, or leaves a gap.
+def act.fun.alt.gap(gap: Bool, b: T.Bt, +nm: List<&2, U32>, +ms: List<&2, ActM>, +cls: A.Ag, +r: ActPs, doc: List<&2, List<&2, U32>>, +env: ActEnv) -> List<&2, T.BItem>:
+  match gap:
+    case True{}:
+      Nil{}
+    case False{}:
+      act.fun.item(List.append(&2, U32, nm, S.b("__a2b_nu")), ms, cls, act.lift.app(List.drop(&2, T.BParam, act.ps.ps(r), act.kept.n(act.cls.arity(cls), ms)), b), r, List.append(&2, List<&2, U32>, doc, [S.b("agda2bend: the nested-pattern translation (act.nu), tried when the other did not check")]), env)
+
+def act.fun.alt.mk(m: Maybe<&2, T.Bt>, +nm: List<&2, U32>, +ms: List<&2, ActM>, +cls: A.Ag, +r: ActPs, doc: List<&2, List<&2, U32>>, +env: ActEnv) -> List<&2, T.BItem>:
+  match m:
+    case Some{+b}:
+      act.fun.alt.gap(act.nu.hasgap(b), b, nm, ms, cls, r, doc, env)
+    case None{}:
+      Nil{}
+
+def act.fun.alt.on(on: Bool, +cls2: A.Ag, +scr: List<&2, Bool>, +env2: ActEnv, +nm: List<&2, U32>, +ms: List<&2, ActM>, +ar: Nat, +cls: A.Ag, +t: A.Ag, +env: ActEnv, doc: List<&2, List<&2, U32>>, +r: ActPs) -> List<&2, T.BItem>:
+  match on:
+    case False{}:
+      Nil{}
+    case True{}:
+      act.fun.alt.mk(act.nu.body(cls2, scr, act.ps.ents(r), act.names(act.ps.ents(r)), env2, act.uty.go(64n, ar, t, ms, scr, Nil{}, Nil{}, env2), act.ps.ret(r)), nm, ms, cls, r, doc, env)
+
+def act.fun.alt(p: A.AgProj, copat: Bool, +nm: List<&2, U32>, +ms: List<&2, ActM>, +ar: Nat, +cls: A.Ag, +key: String, +t: A.Ag, +env: ActEnv, doc: List<&2, List<&2, U32>>, +r: ActPs) -> List<&2, T.BItem>:
+  match p copat:
+    case A.AgPrOf{Some{q}, o, ix} _:
+      Nil{}
+    case _ True{}:
+      Nil{}
+    case _ False{}:
+      +env2 = act.cmb.env(key, env)
+      +cls2 = act.rf.cls(cls, act.rf.live(ms, act.ps.ps(r)))
+      +scr = act.scr(cls2, env2)
+      act.fun.alt.on(Bool.and(Bool.and(act.any(scr), act.nu.wantall(cls2, env2)), Bool.and(Bool.not(act.nu.want(cls2, env2)), Bool.not(act.nu.anybad(cls2, env2)))), cls2, scr, env2, nm, ms, ar, cls, t, env, doc, r)
+
+def act.fun.with(+nm: List<&2, U32>, +ms: List<&2, ActM>, +ar: Nat, +p: A.AgProj, +cls: A.Ag, +key: String, +t: A.Ag, +env: ActEnv, +doc: List<&2, List<&2, U32>>, +r: ActPs) -> List<&2, T.BItem>:
+  List.append(&2, T.BItem, act.fun.item(nm, ms, cls, act.fun.body(p, cls, key, ar, t, act.ps.ents(r), act.cmb.env(key, env), act.copat.is(cls), r, ms), r, doc, env), act.fun.alt(p, act.copat.is(cls), nm, ms, ar, cls, key, t, env, doc, r))
 
 # Sorts by place (with quantities on): Kind(q) is a requirement in Bend (every
 # value copyable at q), where Agda's Set ℓ is only a bound, so a definition
