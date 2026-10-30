@@ -6221,6 +6221,31 @@ def act.cv.pair(es: List<&2, ActCe>, +all: List<&2, ActCe>, +goal: T.Bt) -> Mayb
     case a <> t:
       act.cv.mor(act.cv.pair1(a, all, goal), act.cv.pair(t, all, goal))
 
+# An index the translator cannot reduce, a call (`lookup` at []: the Fin's
+# index is length [], which Bend evaluates to 0n), refuted as though it
+# clashed: Bend checks the rewrite, and when the call does not reduce to
+# a clashing head the definition drops, as it did without the case.  Only
+# after the head clashes, two equations and a split all fail (act.cv.one).
+def act.cv.call1(a: T.Bt) -> Bool:
+  match a:
+    case T.BtApp{T.BtVar{f}, args}:
+      True{}
+    case _:
+      False{}
+
+def act.cv.iscall(+a: T.Bt) -> Bool:
+  act.cv.call1(act.abs.hd(a))
+
+def act.cv.spech(+h: String) -> Bool:
+  Bool.or(Bool.or(String.eq(h, "ix_eqz"), String.eq(h, "ix_eqs")), Bool.or(String.eq(h, "ix_eqt"), String.eq(h, "ix_eqf")))
+
+def act.cv.spec(es: List<&2, ActCe>, +goal: T.Bt) -> Maybe<&2, T.Bt>:
+  match es:
+    case Nil{}:
+      None{}
+    case ActCe{+h, +i, +ev, r} <> t:
+      Bool.pick(Maybe<&2, T.Bt>, Bool.and(act.cv.spech(h), act.cv.iscall(i)), Some{act.abs.refute(act.abs.disc(act.abs.tagty(h), i), ev, goal)}, act.cv.spec(t, goal))
+
 def act.cv.case(+sp: T.Bt, m: Maybe<&2, T.Bt>) -> Maybe<&2, T.Bt>:
   match m:
     case None{}:
@@ -6233,6 +6258,12 @@ def act.cv.refute(+row: List<&2, ActCp>, +xs: List<&2, T.Bt>, +env: ActEnv, +hps
   +goal = act.goal(xs, sp, ret)
   +es = act.cv.ents(row, xs, sp, xs, hps, env)
   act.cv.case(sp, act.cv.mor(act.cv.single(es, goal), act.cv.pair(es, es, goal)))
+
+def act.cv.refute.sp(+row: List<&2, ActCp>, +xs: List<&2, T.Bt>, +env: ActEnv, +hps: List<&2, T.BParam>, +ret: T.Bt) -> Maybe<&2, T.Bt>:
+  +sp = T.tba.args(act.cv.pats(row, xs, env))
+  +goal = act.goal(xs, sp, ret)
+  +es = act.cv.ents(row, xs, sp, xs, hps, env)
+  act.cv.case(sp, act.cv.mor(act.cv.mor(act.cv.single(es, goal), act.cv.pair(es, es, goal)), act.cv.spec(es, goal)))
 
 def act.cv.chain(a: Maybe<&2, T.Bt>, b: Maybe<&2, T.Bt>) -> Maybe<&2, T.Bt>:
   match a b:
@@ -6247,6 +6278,13 @@ def act.cv.all(rows: List<&2, List<&2, ActCp>>, +xs: List<&2, T.Bt>, +env: ActEn
       Some{T.BtCEnd{}}
     case r <> t:
       act.cv.chain(act.cv.refute(r, xs, env, hps, ret), act.cv.all(t, xs, env, hps, ret))
+
+def act.cv.all.sp(rows: List<&2, List<&2, ActCp>>, +xs: List<&2, T.Bt>, +env: ActEnv, +hps: List<&2, T.BParam>, +ret: T.Bt) -> Maybe<&2, T.Bt>:
+  match rows:
+    case Nil{}:
+      Some{T.BtCEnd{}}
+    case r <> t:
+      act.cv.chain(act.cv.refute.sp(r, xs, env, hps, ret), act.cv.all.sp(t, xs, env, hps, ret))
 
 def act.cv.setat(row: List<&2, ActCp>, j: Nat, +k: ActCp) -> List<&2, ActCp>:
   match row j:
@@ -6287,8 +6325,16 @@ def act.cv.split(m: Maybe<&2, ActCj>, +row: List<&2, ActCp>, +xs: List<&2, T.Bt>
     case Some{ActCj{j, ks}}:
       act.cv.all(act.cv.splits(ks, row, j), xs, env, hps, ret)
 
+def act.cv.split.sp(m: Maybe<&2, ActCj>, +row: List<&2, ActCp>, +xs: List<&2, T.Bt>, +env: ActEnv, +hps: List<&2, T.BParam>, +ret: T.Bt) -> Maybe<&2, T.Bt>:
+  match m:
+    case None{}:
+      None{}
+    case Some{ActCj{j, ks}}:
+      act.cv.all.sp(act.cv.splits(ks, row, j), xs, env, hps, ret)
+
 def act.cv.one(+row: List<&2, ActCp>, +fams: List<&2, ActCf>, +xs: List<&2, T.Bt>, +env: ActEnv, +hps: List<&2, T.BParam>, +ret: T.Bt) -> Maybe<&2, T.Bt>:
-  act.cv.mor(act.cv.refute(row, xs, env, hps, ret), act.cv.split(act.cv.wildat(row, fams, 0n), row, xs, env, hps, ret))
+  +w = act.cv.wildat(row, fams, 0n)
+  act.cv.mor(act.cv.mor(act.cv.refute(row, xs, env, hps, ret), act.cv.split(w, row, xs, env, hps, ret)), act.cv.mor(act.cv.refute.sp(row, xs, env, hps, ret), act.cv.split.sp(w, row, xs, env, hps, ret)))
 
 def act.cv.close(rows: List<&2, List<&2, ActCp>>, +fams: List<&2, ActCf>, +xs: List<&2, T.Bt>, +env: ActEnv, +hps: List<&2, T.BParam>, +ret: T.Bt) -> Maybe<&2, T.Bt>:
   match rows:
