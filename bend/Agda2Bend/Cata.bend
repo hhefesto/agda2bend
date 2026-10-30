@@ -9327,12 +9327,25 @@ def act.unfold.wrap(+s: A.Ag, u: A.Ag, +t: A.Ag, +env: ActEnv) -> A.Ag:
     case u:
       A.AgEl{s, act.inline(1024n, u, env)}
 
+# An unfolding is taken only when it reaches a sort (`Rel A ℓ` opens to
+# A -> A -> Set ℓ, whose kind the quantities need).  A proposition stays
+# folded (2026-10-29): Homomorphic₂'s body `∀ x y → …` is over its own
+# variable A, so Bend, opening it, gives x and y live, while the same Pi
+# opened here at a record's Carrier was erased as over an opaque type; the
+# field said @-x and its projection, past its eight Pis of fuel, @x
+# (Algebra.Morphism.Structures' homo, ∙-homo, *-homo…: "expected @x_9
+# observed @-x", 34 dropped in agda-algebras, 25 in the stdlib cone).
+def act.unfold.srt(+u: A.Ag, +env: ActEnv) -> A.Ag:
+  match env:
+    case ActEnv{mod, tab, al, +unf}:
+      Bool.pick(A.Ag, act.ends.sort.u(8n, u, unf), u, A.AgNone{})
+
 def act.unfold.sorts(fuel: Nat, t: A.Ag, +env: ActEnv) -> A.Ag:
   match fuel t:
     case 1n+f A.AgEl{+s, A.AgDef{+q, +es}}:
-      act.unfold.sorts(f, act.unfold.wrap(s, act.unfold(env, q, es), A.AgEl{s, A.AgDef{q, es}}, env), env)
+      act.unfold.sorts(f, act.unfold.wrap(s, act.unfold.srt(act.unfold(env, q, es), env), A.AgEl{s, A.AgDef{q, es}}, env), env)
     case 1n+f A.AgEl{+s, A.AgDefX{+q, +es}}:
-      act.unfold.sorts(f, act.unfold.wrap(s, act.unfold(env, q, es), A.AgEl{s, A.AgDefX{q, es}}, env), env)
+      act.unfold.sorts(f, act.unfold.wrap(s, act.unfold.srt(act.unfold(env, q, es), env), A.AgEl{s, A.AgDefX{q, es}}, env), env)
     case 1n+f A.AgEl{s, A.AgPi{i, x, a, d, b}}:
       A.AgEl{s, A.AgPi{i, x, a, d, act.unfold.sorts(f, b, env)}}
     case f t:
@@ -9344,10 +9357,13 @@ def act.field.sorts(on: Bool, t: A.Ag, +env: ActEnv) -> A.Ag:
     case False{}:
       t
 
+# a projection's type: its parameters' and its record's Pis spend fuel too,
+# so it gets 64 where its field gets 8 (MagmaMorphisms' projections take
+# eight Pis before the field's type)
 def act.proj.sorts(on: Bool, p: A.AgProj, t: A.Ag, +env: ActEnv) -> A.Ag:
   match on p:
     case True{} A.AgPrOf{Some{r}, o, ix}:
-      act.unfold.sorts(8n, t, env)
+      act.unfold.sorts(64n, t, env)
     case _ _:
       t
 
