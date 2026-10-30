@@ -184,37 +184,99 @@ def tqf.qsimp.if(paren: Bool, +n: List<&2, U32>) -> T.Bt:
     case False{}:
       T.BtVar{n}
 
+# A binder y that v mentions, over a body that mentions x, is renamed
+# (y_c, y_c_c, ..) as the substitution passes it (os/ns: the binders
+# renamed so far and their new names), else it would capture v's y: times'
+# `x => B` at B := neq(.., x, x_13), when whnf opened NonStrictToStrict's
+# _<_, bound neq's x to the pair's first component (<-irrefl, "expected : A
+# observed : le(x^6, y)", 2026-10-30, since Copy reads record patterns as
+# projections).  x shadowed by a binder is %none% below it.
+def tqf.fresh(fuel: Nat, +y: List<&2, U32>, +vs: List<&2, List<&2, U32>>) -> List<&2, U32>:
+  match fuel:
+    case 0n:
+      y
+    case 1n+f:
+      Bool.pick(List<&2, U32>, tqf.mem(y, vs), tqf.fresh(f, List.append(&2, U32, y, S.b("_c")), vs), y)
+
+def tqf.sub.cap2(c: Bool, +x: List<&2, U32>, +b: T.Bt) -> Bool:
+  match c:
+    case True{}:
+      tqf.mem(x, T.tba.refs(b, Nil{}))
+    case False{}:
+      False{}
+
+def tqf.sub.cap(+y: List<&2, U32>, +x: List<&2, U32>, +vr: List<&2, List<&2, U32>>, +b: T.Bt) -> Bool:
+  tqf.sub.cap2(Bool.and(Bool.not(S.eq(x, y)), tqf.mem(y, vr)), x, b)
+
+def tqf.sub.ynew(c: Bool, +y: List<&2, U32>, +vr: List<&2, List<&2, U32>>, +b: T.Bt) -> List<&2, U32>:
+  match c:
+    case True{}:
+      tqf.fresh(8n, List.append(&2, U32, y, S.b("_c")), List.append(&2, List<&2, U32>, vr, T.tba.refs(b, Nil{})))
+    case False{}:
+      y
+
+def tqf.rn.push(c: Bool, +a: List<&2, U32>, l: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  match c:
+    case True{}:
+      a <> l
+    case False{}:
+      l
+
+def tqf.rn.get(os: List<&2, List<&2, U32>>, ns: List<&2, List<&2, U32>>, +n: List<&2, U32>) -> Maybe<&2, List<&2, U32>>:
+  match os ns:
+    case +o <> ot +nn <> nt:
+      Bool.pick(Maybe<&2, List<&2, U32>>, S.eq(o, n), Some{nn}, tqf.rn.get(ot, nt, n))
+    case _ _:
+      None{}
+
+def tqf.sub.x(+x: List<&2, U32>, +y: List<&2, U32>) -> List<&2, U32>:
+  Bool.pick(List<&2, U32>, S.eq(x, y), S.b("%none%"), x)
+
+def tqf.sub.var(r: Maybe<&2, List<&2, U32>>, +n: List<&2, U32>, +x: List<&2, U32>, +v: T.Bt) -> T.Bt:
+  match r:
+    case Some{nn}:
+      T.BtVar{nn}
+    case None{}:
+      +n2 = tqf.qtext(n, x, tqf.name(v))
+      Bool.pick(T.Bt, S.eq(n, x), v, tqf.qsimp.if(Bool.and(S.head.is(n2, 40), Bool.not(S.eq(n2, n))), n2))
+
+def tqf.sub.rn(t: T.Bt, +os: List<&2, List<&2, U32>>, +ns: List<&2, List<&2, U32>>, +x: List<&2, U32>, +v: T.Bt, +vr: List<&2, List<&2, U32>>) -> T.Bt:
+  match t:
+    case T.BtVar{+n}:
+      tqf.sub.var(tqf.rn.get(os, ns, n), n, x, v)
+    case T.BtApp{f, a}:
+      T.BtApp{tqf.sub.rn(f, os, ns, x, v, vr), tqf.sub.rn(a, os, ns, x, v, vr)}
+    case T.BtArgs{a, rest}:
+      T.BtArgs{tqf.sub.rn(a, os, ns, x, v, vr), tqf.sub.rn(rest, os, ns, x, v, vr)}
+    case T.BtTplArg{a}:
+      T.BtTplArg{tqf.sub.rn(a, os, ns, x, v, vr)}
+    case T.BtLam{m, +y, +b}:
+      +cl = tqf.sub.cap(y, x, vr, b)
+      +yl = tqf.sub.ynew(cl, y, vr, b)
+      T.BtLam{m, yl, tqf.sub.rn(b, tqf.rn.push(cl, y, os), tqf.rn.push(cl, yl, ns), tqf.sub.x(x, y), v, vr)}
+    case T.BtPi{m, +y, d, a, +b}:
+      +cp = tqf.sub.cap(y, x, vr, b)
+      +yp = tqf.sub.ynew(cp, y, vr, b)
+      T.BtPi{m, yp, d, tqf.sub.rn(a, os, ns, x, v, vr), tqf.sub.rn(b, tqf.rn.push(cp, y, os), tqf.rn.push(cp, yp, ns), tqf.sub.x(x, y), v, vr)}
+    case T.BtCon{c, a}:
+      T.BtCon{c, tqf.sub.rn(a, os, ns, x, v, vr)}
+    case T.BtTyApp{c, a}:
+      T.BtTyApp{c, tqf.sub.rn(a, os, ns, x, v, vr)}
+    case T.BtEq{ty, a, b}:
+      T.BtEq{tqf.sub.rn(ty, os, ns, x, v, vr), tqf.sub.rn(a, os, ns, x, v, vr), tqf.sub.rn(b, os, ns, x, v, vr)}
+    case T.BtSucc{a}:
+      T.BtSucc{tqf.sub.rn(a, os, ns, x, v, vr)}
+    case T.BtAnn{a, ty}:
+      T.BtAnn{tqf.sub.rn(a, os, ns, x, v, vr), tqf.sub.rn(ty, os, ns, x, v, vr)}
+    case T.BtDead{a}:
+      T.BtDead{tqf.sub.rn(a, os, ns, x, v, vr)}
+    case t:
+      t
+
 # t with each parameter of ps named by the matching argument (quantities
 # inside minimum names too)
 def tqf.sub.one(t: T.Bt, +x: List<&2, U32>, +v: T.Bt) -> T.Bt:
-  match t:
-    case T.BtVar{+n}:
-      +n2 = tqf.qtext(n, x, tqf.name(v))
-      Bool.pick(T.Bt, S.eq(n, x), v, tqf.qsimp.if(Bool.and(S.head.is(n2, 40), Bool.not(S.eq(n2, n))), n2))
-    case T.BtApp{f, a}:
-      T.BtApp{tqf.sub.one(f, x, v), tqf.sub.one(a, x, v)}
-    case T.BtArgs{a, rest}:
-      T.BtArgs{tqf.sub.one(a, x, v), tqf.sub.one(rest, x, v)}
-    case T.BtTplArg{a}:
-      T.BtTplArg{tqf.sub.one(a, x, v)}
-    case T.BtLam{m, +y, +b}:
-      T.BtLam{m, y, Bool.pick(T.Bt, S.eq(x, y), b, tqf.sub.one(b, x, v))}
-    case T.BtPi{m, +y, d, a, +b}:
-      T.BtPi{m, y, d, tqf.sub.one(a, x, v), Bool.pick(T.Bt, S.eq(x, y), b, tqf.sub.one(b, x, v))}
-    case T.BtCon{c, a}:
-      T.BtCon{c, tqf.sub.one(a, x, v)}
-    case T.BtTyApp{c, a}:
-      T.BtTyApp{c, tqf.sub.one(a, x, v)}
-    case T.BtEq{ty, a, b}:
-      T.BtEq{tqf.sub.one(ty, x, v), tqf.sub.one(a, x, v), tqf.sub.one(b, x, v)}
-    case T.BtSucc{a}:
-      T.BtSucc{tqf.sub.one(a, x, v)}
-    case T.BtAnn{a, ty}:
-      T.BtAnn{tqf.sub.one(a, x, v), tqf.sub.one(ty, x, v)}
-    case T.BtDead{a}:
-      T.BtDead{tqf.sub.one(a, x, v)}
-    case t:
-      t
+  tqf.sub.rn(t, Nil{}, Nil{}, x, v, T.tba.refs(v, Nil{}))
 
 def tqf.undead(t: T.Bt) -> T.Bt:
   match t:
