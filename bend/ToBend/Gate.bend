@@ -85,20 +85,161 @@ def tgt.first.gap(gs: List<&2, List<&2, U32>>) -> List<&2, U32>:
     case Nil{}:
       Nil{}
 
-def tgt.gap.put(+it: T.BItem, gs: List<&2, List<&2, U32>>, st: TgtSt) -> TgtSt:
+# Template arguments are closed (bend 2.0.39's guide: "a `~` argument must
+# be closed: it may mention top-level defs, but no local variable of the
+# caller"; in a dead place, a type or an erased argument, any variable will
+# do).  Bend checks a def that has templates only where another module
+# instantiates it, and names the instance (`f~0`) at a line of that other
+# module: MinOp's ⊓-isMagma eta-expands meet_cong, passing its lambda's
+# variables to meet_cong's template points, and Data.Nat.Properties' <ᵇ⇒<
+# took the blame with 87 dependents; Propositional's comm∧distrʳ⇒distrˡ
+# blamed ≤-trans and 101 (12b7ca7 did not move it).  So a def whose live
+# template argument mentions a variable that is no template (a parameter,
+# a lambda's, a let's or a pattern's) is dropped before any check, in its
+# own module, and its callers here and in later modules with it
+# (/tmp/bx/tl: a lambda's and an erased parameter's variable refused, at
+# the def or at the instance `tl~0`; in a type, accepted; 2026-10-30).
+def tgt.or(a: List<&2, U32>, b: List<&2, U32>) -> List<&2, U32>:
+  match a:
+    case Nil{}:
+      b
+    case h <> t:
+      h <> t
+
+def tgt.unbind.of(hit: Bool, +y: List<&2, U32>, rest: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  match hit:
+    case True{}:
+      rest
+    case False{}:
+      y <> rest
+
+# ys without x
+def tgt.unbind(+x: List<&2, U32>, ys: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  match ys:
+    case Nil{}:
+      Nil{}
+    case +y <> t:
+      tgt.unbind.of(S.eq(x, y), y, tgt.unbind(x, t))
+
+def tgt.unbinds(xs: List<&2, List<&2, U32>>, ys: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  match xs:
+    case Nil{}:
+      ys
+    case +x <> t:
+      tgt.unbinds(t, tgt.unbind(x, ys))
+
+# the first of locs t mentions free (empty when none)
+def tgt.loc.in(t: T.Bt, +locs: List<&2, List<&2, U32>>) -> List<&2, U32>:
+  match t:
+    case T.BtVar{+x}:
+      Bool.pick(List<&2, U32>, tgt.mem(x, locs), x, Nil{})
+    case T.BtApp{f, a}:
+      tgt.or(tgt.loc.in(f, locs), tgt.loc.in(a, locs))
+    case T.BtTplArg{a}:
+      tgt.loc.in(a, locs)
+    case T.BtLam{m, +y, b}:
+      tgt.loc.in(b, tgt.unbind(y, locs))
+    case T.BtPi{m, +y, d, a, b}:
+      tgt.or(tgt.loc.in(a, locs), tgt.loc.in(b, tgt.unbind(y, locs)))
+    case T.BtCon{c, a}:
+      tgt.loc.in(a, locs)
+    case T.BtTyApp{n, a}:
+      tgt.loc.in(a, locs)
+    case T.BtEq{ty, a, b}:
+      tgt.or(tgt.loc.in(ty, locs), tgt.or(tgt.loc.in(a, locs), tgt.loc.in(b, locs)))
+    case T.BtSucc{a}:
+      tgt.loc.in(a, locs)
+    case T.BtAnn{a, ty}:
+      tgt.or(tgt.loc.in(a, locs), tgt.loc.in(ty, locs))
+    case T.BtDead{a}:
+      tgt.loc.in(a, locs)
+    case T.BtMatch{xs, cs}:
+      tgt.or(tgt.loc.in(xs, locs), tgt.loc.in(cs, locs))
+    case T.BtCase{p, b, rest}:
+      tgt.or(tgt.loc.in(b, tgt.unbinds(T.tba.pvars(p, Nil{}), locs)), tgt.loc.in(rest, locs))
+    case T.BtExpr{e}:
+      tgt.loc.in(e, locs)
+    case T.BtRw{e, p, b}:
+      tgt.or(tgt.loc.in(e, locs), tgt.or(tgt.loc.in(p, locs), tgt.loc.in(b, locs)))
+    case T.BtLet{+y, v, b}:
+      tgt.or(tgt.loc.in(v, locs), tgt.loc.in(b, tgt.unbind(y, locs)))
+    case T.BtArgs{a, rest}:
+      tgt.or(tgt.loc.in(a, locs), tgt.loc.in(rest, locs))
+    case _:
+      Nil{}
+
+# the first local variable that a live template argument in t mentions
+# (empty when none); locs: the variables in scope that are no templates
+def tgt.tloc(t: T.Bt, +locs: List<&2, List<&2, U32>>) -> List<&2, U32>:
+  match t:
+    case T.BtTplArg{a}:
+      tgt.loc.in(a, locs)
+    case T.BtApp{f, a}:
+      tgt.or(tgt.tloc(f, locs), tgt.tloc(a, locs))
+    case T.BtArgs{a, rest}:
+      tgt.or(tgt.tloc(a, locs), tgt.tloc(rest, locs))
+    case T.BtLam{T.BmTpl{}, +y, b}:
+      tgt.tloc(b, tgt.unbind(y, locs))
+    case T.BtLam{m, +y, b}:
+      tgt.tloc(b, y <> locs)
+    case T.BtLet{+y, v, b}:
+      tgt.or(tgt.tloc(v, locs), tgt.tloc(b, y <> locs))
+    case T.BtCon{c, a}:
+      tgt.tloc(a, locs)
+    case T.BtSucc{a}:
+      tgt.tloc(a, locs)
+    case T.BtAnn{a, ty}:
+      tgt.tloc(a, locs)
+    case T.BtMatch{xs, cs}:
+      tgt.tloc(cs, locs)
+    case T.BtCase{p, b, rest}:
+      tgt.or(tgt.tloc(b, T.tba.pvars(p, locs)), tgt.tloc(rest, locs))
+    case T.BtExpr{e}:
+      tgt.tloc(e, locs)
+    case T.BtRw{e, p, b}:
+      tgt.tloc(b, locs)
+    case _:
+      Nil{}
+
+# a def's parameters that are no templates
+def tgt.locs(ps: List<&2, T.BParam>) -> List<&2, List<&2, U32>>:
+  match ps:
+    case Nil{}:
+      Nil{}
+    case T.BParam{T.BmTpl{}, x, ty} <> t:
+      tgt.locs(t)
+    case T.BParam{m, x, ty} <> t:
+      x <> tgt.locs(t)
+
+def tgt.tloc.item(it: T.BItem) -> List<&2, U32>:
+  match it:
+    case T.BiDef{n, ps, ret, body, doc}:
+      tgt.tloc(body, tgt.locs(ps))
+    case _:
+      Nil{}
+
+def tgt.tl.put(none: Bool, +it: T.BItem, +tl: List<&2, U32>, its: List<&2, T.BItem>, ds: List<&2, TgtDrop>) -> TgtSt:
+  match none:
+    case True{}:
+      TgtSt{it <> its, ds}
+    case False{}:
+      TgtSt{its, TgtDrop{tgt.name(it), tgt.agda(it), List.append(&2, U32, S.b("a template argument mentions a local variable (a ~ argument must be closed): "), tl), False{}} <> ds}
+
+def tgt.gap.put(+it: T.BItem, gs: List<&2, List<&2, U32>>, +tl: List<&2, U32>, st: TgtSt) -> TgtSt:
   match gs st:
     case Nil{} TgtSt{its, ds}:
-      TgtSt{it <> its, ds}
+      tgt.tl.put(S.eq(tl, Nil{}), it, tl, its, ds)
     case g <> gt TgtSt{its, ds}:
       TgtSt{its, TgtDrop{tgt.name(it), tgt.agda(it), tgt.first.gap(g <> gt), False{}} <> ds}
 
-# items with a gap dropped (with its reason), the others kept in order
+# items with a gap, or a template argument that is not closed, dropped
+# (with the reason), the others kept in order
 def tgt.gapless(its: List<&2, T.BItem>) -> TgtSt:
   match its:
     case Nil{}:
       TgtSt{Nil{}, Nil{}}
     case +it <> t:
-      tgt.gap.put(it, tgt.gaps(it), tgt.gapless(t))
+      tgt.gap.put(it, tgt.gaps(it), tgt.tloc.item(it), tgt.gapless(t))
 
 def tgt.drop.names(ds: List<&2, TgtDrop>) -> List<&2, List<&2, U32>>:
   match ds:

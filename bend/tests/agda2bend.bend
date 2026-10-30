@@ -355,6 +355,13 @@ def gt.subc() -> T.BItem:
 def gt.tplcall() -> T.BItem:
   T.BiDef{S.b("caller"), [T.BParam{T.BmLive{}, S.b("y"), v("Nat")}], v("Nat"), T.BtExpr{app("Other.anon.f", [v("y")])}, Nil{}}
 
+# def tl(~k: Nat) -> Nat -> Nat -> Nat: e1 => e2 => tw(~e1, e2), a template
+# whose eta lambda passes its variable to tw's template (bend: refused at
+# its instance tl~0), and the same with ~k, with ~(e1 => e1) (closed), and
+# with e1 at a dead place
+def gt.tl(+a: T.Bt) -> T.BItem:
+  T.BiDef{S.b("tl"), [T.BParam{T.BmTpl{}, S.b("k"), v("Nat")}], v("Nat"), T.BtExpr{T.BtLam{T.BmLive{}, S.b("e1"), T.BtLam{T.BmLive{}, S.b("e2"), app("tw", [a, v("e2")])}}}, Nil{}}
+
 # def use(-B: Type, y: B) -> B: y
 def gt.use() -> T.BItem:
   T.BiDef{S.b("use"), [T.BParam{T.BmErased{}, S.b("B"), T.BtType{}}, T.BParam{T.BmLive{}, S.b("y"), v("B")}], v("B"), T.BtExpr{v("y")}, Nil{}}
@@ -550,6 +557,8 @@ def gate.laws() -> IO(Unit):
     IO.print(verdict("one typed by a def applied is a template", S.infix(gt.pr(Q.tcp.finish(gt.sub2(), Q.tcp.decide(gt.sub2(), Nil{}, Q.tcp.qe0()))), S.b("~xRy"))))
     IO.print(verdict("a family-typed parameter used twice is copied, its points not raised", S.infix(gt.pr(Q.tcp.finish(gt.subc(), Q.tcp.decide(gt.subc(), Nil{}, Q.tcp.qe0()))), S.b("+xRy: R(x, y)"))))
     IO.print(verdict("another module's template failing at its instance (f~0) blames the item that calls it", S.eq(G.tgt.blame(S.b("anon.f~0"), [gt.use(), gt.tplcall()], 0n, 47n), S.b("caller"))))
+    IO.print(verdict("a template argument that mentions a lambda's variable is refused before any check", S.eq(G.tgt.tloc.item(gt.tl(T.BtTplArg{v("e1")})), S.b("e1"))))
+    IO.print(verdict("one that mentions a template parameter, or binds its own, or sits in a dead place, is not", S.eq(List.append(&2, U32, List.append(&2, U32, G.tgt.tloc.item(gt.tl(T.BtTplArg{v("k")})), G.tgt.tloc.item(gt.tl(T.BtTplArg{T.BtLam{T.BmLive{}, S.b("e1"), v("e1")}}))), G.tgt.tloc.item(gt.tl(T.BtDead{T.BtTplArg{v("e1")}}))), Nil{})))
     IO.print(verdict("this module's template failing keeps the marked line", S.eq(G.tgt.blame(S.b("use~0"), [gt.use(), gt.tplcall()], 0n, 3n), S.b("use"))))
     IO.print(verdict("Order writes a type above the def that names it", S.eq(ord.first(O.tor.names(O.tor.order([ord.to(), ord.box()]))), S.b("anon.Box"))))
     IO.print(verdict("a quantity argument is its type's kind: a function type &1, Nat &2", S.eq(gt.pr(QF.tqf.item(qf.f(), qf.env())), S.b("import Base\n\ndef f(g: Nat -> Nat) -> Nat:\n  id(&1, Nat -> Nat, g)(id(&2, Nat, 3n))\n"))))
