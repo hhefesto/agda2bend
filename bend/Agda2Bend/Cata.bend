@@ -922,6 +922,97 @@ def act.sig.on(+env: ActEnv) -> Bool:
     case ActEnv{mod, tab, al, +unf}:
       act.unf.has.got(Map.has(&2, ActCopy, unf, "sig!"))
 
+# Law points (2026-10-30, an experiment for Setoids): the points of an
+# equivalence's sym and trans (IsEquivalence's, IsPartialEquivalence's
+# fields and projections) and of a congruence (a field, projection or
+# result typed Function.Definitions.Congruent: Func's cong, Equivalence's
+# to-cong and from-cong, IsCongruent's cong, and Congruent's own body)
+# are erased, as a def's own hidden parameters are.  A live point of a
+# Func is a function used again: Setoids' ∘-resp-≈ passes `to h (to g x)`
+# and `to h (to i x)` to C's trans and h to cong, so h (a Func, Type)
+# would be used three times.  Laws like refl, IsPreorder's trans (≤-trans
+# builds z≤n {k} from its third point) and ≤-reflexive keep theirs.
+def act.law.on() -> Bool:
+  True{}
+
+def act.law.env(env: ActEnv) -> ActEnv:
+  match env:
+    case ActEnv{mod, tab, al, unf}:
+      ActEnv{mod, tab, al, Map.set(&2, ActCopy, unf, "law!", ActCopy{0n, A.AgNone{}})}
+
+def act.law.has(+env: ActEnv) -> Bool:
+  match env:
+    case ActEnv{mod, tab, al, +unf}:
+      act.unf.has.got(Map.has(&2, ActCopy, unf, "law!"))
+
+# LeftInverse's and RightInverse's from-cong is `from Preserves ≈₂ ⟶ ≈₁`
+# where their Is… records (and Inverse) say Congruent: those two records
+# and projections get "law!" too, and Preserves is a law under it
+# (Function.Construct.Composition's rightInverse, Function.Bundles'
+# RightInverse.isRightInverse and equivalence: "expected @-x observed @x_8")
+def act.law.inv(+q: A.AgQ) -> Bool:
+  Bool.or(Bool.or(act.q.is(q, "Function.Bundles._.LeftInverse"), act.q.is(q, "Function.Bundles._.RightInverse")), Bool.or(act.q.is(q, "Function.Bundles._.LeftInverse.from-cong"), act.q.is(q, "Function.Bundles._.RightInverse.from-cong")))
+
+# an equivalence's record or one of its sym/trans projections (these get
+# "law!"), or Congruent itself (its body is read under "sig!")
+def act.law.rq(+q: A.AgQ) -> Bool:
+  Bool.or(Bool.or(act.q.is(q, "Relation.Binary.Structures.IsEquivalence"), act.q.is(q, "Relation.Binary.Structures.IsPartialEquivalence")), Bool.or(Bool.or(act.q.is(q, "Relation.Binary.Structures.IsEquivalence.sym"), act.q.is(q, "Relation.Binary.Structures.IsEquivalence.trans")), Bool.or(Bool.or(act.q.is(q, "Relation.Binary.Structures.IsPartialEquivalence.sym"), act.q.is(q, "Relation.Binary.Structures.IsPartialEquivalence.trans")), act.law.inv(q))))
+
+def act.law.cq(+q: A.AgQ) -> Bool:
+  Bool.or(act.q.is(q, "Function.Definitions._.Congruent"), act.q.is(q, "Function.Definitions.Congruent"))
+
+def act.law.items.of(on: Bool, r: Bool, c: Bool, env: ActEnv) -> ActEnv:
+  match on r c:
+    case True{} True{} _:
+      act.law.env(env)
+    case True{} False{} True{}:
+      act.sig.env(env)
+    case _ _ _:
+      env
+
+def act.law.items.env(+q: A.AgQ, env: ActEnv) -> ActEnv:
+  act.law.items.of(act.law.on(), act.law.rq(q), act.law.cq(q), env)
+
+# a field's (or a type's end's) Agda type is a law: Congruent, or an
+# equivalence's Symmetric/Transitive (lawrec: inside "law!")
+def act.law.ty(lawrec: Bool, t: A.Ag) -> Bool:
+  match t:
+    case A.AgEl{s, x}:
+      act.law.ty(lawrec, x)
+    case A.AgDef{+q, es}:
+      Bool.or(act.law.cq(q), Bool.and(lawrec, Bool.or(Bool.or(act.q.is(q, "Relation.Binary.Definitions.Symmetric"), act.q.is(q, "Relation.Binary.Definitions.Transitive")), act.q.is(q, "Relation.Binary.Core._Preserves_⟶_"))))
+    case _:
+      False{}
+
+# the end of a type's Pis is a law
+def act.law.end(lawrec: Bool, t: A.Ag) -> Bool:
+  match t:
+    case A.AgEl{s, x}:
+      act.law.end(lawrec, x)
+    case A.AgPi{i, x, a, d, b}:
+      act.law.end(lawrec, b)
+    case A.AgDef{q, es}:
+      act.law.ty(lawrec, A.AgDef{q, es})
+    case _:
+      False{}
+
+def act.law.when(b: Bool, env: ActEnv) -> ActEnv:
+  match b:
+    case True{}:
+      act.sig.env(env)
+    case False{}:
+      env
+
+# a field's environment: its type's Pis keep hidden binders erased when
+# its type is a law
+def act.law.fenv(+ty: A.Ag, +env: ActEnv) -> ActEnv:
+  act.law.when(Bool.and(act.law.on(), act.law.ty(act.law.has(env), ty)), env)
+
+# a def's result environment: a law at the end of its type (a projection
+# of an equivalence, or anything ending in Congruent)
+def act.law.renv(+ty: A.Ag, +env: ActEnv) -> ActEnv:
+  act.law.when(Bool.and(act.law.on(), act.law.end(act.law.has(env), ty)), env)
+
 def act.kind.type(s: ActSym) -> Bool:
   match s:
     case ActSym{m, n, A.AkRecord{}, ms, ar, b, fs, c, cp}:
@@ -1593,14 +1684,30 @@ def act.lit(l: A.Ag) -> T.Bt:
 def act.pi(lv: Bool, m: ActM, nm: List<&2, U32>, d: Bool, a: T.Bt, +b: T.Bt) -> T.Bt:
   Bool.pick(T.Bt, Bool.and(lv, Bool.not(act.quant.on())), b, T.BtPi{act.bmode(m), nm, d, a, b})
 
+# An equivalence's sym or trans passed unapplied (its record its last
+# argument: `trans = IsEquivalence.trans isEquivalence`, Reasoning.Base's
+# IsRelatedTo, IsPreorder's trans) is eta-expanded over its points and its
+# proofs (2026-10-30): its points are erased (act.law.on) where a slot
+# typed Transitive _≈_ (Bend opening Trans) takes them live, and a lambda
+# takes either mode.
+def act.law.ns(+q: A.AgQ) -> List<&2, List<&2, U32>>:
+  Bool.pick(List<&2, List<&2, U32>>, Bool.or(act.q.is(q, "Relation.Binary.Structures.IsEquivalence.trans"), act.q.is(q, "Relation.Binary.Structures.IsPartialEquivalence.trans")), [S.b("lw_i"), S.b("lw_j"), S.b("lw_k"), S.b("lw_p"), S.b("lw_q")], Bool.pick(List<&2, List<&2, U32>>, Bool.or(act.q.is(q, "Relation.Binary.Structures.IsEquivalence.sym"), act.q.is(q, "Relation.Binary.Structures.IsPartialEquivalence.sym")), [S.b("lw_x"), S.b("lw_y"), S.b("lw_p")], Bool.pick(List<&2, List<&2, U32>>, Bool.or(act.q.is(q, "Function.Bundles._.LeftInverse.from-cong"), act.q.is(q, "Function.Bundles._.RightInverse.from-cong")), [S.b("lw_x"), S.b("lw_y"), S.b("lw_p")], Nil{})))
+
+def act.law.eta(+ns: List<&2, List<&2, U32>>, full: Bool, t: T.Bt) -> T.Bt:
+  match full:
+    case True{}:
+      act.eta(ns, act.app.list(t, act.eta.vars(ns)))
+    case False{}:
+      t
+
 # The fold over terms (and elimination spines, which become argument
 # spines).  ctx: the Bend term of each binder in scope, index 0 first.
 def act.t(a: A.Ag, +ctx: List<&2, T.Bt>, +env: ActEnv) -> T.Bt:
   match a:
     case A.AgVar{+i, x, es}:
       act.app.var(act.ctx.at(i, ctx), act.t(es, ctx, env))
-    case A.AgDef{+q, es}:
-      act.app.def(act.sym(env, q), env, act.t(es, ctx, env))
+    case A.AgDef{+q, +es}:
+      act.law.eta(act.law.ns(q), Bool.and(act.law.on(), Nat.is_eq(act.es.apps(es), act.sym.arity(act.sym(env, q)))), act.app.def(act.sym(env, q), env, act.t(es, ctx, env)))
     case A.AgDefX{+q, es}:
       act.app.def(act.sym(env, q), env, act.t(es, ctx, env))
     case A.AgCon{+q, o, es}:
@@ -9367,6 +9474,37 @@ def act.proj.sorts(on: Bool, p: A.AgProj, t: A.Ag, +env: ActEnv) -> A.Ag:
     case _ _:
       t
 
+# A law's type (act.law.ty) is opened whatever it ends in (2026-10-30):
+# since 857984c a proposition stays folded, and Bend, opening Symmetric or
+# Transitive, gives its points their own (live) mode; an equivalence's sym
+# and trans are written out as Pis, read under "sig!", their points erased.
+def act.unfold.law(fuel: Nat, t: A.Ag, +env: ActEnv) -> A.Ag:
+  match fuel t:
+    case 1n+f A.AgEl{+s, A.AgDef{+q, +es}}:
+      act.unfold.law(f, act.unfold.wrap(s, act.unfold(env, q, es), A.AgEl{s, A.AgDef{q, es}}, env), env)
+    case 1n+f A.AgEl{+s, A.AgDefX{+q, +es}}:
+      act.unfold.law(f, act.unfold.wrap(s, act.unfold(env, q, es), A.AgEl{s, A.AgDefX{q, es}}, env), env)
+    case 1n+f A.AgEl{s, A.AgPi{i, x, a, d, b}}:
+      A.AgEl{s, A.AgPi{i, x, a, d, act.unfold.law(f, b, env)}}
+    case f t:
+      t
+
+# a field's type: a law's opened (act.unfold.law), any other's sorts only
+def act.field.law(lw: Bool, t: A.Ag, +env: ActEnv) -> A.Ag:
+  match lw:
+    case True{}:
+      act.unfold.law(8n, t, env)
+    case False{}:
+      act.field.sorts(act.quant.on(), t, env)
+
+# a projection's type: an equivalence's sym/trans opened past its record
+def act.proj.law(lw: Bool, p: A.AgProj, t: A.Ag, +env: ActEnv) -> A.Ag:
+  match lw:
+    case True{}:
+      act.unfold.law(64n, t, env)
+    case False{}:
+      act.proj.sorts(act.quant.on(), p, t, env)
+
 # type-valuedness inside an item: a projection's by its own type, another
 # function's once its type-valued ends are opened (as act.tylevel)
 def act.tylevel.env(p: A.AgProj, +ty: A.Ag, +env: ActEnv) -> Bool:
@@ -9379,8 +9517,9 @@ def act.tylevel.env(p: A.AgProj, +ty: A.Ag, +env: ActEnv) -> Bool:
 def act.item.fun(s: ActSym, d: A.AgD, +key: String, +ty: A.Ag, +env: ActEnv, doc: List<&2, List<&2, U32>>) -> List<&2, T.BItem>:
   match s d:
     case ActSym{m, +n, k, +ms, +ar, b, fs, c, cp} A.AgDFun{+p, r, w, e, te, mu, +cls, tree}:
-      +t = act.proj.sorts(act.quant.on(), p, act.inline.hdr(100000n, ty, env), env)
-      act.unkind.when(act.quant.on(), p, act.tylevel.env(p, ty, env), act.fun.with(n, ms, ar, p, cls, key, t, env, doc, act.params.s(64n, ar, t, ms, Nil{}, act.sig.with(w, p, env), env)))
+      +lw = Bool.and(act.law.on(), Bool.and(act.law.has(env), act.law.end(True{}, ty)))
+      +t = act.proj.law(lw, p, act.inline.hdr(100000n, ty, env), env)
+      act.unkind.when(act.quant.on(), p, act.tylevel.env(p, ty, env), act.fun.with(n, ms, ar, p, cls, key, t, env, doc, act.params.s(64n, ar, t, ms, Nil{}, act.sig.with(w, p, env), act.law.renv(ty, env))))
     case _ _:
       Nil{}
 
@@ -9410,9 +9549,10 @@ def act.rtel(tel: A.Ag, np: Nat, ms: List<&2, ActM>, +ctx: List<&2, T.Bt>, +env:
     case A.AgTel{+x, i, ty, rest} 1n+p Nil{}:
       +nm = act.fresh(x, ctx)
       act.rt.param(AmErased{}, nm, act.t(act.field.sorts(act.quant.on(), act.inline(100000n, ty, env), env), ctx, env), act.rtel(rest, p, Nil{}, T.BtVar{nm} <> ctx, env))
-    case A.AgTel{+x, i, ty, rest} 0n ms:
+    case A.AgTel{+x, i, +ty, rest} 0n ms:
       +nm = act.fresh(x, ctx)
-      act.rt.field(nm, act.t(act.field.sorts(act.quant.on(), act.inline(100000n, ty, env), env), ctx, env), act.rtel(rest, 0n, ms, T.BtVar{nm} <> ctx, env))
+      +lw = Bool.and(act.law.on(), act.law.ty(act.law.has(env), ty))
+      act.rt.field(nm, act.t(act.field.law(lw, act.inline(100000n, ty, env), env), ctx, act.law.when(lw, env)), act.rtel(rest, 0n, ms, T.BtVar{nm} <> ctx, env))
     case _ _ _:
       ActRt{Nil{}, Nil{}}
 
@@ -9620,7 +9760,7 @@ def act.sym.copied(s: ActSym) -> Bool:
 def act.items(d: A.AgDecl, +env: ActEnv, +decls: Map<&2, A.AgDecl>) -> List<&2, T.BItem>:
   match d:
     case A.AgDecl{+q, qn, md, +f, +l, l0, l1, k, m, +fl, lang, ty, dd}:
-      act.items.of(act.sym(env, q), k, Bool.or(act.flag(A.AkCopy{}, fl), act.sym.copied(act.sym(env, q))), act.flag(A.AkNoCompilation{}, fl), dd, act.key(q), ty, env, decls, act.doc(act.qs(q), f, l))
+      act.items.of(act.sym(env, q), k, Bool.or(act.flag(A.AkCopy{}, fl), act.sym.copied(act.sym(env, q))), act.flag(A.AkNoCompilation{}, fl), dd, act.key(q), ty, act.law.items.env(q, env), decls, act.doc(act.qs(q), f, l))
 
 # A type-valued function whose case tree is one leaf (no split): it
 # unfolds, as a copy does, when a header needs the Pis behind it.
