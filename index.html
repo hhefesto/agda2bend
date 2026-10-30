@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agda2bend: Agda in, checked Bend 2 out</title>
+<style>
+  body { max-width: 46em; margin: 2em auto; padding: 0 1em; font-family: Georgia, serif; line-height: 1.5; color: #222; }
+  h1, h2, h3 { font-family: Helvetica, Arial, sans-serif; line-height: 1.2; }
+  code, pre { font-family: Menlo, Consolas, monospace; font-size: 0.88em; }
+  pre { background: #f5f5f0; padding: 0.8em 1em; overflow-x: auto; border-left: 3px solid #bbb; }
+  table { border-collapse: collapse; }
+  td, th { border: 1px solid #ccc; padding: 0.3em 0.6em; text-align: left; vertical-align: top; }
+  th { background: #f0f0ea; }
+  .small { font-size: 0.9em; color: #555; }
+</style>
+</head>
+<body>
+
+<h1>agda2bend</h1>
+<p><b>Agda in, checked <a href="https://github.com/bendlang/bend">Bend 2</a> out.</b></p>
+
+<p>
+agda2bend translates Agda modules, together with every module they import, into
+Bend 2. The output is kept only if the stock Bend checker accepts it. Whatever it
+rejects is dropped, along with everything that depends on it, and a ledger records
+each item and the reason it was dropped. Nothing is patched into the checker to
+make the output pass.
+</p>
+
+<p>
+Source: <a href="https://github.com/hhefesto/agda2bend">github.com/hhefesto/agda2bend</a> (MIT).
+It's a work in progress.
+</p>
+
+<h2>Why</h2>
+
+<p>
+Bend 2 is a functional language with dependent types. A Bend program can state a
+theorem in its type and prove it in its body, and <code>bend --check-only</code>
+verifies the proof. Agda has years of proofs written this way: the standard
+library, agda-categories, agda-unimath, agda-algebras and
+<a href="https://plfa.github.io/">PLFA</a>. Bend 2 is new, and little Bend of this kind exists yet.
+agda2bend turns the Agda proofs into Bend that checks.
+</p>
+
+<p>
+That output is training data for <a href="https://github.com/hhefesto/ana">ana</a>,
+a small model that writes Bend. Each checked definition is one example of correct
+Bend, and the Bend checker is the judge.
+</p>
+
+<h2>An example</h2>
+
+<p>Symmetry of equality, in Agda:</p>
+<pre>sym : {A : Set} {x y : A} → x ≡ y → y ≡ x
+sym refl = refl</pre>
+
+<p>and what agda2bend writes:</p>
+<pre>def sym(-A: Type, -x: A, -y: A, x_6: {x == y : A}) -> {y == x : A}:
+  %x_6 : {_ == x : A}
+  {==}</pre>
+
+<ul>
+<li>Agda's implicit arguments <code>{A} {x y}</code> become erased parameters
+(<code>-A</code>): they exist only for the checker, not at run time.</li>
+<li><code>x ≡ y</code> is Bend's equality type <code>{x == y : A}</code>, and
+<code>refl</code> is <code>{==}</code>.</li>
+<li>Agda matches on <code>refl</code>. Bend can't match on an equation, so the
+match becomes a rewrite: <code>%x_6 : {_ == x : A}</code> rewrites the goal
+along <code>x_6</code>, and the hole <code>_</code> marks where <code>y</code>
+stands. After that the goal is <code>{x == x : A}</code>, and <code>{==}</code>
+proves it.</li>
+</ul>
+
+<p>A proof by induction, <code>map id ≡ id</code> on lists:</p>
+<pre>map-id : {A : Set} (xs : List A) → map (λ a → a) xs ≡ xs
+map-id []       = refl
+map-id (x ∷ xs) = cong (x ∷_) (map-id xs)</pre>
+<pre>def map_id(-A: Type, xs: List_&lt;A&gt;) -> {map(~A, ~A, ~a => a, xs) == xs : List_&lt;A&gt;}:
+  match xs:
+    case List_.lb_rb{}:
+      {==}
+    case List_.cons{x_1, xs_2}:
+      cong(List_&lt;A&gt;, List_&lt;A&gt;, eta1 => List_.cons{x_1, eta1}, map(~A, ~A, ~a => a, xs_2), xs_2, map_id(A, xs_2))</pre>
+
+<p>
+Bend has no implicit arguments, so every argument Agda inferred is written out.
+Names get rewritten for Bend: <code>[]</code> becomes <code>lb_rb</code>,
+<code>_∷_</code> becomes <code>cons</code>, and <code>map-id</code> becomes
+<code>map_id</code>. <code>~A</code> passes <code>A</code> to a template
+parameter.
+</p>
+
+<p>The functor form of the Yoneda lemma's two maps:</p>
+<pre>Yo : (F : Set → Set) (A : Set) → Set₁
+Yo F A = {B : Set} → (A → B) → F B
+
+fto : {F : Set → Set} {A : Set} → Yo F A → F A
+fto α = α (λ a → a)</pre>
+<pre>def Yo(-F: @-x:Type -> Type, -A: Type) -> Type:
+  @-B:Type -> (A -> B) -> F(B)
+
+def fto(-F: @-x:Type -> Type, -A: Type, x: Yo(F, A)) -> F(A):
+  x(A, a => a)</pre>
+
+<p>
+<code>@x:T -> U</code> is Bend's dependent function type, and <code>@-x</code>
+erases the binder. Universe levels aren't kept, so Agda's <code>Set</code> and
+<code>Set₁</code> both become <code>Type</code>. In <code>fto</code>, the
+<code>{B}</code> that Agda inferred is passed explicitly as <code>A</code>.
+</p>
+
+<h2>How it works</h2>
+
+<ol>
+<li><b>Agda elaborates.</b> <code>agda-export</code> is an Agda 2.8.0 backend, the
+only part not written in Bend. It writes every definition in the import closure as
+an S-expression of Agda's internal syntax: types, clauses, compiled case trees,
+records, data types and constructors. It decides nothing.</li>
+<li><b>Everything after that is written in Bend:</b> a streaming S-expression reader,
+a parser of Agda's syntax, a fold from Agda into a Bend syntax tree, then Bend-side
+passes (names, ordering, a quantity pass that decides what's erased, copied or
+live, and universe levels as quantities), and a printer.</li>
+<li><b>The gate.</b> The pinned <code>bend</code> checks each module. A failing item
+is dropped with its dependents, and <code>OUT/ledger.tsv</code> records every
+item's fate and reason. <code>agda2bend report</code> ranks the reasons by how many
+items each blocks, so work on the translator goes where it unblocks the most.</li>
+</ol>
+
+<p>Some of the translation choices:</p>
+<table>
+<tr><th>Agda</th><th>Bend 2</th></tr>
+<tr><td>implicit and instance arguments</td><td>erased parameters, written out at every call</td></tr>
+<tr><td><code>x ≡ y</code>, <code>refl</code></td><td><code>{x == y : A}</code>, <code>{==}</code></td></tr>
+<tr><td>a clause that matches <code>refl</code></td><td>a rewrite <code>%e : motive</code> before the body</td></tr>
+<tr><td>an indexed family (<code>_≤_</code>, <code>Vec</code>)</td><td>a data type whose index is an erased type parameter, with one equation field per index in each constructor</td></tr>
+<tr><td>absurd patterns <code>()</code></td><td>a case that refutes the clash between constructors (<code>Empty.absurd</code>)</td></tr>
+<tr><td>records, copatterns</td><td>Bend records, and projections that match on the record</td></tr>
+<tr><td>universe levels</td><td>quantities; record parameters become templates (<code>~</code>)</td></tr>
+</table>
+
+<h2>Where it stands</h2>
+
+<p>
+As of 2026-10-29, the runs over the standard library, agda-unimath,
+agda-categories, agda-algebras and PLFA have produced <b>10,911 distinct
+definitions that check</b>: 6.45 MB of Bend. By source: standard library 7,079,
+agda-unimath 1,501, agda-categories 1,101, agda-algebras 714, PLFA 430.
+</p>
+
+<p>
+On the import cone of agda-categories' <code>Categories.Yoneda</code> (121 modules,
+2,527 items), 2,256 items check (run of 2026-10-25). The Yoneda module itself doesn't
+check yet: its 12 items depend on <code>Setoids</code>, which still fails. A smaller
+Yoneda file written as a test does better. Its identity-type version and its functor
+version (the <code>Yo</code> example above) check in full. Its categorical version
+checks only in part: the unit laws and the two round trips are dropped.
+</p>
+
+<p>Things that don't translate yet, or not always:</p>
+<ul>
+<li>eta for records and for <code>⊤</code>: stock Bend has no record eta, and some
+proofs rely on it;</li>
+<li>nested constructor patterns on indexed families, where an inner pattern's
+indices come from the outer one's fields (<code>&lt;⇒&lt;ᵇ</code> in
+<code>Data.Nat.Properties</code>; 122 definitions depend on it);</li>
+<li>a polymorphic value used twice (Bend copies only <code>Data</code>);</li>
+<li>records over a carrier of an arbitrary kind (<code>expected Data observed Kind(a)</code>);</li>
+<li>an erased binder used live, when the erasure guess is wrong;</li>
+<li>cubical Agda (1lab, cubical) isn't attempted.</li>
+</ul>
+
+<h2>Use</h2>
+
+<pre># translate a file and the modules it imports; out/src holds the Bend that checks
+nix run github:hhefesto/agda2bend -- translate Foo.agda out
+
+# translate an existing export (agda-export's --export-dir): a module's cone, or all of it
+nix run github:hhefesto/agda2bend -- emit EXPORT_DIR out Categories.Yoneda
+
+# the ledger summed up: the reasons, ranked by the items they block
+nix run github:hhefesto/agda2bend -- report out</pre>
+
+<p>
+<code>translate</code> runs from the root of the file's Agda library. By default,
+agda-export resolves the standard library and agda-categories. Set
+<code>AGDA_DIR</code> to use other libraries.
+</p>
+
+<p class="small">
+agda2bend is MIT-licensed. Agda, the Agda standard library, agda-categories,
+agda-unimath, agda-algebras, PLFA and Bend belong to their authors, under their own
+licenses.
+</p>
+
+</body>
+</html>
