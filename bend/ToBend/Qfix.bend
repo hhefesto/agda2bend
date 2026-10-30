@@ -413,6 +413,8 @@ def tqf.ty(fuel: Nat, t: T.Bt, +ctx: List<&2, T.BParam>, +e: TqEnv) -> Maybe<&2,
       tqf.ty(f, a, ctx, e)
     case 1n+f T.BtTplArg{a}:
       tqf.ty(f, a, ctx, e)
+    case 1n+f T.BtAnn{a, ty}:
+      tqf.ty(f, a, ctx, e)
     case _ _:
       None{}
 
@@ -476,6 +478,8 @@ def tqf.kind(fuel: Nat, t: T.Bt, +ctx: List<&2, T.BParam>, +e: TqEnv) -> T.Bt:
       tqf.kind(f, a, ctx, e)
     case 1n+f T.BtTplArg{a}:
       tqf.kind(f, a, ctx, e)
+    case 1n+f T.BtAnn{a, ty}:
+      tqf.kind(f, a, ctx, e)
     case _ _:
       tqf.q1()
 
@@ -490,6 +494,8 @@ def tqf.kind.fam(fuel: Nat, t: T.Bt, +ctx: List<&2, T.BParam>, +e: TqEnv) -> T.B
     case 1n+f T.BtDead{a}:
       tqf.kind.fam(f, a, ctx, e)
     case 1n+f T.BtTplArg{a}:
+      tqf.kind.fam(f, a, ctx, e)
+    case 1n+f T.BtAnn{a, ty}:
       tqf.kind.fam(f, a, ctx, e)
     case f t:
       tqf.kind(16n, t, ctx, e)
@@ -1126,6 +1132,110 @@ def tqf.wd.item(it: T.BItem, +e: TqEnv) -> T.BItem:
     case it:
       it
 
+# Record values' lambda fields annotated ----------------------------------------
+#
+# A def whose body is a record's value gives Bend a field's lambda that the
+# later fields' types apply (`Category{Obj, eta => eta_9 => …, A => B => eta
+# => eta_11 => …, …}`, Categories.Category.Product; DirectProduct's magma,
+# its _≈_ Pointwise eta-expanded, in `IsMagma<c, l, Carrier, eq, dot>`):
+# Bend puts the lambda there and cannot infer it ('expected : an annotated
+# term (cannot infer)'; Product: 82 dependents in the Yoneda cone, magma: 31
+# in the stdlib's).  Such a lambda is annotated with its field's type, the
+# record's parameters given the return type's arguments and each field
+# before it its value (2026-10-30).  tqf.ty, tqf.kind and tqf.kind.fam see
+# through an annotation, as Qfix reads the item again (the gate's requal):
+# magma's return type took the annotated _≈_'s kind as &1.
+def tqf.ann.is.lam(t: T.Bt) -> Bool:
+  match t:
+    case T.BtLam{m, x, b}:
+      True{}
+    case _:
+      False{}
+
+# whether a later field's type names field x
+def tqf.ann.ment(fs: List<&2, T.BField>, +x: List<&2, U32>) -> Bool:
+  match fs:
+    case Nil{}:
+      False{}
+    case T.BField{y, ty} <> t:
+      Bool.or(tqf.mem(x, T.tba.refs(ty, Nil{})), tqf.ann.ment(t, x))
+
+def tqf.ann.v(+v: T.Bt, +ty: T.Bt, want: Bool) -> T.Bt:
+  Bool.pick(T.Bt, Bool.and(want, tqf.ann.is.lam(v)), T.BtAnn{v, ty}, v)
+
+def tqf.ann.fsub(fs: List<&2, T.BField>, +x: List<&2, U32>, +v: T.Bt) -> List<&2, T.BField>:
+  match fs:
+    case Nil{}:
+      Nil{}
+    case T.BField{y, ty} <> t:
+      T.BField{y, tqf.sub.one(ty, x, v)} <> tqf.ann.fsub(t, x, v)
+
+# (the values first: Bend reads a self-call's arguments left to right)
+def tqf.ann.fs(vs: T.Bt, fs: List<&2, T.BField>) -> T.Bt:
+  match vs fs:
+    case T.BtArgs{+v, vr} T.BField{+x, +ty} <> +ft:
+      T.BtArgs{tqf.ann.v(v, ty, tqf.ann.ment(ft, x)), tqf.ann.fs(vr, tqf.ann.fsub(ft, x, tqf.undead(v)))}
+    case vs _:
+      vs
+
+# A field type's binders renamed apart (x to x__f) before the parameters
+# and the fields before it are put in: a value names the def's own
+# variables, and Category's `comp : @A:Obj -> @B:Obj -> @C:Obj -> …` would
+# capture Product's C in Obj's value (`expected : Category<…> observed :
+# Sigma_<…>`).  The fuel bounds the term's depth.
+def tqf.ann.fx(+y: List<&2, U32>) -> List<&2, U32>:
+  List.append(&2, U32, y, S.b("__f"))
+
+def tqf.ann.ren(fuel: Nat, t: T.Bt) -> T.Bt:
+  match fuel t:
+    case 0n t:
+      t
+    case 1n+(+f) T.BtPi{m, +y, d, a, b}:
+      T.BtPi{m, tqf.ann.fx(y), d, tqf.ann.ren(f, a), tqf.ann.ren(f, tqf.sub.one(b, y, T.BtVar{tqf.ann.fx(y)}))}
+    case 1n+(+f) T.BtLam{m, +y, b}:
+      T.BtLam{m, tqf.ann.fx(y), tqf.ann.ren(f, tqf.sub.one(b, y, T.BtVar{tqf.ann.fx(y)}))}
+    case 1n+(+f) T.BtApp{g, a}:
+      T.BtApp{tqf.ann.ren(f, g), tqf.ann.ren(f, a)}
+    case 1n+(+f) T.BtArgs{a, rest}:
+      T.BtArgs{tqf.ann.ren(f, a), tqf.ann.ren(f, rest)}
+    case 1n+(+f) T.BtTyApp{c, a}:
+      T.BtTyApp{c, tqf.ann.ren(f, a)}
+    case 1n+(+f) T.BtTplArg{a}:
+      T.BtTplArg{tqf.ann.ren(f, a)}
+    case 1n+(+f) T.BtDead{a}:
+      T.BtDead{tqf.ann.ren(f, a)}
+    case 1n+(+f) T.BtCon{c, a}:
+      T.BtCon{c, tqf.ann.ren(f, a)}
+    case 1n+(+f) T.BtSucc{a}:
+      T.BtSucc{tqf.ann.ren(f, a)}
+    case 1n+(+f) T.BtEq{ty, a, b}:
+      T.BtEq{tqf.ann.ren(f, ty), tqf.ann.ren(f, a), tqf.ann.ren(f, b)}
+    case 1n+(+f) T.BtAnn{a, ty}:
+      T.BtAnn{tqf.ann.ren(f, a), tqf.ann.ren(f, ty)}
+    case _ t:
+      t
+
+def tqf.ann.inst(fs: List<&2, T.BField>, +ps: List<&2, T.BParam>, +a: T.Bt) -> List<&2, T.BField>:
+  match fs:
+    case Nil{}:
+      Nil{}
+    case T.BField{y, ty} <> t:
+      T.BField{y, tqf.inst(tqf.ann.ren(4096n, ty), ps, a)} <> tqf.ann.inst(t, ps, a)
+
+def tqf.ann.of(s: TqSig, +a: T.Bt, vs: T.Bt) -> T.Bt:
+  match s:
+    case TqType{+ps, k, [T.BCtor{c, fs}]}:
+      tqf.ann.fs(vs, tqf.ann.inst(fs, ps, a))
+    case _:
+      vs
+
+def tqf.ann.body(ret: T.Bt, body: T.Bt, +e: TqEnv) -> T.Bt:
+  match ret body:
+    case T.BtTyApp{+n, +a} T.BtExpr{T.BtCon{c, vs}}:
+      T.BtExpr{T.BtCon{c, tqf.ann.of(tqf.sig(e, n), a, vs)}}
+    case _ b:
+      b
+
 def tqf.item(it: T.BItem, +e: TqEnv) -> T.BItem:
   match it:
     case T.BiDef{n, ps, ret, body, doc}:
@@ -1133,7 +1243,8 @@ def tqf.item(it: T.BItem, +e: TqEnv) -> T.BItem:
       +ctx = tqf.ctx.of(ps2, Nil{})
       +ret1 = tqf.fix(ret, ctx, e)
       +body2 = tqf.fix.body(body, ret1, ctx, e)
-      tqf.wd.item(T.BiDef{n, ps2, tqf.ret.kind(tqf.ret.fix(ret1, body2, ctx, e), body2, ctx, e), body2, doc}, e)
+      +ret2 = tqf.ret.kind(tqf.ret.fix(ret1, body2, ctx, e), body2, ctx, e)
+      tqf.wd.item(T.BiDef{n, ps2, ret2, tqf.ann.body(ret2, body2, e), doc}, e)
     case T.BiType{n, ps, k, cs, doc}:
       +ps2 = tqf.fix.ps(ps, Nil{}, e)
       tqf.wd.item(T.BiType{n, ps2, k, tqf.fix.cs(cs, tqf.ctx.of(ps2, Nil{}), e), doc}, e)
