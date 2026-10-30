@@ -2,7 +2,7 @@
 
 Working notes, so the work can continue from another machine or agent. Newest first. Times are UTC-6. agda2bend was split out of ana (github:hhefesto/ana) on 2026-10-22. ana's HANDOFF.md, before that date, has the rest of the history.
 
-## The reruns with 5747eec: the whole standard library, Product, agda2hs-base, agda-prelude (2026-10-29, 22:50-23:30 UTC-6; no translator change)
+## The reruns with 5747eec: the whole standard library, Product, agda2hs-base, agda-prelude (2026-10-29, 22:40-22:55 UTC-6; no translator change)
 
 - **Category.Product was never in corpus1t/1u.** export2s keeps export2's exports of 20 MB or less; Categories.Category.Product is 27.9 MB, so every item naming it dropped as "a name the symbol table does not have" (corpus1u: 61 dropped, 274 hanging; Monoidal.Core alone 182, Bifunctor 66). Categories.Yoneda (21.6 MB), Bicategory, Data.Fin.Properties and Data.List.Relation.Unary.Any/All.Properties were missing the same way.
 - **The standard library's other 823 modules were last emitted on 10-22** (corpus2, translator O0-c2: 5669 checked, 10734 dependent, 1818 dropped). corpus1t/1u only cover the 280 stdlib modules under agda-categories.
