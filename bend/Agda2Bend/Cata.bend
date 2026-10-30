@@ -8127,10 +8127,46 @@ def act.cop.brs(+dq: A.AgQ, brs: A.Ag, u: Map<&2, ActCopy>) -> Map<&2, ActCopy>:
     case _:
       u
 
-def act.cop.add(d: A.AgDecl, unf: Map<&2, ActCopy>) -> Map<&2, ActCopy>:
+# A definition whose case tree is one leaf, a record's constructor applied
+# (`Setoids c ℓ = record { … }`, `F ∘F G`, a category's hom-setoid): a
+# field's projection of it reduces to that argument, as a copattern
+# definition's does (2026-10-29: Categories.Yoneda's F⇐G commute takes the
+# Pis of the Setoids' `_≈_` its type ends in, which only these reductions
+# reach: Category._≈_ (Setoids ℓ e), the hom-setoid of the presheaves).
+def act.cop.cfs(+dq: A.AgQ, +n: Nat, fs: List<&2, String>, es: A.Ag, u: Map<&2, ActCopy>) -> Map<&2, ActCopy>:
+  match fs es:
+    case +f <> ft A.AgEApp{i, a, rest}:
+      act.cop.cfs(dq, n, ft, rest, Map.set(&2, ActCopy, u, "cop:" ++ act.key(dq) ++ "|" ++ f, ActCopy{n, a}))
+    case _ _:
+      u
+
+def act.cop.crec(s: ActSym, +dq: A.AgQ, +n: Nat, es: A.Ag, u: Map<&2, ActCopy>) -> Map<&2, ActCopy>:
+  match s:
+    case ActSym{sm, sn, A.AkRecord{}, ms, ar, sb, fs, c, cp}:
+      act.cop.cfs(dq, n, fs, es, u)
+    case _:
+      u
+
+def act.cop.ccon(s: ActSym, +dq: A.AgQ, +n: Nat, es: A.Ag, +tab: Map<&2, ActSym>, u: Map<&2, ActCopy>) -> Map<&2, ActCopy>:
+  match s:
+    case ActSym{sm, sn, A.AkConstructor{}, ms, ar, sb, fs, +rk, cp}:
+      act.cop.crec(act.sym.got(Map.get(ActSym, act.sym0(), tab, S.str(rk))), dq, n, es, u)
+    case _:
+      u
+
+def act.cop.leaf(+dq: A.AgQ, +n: Nat, t: A.Ag, +tab: Map<&2, ActSym>, u: Map<&2, ActCopy>) -> Map<&2, ActCopy>:
+  match t:
+    case A.AgCon{+cq, o, es}:
+      act.cop.ccon(act.sym.got(Map.get(ActSym, act.sym0(), tab, act.key(cq))), dq, n, es, tab, u)
+    case _:
+      u
+
+def act.cop.add(d: A.AgDecl, +tab: Map<&2, ActSym>, unf: Map<&2, ActCopy>) -> Map<&2, ActCopy>:
   match d:
     case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, fl, lang, ty, A.AgDFun{p, r, w, e, t, mu, cls, A.AgCase{i, n, A.AgBranches{True{}, brs, eta, lits, ca}}}}:
       act.cop.brs(q, brs, unf)
+    case A.AgDecl{+q, qn, md, f, l, l0, l1, k, m, fl, lang, ty, A.AgDFun{A.AgPrNone{}, r, w, e, t, mu, cls, A.AgDone{xs, b}}}:
+      act.cop.leaf(q, act.vars.len(xs), b, tab, unf)
     case _:
       unf
 
