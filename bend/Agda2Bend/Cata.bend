@@ -6941,11 +6941,49 @@ def act.nu.lit.t(small: Bool, k: Nat, s: List<&2, U32>) -> T.Bt:
     case False{}:
       T.BtNat{s}
 
-# a term with its literals as suc chains (up to 64) and no BtDead
+def act.nu.sucs.on(k: Nat, t: T.Bt) -> T.Bt:
+  match k:
+    case 0n:
+      t
+    case 1n+p:
+      T.BtSucc{act.nu.sucs.on(p, t)}
+
+def act.nu.lit.of(t: T.Bt) -> Nat:
+  match t:
+    case T.BtNat{s}:
+      act.cq.digits(s, 0n)
+    case T.BtDead{x}:
+      act.nu.lit.of(x)
+    case _:
+      0n
+
+def act.nu.islit(t: T.Bt) -> Bool:
+  match t:
+    case T.BtNat{s}:
+      True{}
+    case T.BtDead{x}:
+      act.nu.islit(x)
+    case _:
+      False{}
+
+# `1 + n` (Builtin_Nat_.plus(1n, n): Vec.head's index) is 1n+n; Bend's plus
+# recurses on its first argument, so the two are the same to it
+def act.nu.plus(on: Bool, +a: T.Bt, b: T.Bt, t: T.Bt) -> T.Bt:
+  match on:
+    case True{}:
+      act.nu.sucs.on(act.nu.lit.of(a), b)
+    case False{}:
+      t
+
+# a term with its literals as suc chains (up to 64), `k + x` as suc^k x,
+# and no BtDead
 def act.nu.norm(t: T.Bt) -> T.Bt:
   match t:
     case T.BtDead{x}:
       act.nu.norm(x)
+    case T.BtApp{T.BtVar{+f}, T.BtArgs{+a, T.BtArgs{+b, T.BtANil{}}}}:
+      +k = act.nu.lit.of(a)
+      act.nu.plus(Bool.and(Bool.and(S.suffix(f, S.b("plus")), act.nu.islit(a)), Nat.is_lt(k, 65n)), a, act.nu.norm(b), T.BtApp{T.BtVar{f}, T.BtArgs{a, T.BtArgs{b, T.BtANil{}}}})
     case T.BtNat{+s}:
       +k = act.cq.digits(s, 0n)
       act.nu.lit.t(Nat.is_lt(k, 65n), k, s)
