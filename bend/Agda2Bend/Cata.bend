@@ -6464,6 +6464,30 @@ def act.nu.cdq.of(d: A.AgDecl) -> Maybe<&2, ActCopy>:
     case _:
       None{}
 
+# A record's constructor by the record's key (a record has one; its symbol's
+# fields are its fields, not constructors): act.nu splits a record pattern
+# at it (and reads the record's type, "fty:", as a data type's).  Dec's `true because ofʸ p` (Dec a record) had no constructor to
+# split at, so the cases nested patterns leave out (`true because ofⁿ _`)
+# were left to Bend's own expansion, which fills them with \{} that Bend
+# cannot see is empty ("expected : cases for Reflects.of_n"); Dec as a data
+# type had them refuted (2026-10-30).
+def act.nu.rcon.key(k: String) -> String:
+  "rcon:" ++ k
+
+def act.nu.rcon.of(d: A.AgDecl) -> Maybe<&2, ActCopy>:
+  match d:
+    case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, fl, lang, ty, A.AgDCon{dq, pars, ar, ck, src}}:
+      Some{ActCopy{0n, A.AgDef{q, A.AgENil{}}}}
+    case _:
+      None{}
+
+def act.nu.rcon.k(d: A.AgDecl) -> String:
+  match d:
+    case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, fl, lang, ty, A.AgDCon{dq, pars, ar, ck, src}}:
+      act.nu.rcon.key(act.key(dq))
+    case _:
+      ""
+
 def act.nu.unf(+env: ActEnv, k: String) -> ActCopy:
   match env:
     case ActEnv{mod, tab, al, unf}:
@@ -6500,9 +6524,20 @@ def act.nu.sym.fields(s: ActSym) -> List<&2, String>:
     case ActSym{m, n, k, ms, ar, b, fs, c, cp}:
       fs
 
+def act.nu.rcon.one(+k: String) -> List<&2, String>:
+  Bool.pick(List<&2, String>, String.eq(k, ""), Nil{}, [k])
+
+# a data key's constructors: a data type's, or a record's one
+def act.nu.sym.cons(s: ActSym, +env: ActEnv, +dk: String) -> List<&2, String>:
+  match s:
+    case ActSym{m, n, A.AkRecord{}, ms, ar, b, fs, c, cp}:
+      act.nu.rcon.one(act.nu.dkey.of(act.nu.unf(env, act.nu.rcon.key(dk))))
+    case ActSym{m, n, k, ms, ar, b, fs, c, cp}:
+      fs
+
 # a data key's constructors
 def act.nu.sibs(+env: ActEnv, +dk: String) -> List<&2, String>:
-  Bool.pick(List<&2, String>, String.eq(dk, "$nat"), ["$z", "$s"], Bool.pick(List<&2, String>, String.eq(dk, "$bool"), ["$t", "$f"], Bool.pick(List<&2, String>, String.eq(dk, "$unit"), ["$u"], Bool.pick(List<&2, String>, String.eq(dk, ""), Nil{}, act.nu.sym.fields(act.nu.symk(env, dk))))))
+  Bool.pick(List<&2, String>, String.eq(dk, "$nat"), ["$z", "$s"], Bool.pick(List<&2, String>, String.eq(dk, "$bool"), ["$t", "$f"], Bool.pick(List<&2, String>, String.eq(dk, "$unit"), ["$u"], Bool.pick(List<&2, String>, String.eq(dk, ""), Nil{}, act.nu.sym.cons(act.nu.symk(env, dk), env, dk)))))
 
 def act.nu.npis(t: A.Ag) -> Nat:
   match t:
@@ -8260,6 +8295,8 @@ def act.fty.of(d: A.AgDecl) -> Maybe<&2, ActCopy>:
     case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, fl, lang, ty, A.AgDFun{A.AgPrOf{Some{r}, o, ix}, rs, w, e, t, mu, cls, tree}}:
       Some{ActCopy{0n, ty}}
     case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, fl, lang, ty, A.AgDData{pars, ixs, cs, srt, dcl}}:
+      Some{ActCopy{0n, ty}}
+    case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, fl, lang, ty, A.AgDRec{pars, c, named, ind, fs, tel, eta, pm, rcl}}:
       Some{ActCopy{0n, ty}}
     case _:
       None{}
