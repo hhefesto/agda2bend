@@ -55,7 +55,7 @@ def dollar_2(-a: Quant, -b: Quant, -A: Kind(a), -B: A -> Kind(b), x: @x:A -> B(x
 
 # Agda: Function.Base.λ-
 # Base.agda, line 106
-def lam(-a: Quant, -b: Quant, -A: Kind(a), -B: A -> Kind(b), x: @-x:A -> B(x), x_9: A) -> B(x_9):
+def lam(-a: Quant, -b: Quant, -A: Kind(a), -B: A -> Kind(b), x: @-x:A -> B(x), -x_9: A) -> B(x_9):
   x(x_9)
 
 # Agda: Function.Base.case_returning_of_

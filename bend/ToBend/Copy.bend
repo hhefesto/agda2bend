@@ -584,10 +584,29 @@ def tcp.scrut(+x: List<&2, U32>, t: T.Bt) -> Bool:
 
 # a parameter's mode from its uses in the body (a mode rises: erased, live,
 # then copied or a template; a live one with no live use falls to erased)
+# A parameter that is not Data with a live use and two counting a
+# variable's arguments (mode unknown) is a template: Bend reads those
+# arguments at the variable's own Pis, live for a function value or a
+# negation (`x≉y : ¬ x ≈ y` applied to `antisym x …`: NonStrictToStrict's
+# <-trans passes its IsPartialOrder x three times, once where Copy saw it,
+# and Bend refused it 'consumed more than once'; + is no repair for a
+# record of functions).  A Data one keeps the known count: + needs Data,
+# and a template it need not be (2026-10-30).
+def tcp.uses.nd.of(+n: Nat, +u: Nat) -> Nat:
+  Bool.pick(Nat, Bool.and(Nat.is_eq(n, 1n), Bool.not(Nat.is_lt(u, 2n))), 2n, n)
+
+def tcp.uses.nd(+x: List<&2, U32>, +body: T.Bt, data: Bool) -> Nat:
+  match data:
+    case True{}:
+      tcp.uses(x, body)
+    case False{}:
+      tcp.uses.nd.of(tcp.uses(x, body), tcp.uses.unk(x, body))
+
 def tcp.param(p: T.BParam, +body: T.Bt, +datas: List<&2, List<&2, U32>>) -> T.BMode:
   match p:
     case T.BParam{m, +x, +ty}:
-      tcp.scrut.mode(tcp.mode.of(m, tcp.uses(x, body), tcp.dataish(ty, datas), tcp.in.tpl(x, body, False{}), Nat.is_eq(tcp.uses.unk(x, body), 0n)), tcp.scrut(x, body))
+      +dt = tcp.dataish(ty, datas)
+      tcp.scrut.mode(tcp.mode.of(m, tcp.uses.nd(x, body, dt), dt, tcp.in.tpl(x, body, False{}), Nat.is_eq(tcp.uses.unk(x, body), 0n)), tcp.scrut(x, body))
 
 def tcp.params(ps: List<&2, T.BParam>, +body: T.Bt, +datas: List<&2, List<&2, U32>>) -> List<&2, T.BMode>:
   match ps:
@@ -688,7 +707,8 @@ def tcp.qe0() -> QF.TqEnv:
   QF.TqEnv{Map.new(&2, QF.TqSig), Nil{}, Nil{}}
 
 # t read with the arguments of each parameter applied at its type's live
-# Pis as live (ty: the type an argument spine t is applied at, BtWild for
+# Pis as live, at its erased ones as dead (no unknown use for tcp.uses.nd:
+# `_∘₂_`'s x(x_19, y, …) at x's @-x @-y made x_19 y templates, 2026-10-30) (ty: the type an argument spine t is applied at, BtWild for
 # none or not known; qe: the signatures that open a type-valued def)
 def tcp.vres(+ps: List<&2, T.BParam>, t: T.Bt, ty: T.Bt, +qe: QF.TqEnv) -> T.Bt:
   match t ty:
@@ -698,6 +718,8 @@ def tcp.vres(+ps: List<&2, T.BParam>, t: T.Bt, ty: T.Bt, +qe: QF.TqEnv) -> T.Bt:
       T.BtArgs{tcp.vres(ps, a, T.BtWild{}, qe), tcp.vres(ps, rest, tcp.open(cod, qe), qe)}
     case T.BtArgs{T.BtDead{T.BtDead{a}}, rest} T.BtPi{T.BmCopy{}, y, d, dom, cod}:
       T.BtArgs{tcp.vres(ps, a, T.BtWild{}, qe), tcp.vres(ps, rest, tcp.open(cod, qe), qe)}
+    case T.BtArgs{T.BtDead{T.BtDead{a}}, rest} T.BtPi{T.BmErased{}, y, d, dom, cod}:
+      T.BtArgs{T.BtDead{tcp.vres(ps, a, T.BtWild{}, qe)}, tcp.vres(ps, rest, tcp.open(cod, qe), qe)}
     case T.BtArgs{a, rest} T.BtPi{m, y, d, dom, cod}:
       T.BtArgs{tcp.vres(ps, a, T.BtWild{}, qe), tcp.vres(ps, rest, tcp.open(cod, qe), qe)}
     case T.BtArgs{a, rest} _:
@@ -1345,11 +1367,26 @@ def tcp.r.one(r: TcpR, k: Nat) -> TcpR:
     case TcpR{x, c}:
       TcpR{tcp.r.mk1(k, x), c}
 
-def tcp.lam.raise(hit: Bool, +m: T.BMode, +x: List<&2, U32>, r: TcpR) -> TcpR:
-  match hit m r:
-    case True{} T.BmLive{} TcpR{b, c}:
+# Strict (first try): only a lambda whose body uses its binder twice, an
+# erased one too (Bend prints no - on a lambda, so it is affine there:
+# Subst.Equality's identity, `section => x_b => to(dot(e, x_b), x_b,
+# section(x_b))`, an eta-expansion's x_b kept erased by tcp.lam.keep).
+# The uses at a variable's arguments count (tcp.uses.unk): Bend found the
+# double use, and `dot(e, x_b)`, `section(x_b)` are two of x_b's three.
+# Loose (when strict raises nothing and no parameter is raised): every live
+# lambda named v, as before.  Raising all of them put + on an unrelated
+# `x_b => RightIdentity(..)` over a Type, and the def dropped for 'expected
+# : Data observed : Type' (2026-10-30).
+def tcp.lam.hit(+x: List<&2, U32>, +v: List<&2, U32>, +strict: Bool, +b: T.Bt) -> Bool:
+  Bool.and(S.eq(x, v), Bool.or(Bool.not(strict), Bool.not(Nat.is_lt(tcp.uses.unk(x, b), 2n))))
+
+def tcp.lam.raise(hit: Bool, strict: Bool, +m: T.BMode, +x: List<&2, U32>, r: TcpR) -> TcpR:
+  match hit strict m r:
+    case True{} _ T.BmLive{} TcpR{b, c}:
       TcpR{T.BtLam{T.BmCopy{}, x, b}, True{}}
-    case _ m TcpR{b, c}:
+    case True{} True{} T.BmErased{} TcpR{b, c}:
+      TcpR{T.BtLam{T.BmCopy{}, x, b}, True{}}
+    case _ _ m TcpR{b, c}:
       TcpR{T.BtLam{m, x, b}, c}
 
 def tcp.pv.raise(hit: Bool, +m: T.BMode, +x: List<&2, U32>) -> TcpR:
@@ -1379,6 +1416,11 @@ def tcp.raise.rw(e: T.Bt, p: T.Bt, r: TcpR) -> TcpR:
     case TcpR{b, ch}:
       TcpR{T.BtRw{e, p, b}, ch}
 
+def tcp.raise.ann(r: TcpR, ty: T.Bt) -> TcpR:
+  match r:
+    case TcpR{a, ch}:
+      TcpR{T.BtAnn{a, ty}, ch}
+
 def tcp.raise.succ(r: TcpR) -> TcpR:
   match r:
     case TcpR{a, ch}:
@@ -1386,30 +1428,32 @@ def tcp.raise.succ(r: TcpR) -> TcpR:
 
 # the lambdas and pattern variables named v in t given + (a Nat pattern's
 # too: compare's `1n+n_1`, once with_484 takes n live)
-def tcp.raise.t(t: T.Bt, +v: List<&2, U32>) -> TcpR:
+def tcp.raise.t(t: T.Bt, +v: List<&2, U32>, +strict: Bool) -> TcpR:
   match t:
     case T.BtSucc{a}:
-      tcp.raise.succ(tcp.raise.t(a, v))
+      tcp.raise.succ(tcp.raise.t(a, v, strict))
+    case T.BtAnn{a, ty}:
+      tcp.raise.ann(tcp.raise.t(a, v, strict), ty)
     case T.BtRw{e, p, b}:
-      tcp.raise.rw(e, p, tcp.raise.t(b, v))
-    case T.BtLam{+m, +x, b}:
-      tcp.lam.raise(S.eq(x, v), m, x, tcp.raise.t(b, v))
+      tcp.raise.rw(e, p, tcp.raise.t(b, v, strict))
+    case T.BtLam{+m, +x, +b}:
+      tcp.lam.raise(tcp.lam.hit(x, v, strict, b), strict, m, x, tcp.raise.t(b, v, strict))
     case T.BtPv{+m, +x}:
       tcp.pv.raise(S.eq(x, v), m, x)
     case T.BtApp{f, a}:
-      tcp.r.app(tcp.raise.t(f, v), tcp.raise.t(a, v), 0n)
+      tcp.r.app(tcp.raise.t(f, v, strict), tcp.raise.t(a, v, strict), 0n)
     case T.BtArgs{a, rest}:
-      tcp.r.app(tcp.raise.t(a, v), tcp.raise.t(rest, v), 1n)
+      tcp.r.app(tcp.raise.t(a, v, strict), tcp.raise.t(rest, v, strict), 1n)
     case T.BtExpr{e}:
-      tcp.r.one(tcp.raise.t(e, v), 0n)
+      tcp.r.one(tcp.raise.t(e, v, strict), 0n)
     case T.BtDead{e}:
-      tcp.r.one(tcp.raise.t(e, v), 1n)
+      tcp.r.one(tcp.raise.t(e, v, strict), 1n)
     case T.BtCon{c, a}:
-      tcp.raise.con(c, tcp.raise.t(a, v))
+      tcp.raise.con(c, tcp.raise.t(a, v, strict))
     case T.BtMatch{xs, cs}:
-      tcp.raise.match(xs, tcp.raise.t(cs, v))
+      tcp.raise.match(xs, tcp.raise.t(cs, v, strict))
     case T.BtCase{p, b, rest}:
-      tcp.raise.case(tcp.raise.t(p, v), tcp.raise.t(b, v), tcp.raise.t(rest, v))
+      tcp.raise.case(tcp.raise.t(p, v, strict), tcp.raise.t(b, v, strict), tcp.raise.t(rest, v, strict))
     case t:
       TcpR{t, False{}}
 
@@ -1453,6 +1497,22 @@ def tcp.raise.ps(ps: List<&2, T.BParam>, +v: List<&2, U32>, +copy: Bool) -> TcpP
     case +p <> t:
       tcp.p.step(tcp.p.raise(S.eq(tcp.p.name(p), v), copy, p), tcp.raise.ps(t, v, copy))
 
+# the body's raise: strict first; loose only when strict raised nothing and
+# no parameter was raised (pc)
+def tcp.raise.body(r: TcpR, +pc: Bool, +t: T.Bt, +v: List<&2, U32>) -> TcpR:
+  match r pc:
+    case TcpR{b, True{}} _:
+      TcpR{b, True{}}
+    case TcpR{b, False{}} True{}:
+      TcpR{b, False{}}
+    case TcpR{b, False{}} False{}:
+      tcp.raise.t(t, v, False{})
+
+def tcp.p.changed(r: TcpP) -> Bool:
+  match r:
+    case TcpP{ps, c}:
+      c
+
 def tcp.raise.def(n: List<&2, U32>, r: TcpP, ret: T.Bt, b: TcpR, doc: List<&2, List<&2, U32>>) -> Maybe<&2, T.BItem>:
   match r b:
     case TcpP{ps, False{}} TcpR{body, False{}}:
@@ -1460,12 +1520,15 @@ def tcp.raise.def(n: List<&2, U32>, r: TcpP, ret: T.Bt, b: TcpR, doc: List<&2, L
     case TcpP{ps, c1} TcpR{body, c2}:
       Some{tcp.kinds(T.BiDef{n, ps, ret, body, doc})}
 
+def tcp.raise.def2(n: List<&2, U32>, +r: TcpP, ret: T.Bt, +body: T.Bt, +v: List<&2, U32>, doc: List<&2, List<&2, U32>>) -> Maybe<&2, T.BItem>:
+  tcp.raise.def(n, r, ret, tcp.raise.body(tcp.raise.t(body, v, True{}), tcp.p.changed(r), body, v), doc)
+
 # The item with binder v raised (copy: + for a use twice, else live for
 # an erased one used live), or None when nothing could be raised.
 def tcp.raise(it: T.BItem, +v: List<&2, U32>, +copy: Bool) -> Maybe<&2, T.BItem>:
   match it copy:
     case T.BiDef{n, ps, ret, body, doc} True{}:
-      tcp.raise.def(n, tcp.raise.ps(ps, v, True{}), ret, tcp.raise.t(body, v), doc)
+      tcp.raise.def2(n, tcp.raise.ps(ps, v, True{}), ret, body, v, doc)
     case T.BiDef{n, ps, ret, body, doc} False{}:
       tcp.raise.def(n, tcp.raise.ps(ps, v, False{}), ret, TcpR{body, False{}}, doc)
     case _ _:
