@@ -396,9 +396,15 @@ def tsx.next.got(x: S.Rd & Maybe<&2, List<&2, U32>>, s: TsxSt) -> IO(TsxNx):
   (r, m) = x
   IO.pure(TsxNx, tsx.next.chk(r, tsx.feed(s, m)))
 
+# A line longer than A2B_MAXDEF bytes (16 MB by default; 0: no cap) is
+# skipped unread and read as `(a2b-skipped)`, no definition (2026-10-29):
+# no module is left out for its size, only such a definition, whose
+# translation would pass any line cap (A2B_MAXLINE) and whose bytes alone
+# would take 20 times their size.
 def tsx.next.line(r: S.Rd, s: TsxSt) -> IO(TsxNx):
   do IO<TsxNx>:
-    x : S.Rd & Maybe<&2, List<&2, U32>> <- S.Rd.next(r)
+    +cap : Nat <- S.env.nat("A2B_MAXDEF", 16000000n)
+    x : S.Rd & Maybe<&2, List<&2, U32>> <- S.Rd.next.cap(r, cap)
     tsx.next.got(x, s)
 
 # Lines are fed until an expression is ready or the file ends.  The fuel

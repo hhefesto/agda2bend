@@ -673,6 +673,107 @@ def Rd.next(r: Rd) -> IO(Rd & Maybe<&2, List<&2, U32>>):
     case Rd{f, sep, buf, eof}:
       Rd.go(4096n, Rq{f, sep, buf, eof, True{}, None{}})
 
+# A capped read (2026-10-29) --------------------------------------------------
+#
+# Rd.next with a cap: a field longer than cap bytes (0: no cap) is not kept.
+# Its bytes are dropped as they come, a chunk at a time up to its
+# separator, and `(a2b-skipped)` is handed out in its place.  agda-export
+# writes a definition a line, and a line of hundreds of MB
+# (Categories.Category.CartesianClosed's 211 MB, Pseudofunctor.Composition's
+# 520 MB) held as a byte list takes some 20 bytes a byte, and appended a
+# chunk at a time, time quadratic in its length.
+
+# skipping a field: the bytes after its separator once it is found
+type Rs is Type:
+  Rs{f: File, buf: List<&2, U32>, eof: Bool, more: Bool}
+
+def Rd.skip.filled(r: File & Result<&1, &1, U32 & String, List<&2, U32>>) -> IO(Rs):
+  (f, x) = r
+  do IO<Rs>:
+    +xs : List<&2, U32> <- IO.pass(List<&2, U32>, x)
+    return Rs{f, xs, Nat.is_eq(List.length(&2, U32, xs), 0n), True{}}
+
+def Rd.skip.cut(f: File, eof: Bool, fl: Ns.Field) -> IO(Rs):
+  match eof fl:
+    case _ Ns.Field{x, rest, True{}}:
+      IO.pure(Rs, Rs{f, rest, eof, False{}})
+    case True{} Ns.Field{x, rest, False{}}:
+      IO.pure(Rs, Rs{f, Nil{}, True{}, False{}})
+    case False{} Ns.Field{x, rest, False{}}:
+      do IO<Rs>:
+        r : File & Result<&1, &1, U32 & String, List<&2, U32>> <- File.read_bytes(f, chunk())
+        Rd.skip.filled(r)
+
+def Rd.skip.try(+sep: U32, s: Rs) -> IO(Rs):
+  match s:
+    case Rs{f, +buf, eof, m}:
+      Rd.skip.cut(f, eof, cut(buf, sep))
+
+def Rd.skip.go(fuel: Nat, +sep: U32, s: Rs) -> IO(Rs):
+  match fuel s:
+    case 1n+p Rs{f, buf, eof, True{}}:
+      IO.bind(Rs, Rs, Rd.skip.try(sep, Rs{f, buf, eof, True{}}), Rd.skip.go(p, sep))
+    case _ s:
+      IO.pure(Rs, s)
+
+def Rd.skip.end(+sep: U32, s: Rs) -> IO(Rq):
+  match s:
+    case Rs{f, buf, eof, m}:
+      IO.pure(Rq, Rq{f, sep, buf, eof, False{}, Some{b("(a2b-skipped)")}})
+
+# the field's first bytes, ASCII only, for the log
+def Rd.skip.head(+x: List<&2, U32>) -> String:
+  str(List.filter(~U32, ~(c => Bool.and(U32.is_ne(c, 10), U32.is_lt(c, 128))), List.take(&2, U32, x, 160n)))
+
+def Rd.skip(f: File, +sep: U32, +cap: Nat, +x: List<&2, U32>) -> IO(Rq):
+  do IO<Rq>:
+    IO.print_err("[reader] a field of more than " ++ Nat.show(cap) ++ " bytes skipped: " ++ Rd.skip.head(x))
+    s : Rs <- Rd.skip.go(1000000n, sep, Rs{f, Nil{}, False{}, True{}})
+    Rd.skip.end(sep, s)
+
+def Rd.more(f: File, +sep: U32, +cap: Nat, +x: List<&2, U32>, over: Bool) -> IO(Rq):
+  match over:
+    case True{}:
+      Rd.skip(f, sep, cap, x)
+    case False{}:
+      do IO<Rq>:
+        r : File & Result<&1, &1, U32 & String, List<&2, U32>> <- File.read_bytes(f, chunk())
+        Rd.filled(sep, x, r)
+
+def Rd.cut.cap(f: File, +sep: U32, +cap: Nat, eof: Bool, fl: Ns.Field) -> IO(Rq):
+  match eof fl:
+    case _ Ns.Field{x, rest, True{}}:
+      IO.pure(Rq, Rq{f, sep, rest, eof, False{}, Some{x}})
+    case True{} Ns.Field{Nil{}, rest, False{}}:
+      IO.pure(Rq, Rq{f, sep, Nil{}, True{}, False{}, None{}})
+    case True{} Ns.Field{x, rest, False{}}:
+      Rd.last(f, sep, U32.is_eq(sep, 10), x)
+    case False{} Ns.Field{+x, rest, False{}}:
+      Rd.more(f, sep, cap, x, Bool.and(Bool.not(Nat.is_eq(cap, 0n)), Nat.is_lt(cap, List.length(&2, U32, x))))
+
+def Rd.try.cap(+cap: Nat, q: Rq) -> IO(Rq):
+  match q:
+    case Rq{f, +sep, +buf, eof, m, g}:
+      Rd.cut.cap(f, sep, cap, eof, cut(buf, sep))
+
+def Rd.go.cap(fuel: Nat, +cap: Nat, q: Rq) -> IO(Rd & Maybe<&2, List<&2, U32>>):
+  match fuel q:
+    case 1n+p Rq{f, sep, buf, eof, True{}, g}:
+      IO.bind(Rq, Rd & Maybe<&2, List<&2, U32>>, Rd.try.cap(cap, Rq{f, sep, buf, eof, True{}, g}), Rd.go.cap(p, cap))
+    case _ Rq{f, sep, buf, eof, False{}, g}:
+      IO.pure(Rd & Maybe<&2, List<&2, U32>>, (Rd{f, sep, buf, eof}, g))
+    case 0n Rq{f, sep, buf, eof, True{}, g}:
+      do IO<Rd & Maybe<&2, List<&2, U32>>>:
+        File.close(f)
+        IO.die(Rd & Maybe<&2, List<&2, U32>>, 1, "sys: a field past 4 GiB")
+
+# the next field of at most cap bytes, `(a2b-skipped)` for a longer one, or
+# None at the end of the stream
+def Rd.next.cap(r: Rd, +cap: Nat) -> IO(Rd & Maybe<&2, List<&2, U32>>):
+  match r:
+    case Rd{f, sep, buf, eof}:
+      Rd.go.cap(4096n, cap, Rq{f, sep, buf, eof, True{}, None{}})
+
 # Background processes and the PATH -----------------------------------------
 #
 # `background(dir, env, log, append, prog, args)` starts PROG in the
