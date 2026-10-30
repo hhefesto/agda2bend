@@ -2139,6 +2139,41 @@ def act.modes.u(fuel: Nat, t: A.Ag, +tylevel: Bool, +tab: Map<&2, ActSym>, +unf:
     case _ _:
       Nil{}
 
+# A function's modes past its arity are its return type's Pis, which the
+# header writes as a term (act.params.s's renv, no "sig!"): act.t gives a
+# hidden binder there act.mode.v's live mode (a type family's, act.mode's),
+# and Bend opens a type-valued end (Arr, Symmetric, Congruent₁) to its own
+# body, written the same way.  act.modes.u read them all by act.mode
+# (hidden erased), so a call kept those arguments dead where Bend counts
+# them live: MinOp's with-2930 passes `x ⊓ y` (minOp in it) at Arr's {x}
+# to IsPreorder.reflexive and again at MinOperator's x≤y⇒x⊓y≈x field, so
+# Copy saw one use of minOp, left it live, and Bend refused it ('minOp
+# consumed more than once'), with x y erased where both are live
+# (2026-10-30; 28 dependents in the stdlib run).  k: the Pis still the
+# header's (by act.mode).
+def act.modes.k(fuel: Nat, k: Nat, t: A.Ag, +tab: Map<&2, ActSym>, +unf: Map<&2, ActCopy>) -> List<&2, ActM>:
+  match fuel k t:
+    case f k A.AgEl{s, x}:
+      act.modes.k(f, k, x, tab, unf)
+    case f 1n+j A.AgPi{i, x, +a, +d, b}:
+      act.mode(i, a, act.opaque.dep(d, a, tab, unf)) <> act.modes.k(f, j, b, tab, unf)
+    case f 0n A.AgPi{+i, x, +a, +d, +b}:
+      Bool.pick(ActM, act.ends.sort(b), act.mode(i, a, act.opaque.dep(d, a, tab, unf)), act.mode.v(i, a, act.opaque.dep(d, a, tab, unf))) <> act.modes.k(f, 0n, b, tab, unf)
+    case f k A.AgStored{x}:
+      act.modes.k(f, k, x, tab, unf)
+    case 1n+f k A.AgDef{+q, +es}:
+      act.modes.k(f, k, act.unfold.of(act.unf.got(Map.get(ActCopy, ActCopy{0n, A.AgNone{}}, unf, act.key(q))), es), tab, unf)
+    case _ _ _:
+      Nil{}
+
+# a function's entry (not a copy, not type-valued) with act.modes.k's modes
+def act.sym.vms(s: ActSym, tl: Bool, +ty: A.Ag, +tab: Map<&2, ActSym>, +unf: Map<&2, ActCopy>) -> ActSym:
+  match s tl:
+    case ActSym{mo, nm, A.AkFunction{}, ms, +ar, b, fs, c, None{}} False{}:
+      ActSym{mo, nm, A.AkFunction{}, act.modes.k(8n, ar, ty, tab, unf), ar, b, fs, c, None{}}
+    case s tl:
+      s
+
 # Whether a definition is type-valued (every Pi erased): its type ends in a
 # sort once the type-valued definitions it ends in are opened (`_⊓_ : PT A B
 # → PT A B → PT A B` is a predicate transformer: its P and Q are used only
@@ -2158,7 +2193,7 @@ def act.tylevel(d: A.AgD, +ty: A.Ag, +unf: Map<&2, ActCopy>) -> Bool:
 def act.sym.of(+mo: List<&2, U32>, +nm: List<&2, U32>, d: A.AgDecl, +tab: Map<&2, ActSym>, +unf: Map<&2, ActCopy>) -> ActSym:
   match d:
     case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, +fl, lang, +ty, +dd}:
-      act.sym.d(dd, Bool.or(act.flag(A.AkCopy{}, fl), act.inl.d(act.ends.sort(ty), dd)), act.ends.sort(ty), act.tylevel(dd, ty, unf), mo, nm, act.modes.u(8n, ty, act.tylevel(dd, ty, unf), tab, unf), act.role(act.qs(q), act.ends.level(ty)), act.ixs.heads(dd, ty))
+      act.sym.vms(act.sym.d(dd, Bool.or(act.flag(A.AkCopy{}, fl), act.inl.d(act.ends.sort(ty), dd)), act.ends.sort(ty), act.tylevel(dd, ty, unf), mo, nm, act.modes.u(8n, ty, act.tylevel(dd, ty, unf), tab, unf), act.role(act.qs(q), act.ends.level(ty)), act.ixs.heads(dd, ty)), act.tylevel(dd, ty, unf), ty, tab, unf)
 
 # seen: the names this header has given so far (a non-dependent Pi's
 # parameter is in no context, but its name is taken)
