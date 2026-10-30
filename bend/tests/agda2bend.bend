@@ -345,6 +345,12 @@ def gt.sub() -> T.BItem:
 def gt.sub2() -> T.BItem:
   gt.subt(app("Rel2", [v("x"), v("y")]))
 
+# def subc(-A: Type, -R: A -> A -> Type, -x: A, -y: A, h: R(x, y) -> R(x, y) -> Nat,
+# xRy: R(x, y)) -> Nat: h(xRy, xRy): xRy used twice is copied (+), not a template
+def gt.subc() -> T.BItem:
+  T.BiDef{S.b("subc"), [T.BParam{T.BmErased{}, S.b("A"), T.BtType{}}, T.BParam{T.BmErased{}, S.b("R"), pr.rel("A")}, T.BParam{T.BmErased{}, S.b("x"), v("A")}, T.BParam{T.BmErased{}, S.b("y"), v("A")}, T.BParam{T.BmLive{}, S.b("h"), gt.arr(app("R", [v("x"), v("y")]), gt.arr(app("R", [v("x"), v("y")]), v("Nat")))}, T.BParam{T.BmLive{}, S.b("xRy"), app("R", [v("x"), v("y")])}],
+    v("Nat"), T.BtExpr{app("h", [v("xRy"), v("xRy")])}, Nil{}}
+
 # def caller(y: Nat) -> Nat: Other.anon.f(y), another module's template applied
 def gt.tplcall() -> T.BItem:
   T.BiDef{S.b("caller"), [T.BParam{T.BmLive{}, S.b("y"), v("Nat")}], v("Nat"), T.BtExpr{app("Other.anon.f", [v("y")])}, Nil{}}
@@ -524,6 +530,7 @@ def gate.laws() -> IO(Unit):
     IO.print(verdict("a field is no use of the def it is named like", Bool.not(G.tgt.mem(S.b("to"), T.tba.item.refs(ord.box())))))
     IO.print(verdict("a parameter typed by a family parameter applied keeps its known count: no template", Bool.not(S.infix(gt.pr(Q.tcp.finish(gt.sub(), Q.tcp.decide(gt.sub(), Nil{}, Q.tcp.qe0()))), S.b("~")))))
     IO.print(verdict("one typed by a def applied is a template", S.infix(gt.pr(Q.tcp.finish(gt.sub2(), Q.tcp.decide(gt.sub2(), Nil{}, Q.tcp.qe0()))), S.b("~xRy"))))
+    IO.print(verdict("a family-typed parameter used twice is copied, its points not raised", S.infix(gt.pr(Q.tcp.finish(gt.subc(), Q.tcp.decide(gt.subc(), Nil{}, Q.tcp.qe0()))), S.b("+xRy: R(x, y)"))))
     IO.print(verdict("another module's template failing at its instance (f~0) blames the item that calls it", S.eq(G.tgt.blame(S.b("anon.f~0"), [gt.use(), gt.tplcall()], 0n, 47n), S.b("caller"))))
     IO.print(verdict("this module's template failing keeps the marked line", S.eq(G.tgt.blame(S.b("use~0"), [gt.use(), gt.tplcall()], 0n, 3n), S.b("use"))))
     IO.print(verdict("Order writes a type above the def that names it", S.eq(ord.first(O.tor.names(O.tor.order([ord.to(), ord.box()]))), S.b("anon.Box"))))
