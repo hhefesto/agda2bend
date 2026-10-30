@@ -917,10 +917,37 @@ def act.sig.with(w: Maybe<&2, A.AgQ>, p: A.AgProj, env: ActEnv) -> ActEnv:
     case None{}:
       act.sig.when(p, env)
 
-def act.sig.on(+env: ActEnv) -> Bool:
+# A lambda inside a header's type (a family argument: Surjective's `∃ λ x →
+# ∀ {z} → z ≈ x → f z ≈ y` at Sigma's B) turns "sig!" off (ActCopy 1n):
+# its Pis are read as terms (act.mode.v, hidden live), as the same family is
+# where Bend opens the definition it comes from.  Read as signature Pis,
+# Function.Construct.Symmetry's f∘f⁻¹≡id had `x_12 => @-z_13:A -> …` in its
+# header against `@z:A` in its body ('expected : Sigma_<…, @-z_13 …>
+# observed : Sigma_<…, @z …>'; 2026-10-30).
+def act.sig.off(env: ActEnv) -> ActEnv:
+  match env:
+    case ActEnv{mod, tab, al, unf}:
+      ActEnv{mod, tab, al, Map.set(&2, ActCopy, unf, "sig!", ActCopy{1n, A.AgNone{}})}
+
+def act.sig.on.raw(+env: ActEnv) -> Bool:
   match env:
     case ActEnv{mod, tab, al, +unf}:
       act.unf.has.got(Map.has(&2, ActCopy, unf, "sig!"))
+
+def act.sig.val(c: ActCopy) -> Bool:
+  match c:
+    case ActCopy{0n, b}:
+      True{}
+    case _:
+      False{}
+
+def act.sig.lam(+env: ActEnv) -> ActEnv:
+  Bool.pick(ActEnv, act.sig.on.raw(env), act.sig.off(env), env)
+
+def act.sig.on(+env: ActEnv) -> Bool:
+  match env:
+    case ActEnv{mod, tab, al, +unf}:
+      Bool.and(act.unf.has.got(Map.has(&2, ActCopy, unf, "sig!")), act.sig.val(act.unf.got(Map.get(ActCopy, ActCopy{1n, A.AgNone{}}, unf, "sig!"))))
 
 def act.kind.type(s: ActSym) -> Bool:
   match s:
@@ -1607,7 +1634,7 @@ def act.t(a: A.Ag, +ctx: List<&2, T.Bt>, +env: ActEnv) -> T.Bt:
       act.app.con(act.sym(env, q), env, act.t(es, ctx, env))
     case A.AgLam{i, +x, d, b}:
       +nm = act.fresh(x, ctx)
-      T.BtLam{T.BmLive{}, nm, act.t(b, act.bind(d, T.BtVar{nm}, ctx), env)}
+      T.BtLam{T.BmLive{}, nm, act.t(b, act.bind(d, T.BtVar{nm}, ctx), act.sig.lam(env))}
     case A.AgPi{+i, +x, +a2, +d, +b}:
       +lv = act.ty.level(a2)
       +nm = act.fresh(x, ctx)
