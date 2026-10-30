@@ -332,14 +332,55 @@ def tgt.names(its: List<&2, T.BItem>) -> List<&2, List<&2, U32>>:
     case it <> t:
       tgt.name(it) <> tgt.names(t)
 
+# A template of another module failing at its instance: Bend's Location is
+# the instance, `f~0`, and the line it marks is that module's, not this
+# one's.  The first kept item that calls f (under any alias) is blamed;
+# only when none does, the marked line as before.  Data.Nat.Properties had
+# all 502 items dropped "unlocated" (418, and 84 dependents) for its one
+# *-distribˡ-+, which applies Algebra.Consequences.Propositional's
+# comm∧distrʳ⇒distrˡ, whose eta-expansion passes its lambda's variables to
+# Setoid's template points: "Location: anon.comm_and_distr_r_Arr_distr_l~0"
+# (2026-10-30).  A template of this module (f kept) keeps its line.
+def tgt.untilde(xs: List<&2, U32>) -> List<&2, U32>:
+  match xs:
+    case Nil{}:
+      Nil{}
+    case +h <> t:
+      Bool.pick(List<&2, U32>, U32.is_eq(h, 126), Nil{}, h <> tgt.untilde(t))
+
+def tgt.calls.base(+b: List<&2, U32>, rs: List<&2, List<&2, U32>>) -> Bool:
+  match rs:
+    case Nil{}:
+      False{}
+    case +r <> t:
+      Bool.or(Bool.or(S.eq(r, b), S.suffix(r, 46 <> b)), tgt.calls.base(b, t))
+
+def tgt.first.caller(+b: List<&2, U32>, its: List<&2, T.BItem>) -> List<&2, U32>:
+  match its:
+    case Nil{}:
+      Nil{}
+    case +it <> t:
+      Bool.pick(List<&2, U32>, tgt.calls.base(b, tgt.refs(it)), tgt.name(it), tgt.first.caller(b, t))
+
+def tgt.blame.or(+c: List<&2, U32>, +its: List<&2, T.BItem>, +start: Nat, +l: Nat) -> List<&2, U32>:
+  Bool.pick(List<&2, U32>, S.eq(c, Nil{}), tgt.at.line(its, start, l), c)
+
+def tgt.blame.tpl(other: Bool, +b: List<&2, U32>, +its: List<&2, T.BItem>, +start: Nat, +l: Nat) -> List<&2, U32>:
+  match other:
+    case True{}:
+      tgt.blame.or(tgt.first.caller(b, its), its, start, l)
+    case False{}:
+      tgt.at.line(its, start, l)
+
 # the name to drop: the one the error names when it is a kept item, else
-# the item at the marked line
+# the item at the marked line (a caller, for another module's template)
 def tgt.blame.of(named: Bool, +n: List<&2, U32>, +its: List<&2, T.BItem>, +start: Nat, +l: Nat) -> List<&2, U32>:
   match named:
     case True{}:
       n
     case False{}:
-      tgt.at.line(its, start, l)
+      +b = tgt.untilde(n)
+      tgt.blame.tpl(Bool.and(Bool.and(S.infix(n, S.b("~")), Bool.not(S.eq(b, Nil{}))), Bool.not(tgt.mem(b, tgt.names(its)))), b, its, start, l)
 
 def tgt.blame(+n: List<&2, U32>, +its: List<&2, T.BItem>, +start: Nat, +l: Nat) -> List<&2, U32>:
   tgt.blame.of(tgt.mem(n, tgt.names(its)), n, its, start, l)

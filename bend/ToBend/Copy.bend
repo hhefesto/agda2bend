@@ -623,18 +623,43 @@ def tcp.uses.nd(+x: List<&2, U32>, +body: T.Bt, data: Bool) -> Nat:
     case False{}:
       tcp.uses.nd.of(tcp.uses(x, body), tcp.uses.unk(x, body))
 
-def tcp.param(p: T.BParam, +body: T.Bt, +datas: List<&2, List<&2, U32>>) -> T.BMode:
+# A parameter whose type is another parameter applied (`xRy : R(x, y)`,
+# R a parameter) keeps the known count too: the gate declares that family
+# Data where it is passed one and copies the binder (29da3f1), where a
+# template would raise the points its type mentions (x, y: tcp.close), and
+# every caller passes those at run time.  Relation.Binary.Reasoning.Syntax's
+# begin-subrelation's x, y and xRy had become templates; Data.Nat.Properties'
+# equational proofs pass them a variable, and 418 of its 502 items dropped,
+# where b9f9a87 checked 232 (2026-10-30).
+def tcp.fam.app(t: T.Bt, +ns: List<&2, List<&2, U32>>) -> Bool:
+  match t:
+    case T.BtApp{T.BtVar{+h}, a}:
+      tcp.mem(h, ns)
+    case T.BtApp{f, a}:
+      tcp.fam.app(f, ns)
+    case _:
+      False{}
+
+# the names of a def's parameters
+def tcp.pnames(ps: List<&2, T.BParam>) -> List<&2, List<&2, U32>>:
+  match ps:
+    case Nil{}:
+      Nil{}
+    case T.BParam{m, x, ty} <> t:
+      x <> tcp.pnames(t)
+
+def tcp.param(p: T.BParam, +body: T.Bt, +datas: List<&2, List<&2, U32>>, ns: List<&2, List<&2, U32>>) -> T.BMode:
   match p:
     case T.BParam{m, +x, +ty}:
       +dt = tcp.dataish(ty, datas)
-      tcp.scrut.mode(tcp.mode.of(m, tcp.uses.nd(x, body, dt), dt, tcp.in.tpl(x, body, False{}), Nat.is_eq(tcp.uses.unk(x, body), 0n)), tcp.scrut(x, body))
+      tcp.scrut.mode(tcp.mode.of(m, tcp.uses.nd(x, body, Bool.or(dt, tcp.fam.app(ty, ns))), dt, tcp.in.tpl(x, body, False{}), Nat.is_eq(tcp.uses.unk(x, body), 0n)), tcp.scrut(x, body))
 
-def tcp.params(ps: List<&2, T.BParam>, +body: T.Bt, +datas: List<&2, List<&2, U32>>) -> List<&2, T.BMode>:
+def tcp.params(ps: List<&2, T.BParam>, +body: T.Bt, +datas: List<&2, List<&2, U32>>, +ns: List<&2, List<&2, U32>>) -> List<&2, T.BMode>:
   match ps:
     case Nil{}:
       Nil{}
     case +p <> t:
-      tcp.param(p, body, datas) <> tcp.params(t, body, datas)
+      tcp.param(p, body, datas, ns) <> tcp.params(t, body, datas, ns)
 
 # Templates go first, so a parameter a template's type mentions must be a
 # template too (`~x: A` cannot come before A otherwise): the names the
@@ -777,7 +802,7 @@ def tcp.vres(+ps: List<&2, T.BParam>, t: T.Bt, ty: T.Bt, +qe: QF.TqEnv) -> T.Bt:
 def tcp.decide(it: T.BItem, +datas: List<&2, List<&2, U32>>, +qe: QF.TqEnv) -> List<&2, T.BMode>:
   match it:
     case T.BiDef{n, +ps, +ret, +body, doc}:
-      List.append(&2, T.BMode, tcp.close(List.length(&2, T.BParam, ps), ps, tcp.params(ps, tcp.vres(ps, body, T.BtWild{}, qe), List.append(&2, List<&2, U32>, tcp.ty.params(ps), datas))), tcp.ret.ms(body, ret))
+      List.append(&2, T.BMode, tcp.close(List.length(&2, T.BParam, ps), ps, tcp.params(ps, tcp.vres(ps, body, T.BtWild{}, qe), List.append(&2, List<&2, U32>, tcp.ty.params(ps), datas), tcp.pnames(ps))), tcp.ret.ms(body, ret))
     case _:
       Nil{}
 
