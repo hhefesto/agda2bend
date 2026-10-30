@@ -7392,6 +7392,33 @@ def act.nu.gl.ss(g: NuGl) -> List<&2, NuStm>:
     case NuGl{ss, g}:
       ss
 
+def act.nu.eqvs(es: List<&2, NuEq>) -> List<&2, List<&2, U32>>:
+  match es:
+    case NuEq{ty, a, b, T.BtVar{x}} <> t:
+      x <> act.nu.eqvs(t)
+    case e <> t:
+      act.nu.eqvs(t)
+    case Nil{}:
+      Nil{}
+
+def act.nu.any.occ(xs: List<&2, List<&2, U32>>, +t: T.Bt) -> Bool:
+  match xs:
+    case x <> rest:
+      Bool.or(act.occurs(x, t), act.nu.any.occ(rest, t))
+    case Nil{}:
+      False{}
+
+# A goal that mentions an equation field (the split parameter's
+# constructor term in it, `toℕ (inject₁ (zero {n} e))`) is left to Bend's
+# conversion: a rewrite's motive would abstract a variable that field's
+# type mentions.
+def act.nu.rw.fl(on: Bool, fl: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  match on:
+    case True{}:
+      fl
+    case False{}:
+      Nil{}
+
 def act.nu.clause.of(cl: List<&2, NuEq>, +sols: List<&2, NuSol>, +st: NuSt, body: A.Ag, +n: Nat, +env: ActEnv, +g0: T.Bt) -> T.Bt:
   match cl:
     case e <> t:
@@ -7399,7 +7426,7 @@ def act.nu.clause.of(cl: List<&2, NuEq>, +sols: List<&2, NuSol>, +st: NuSt, body
     case Nil{}:
       +fl = act.nu.st.fl(st)
       +bd = act.nu.vcasts(act.nu.st.vts(st), fl, sols, NuBd{Nil{}, act.nu.st.bs(st)})
-      +gl = act.nu.rws(fl, sols, NuGl{Nil{}, g0})
+      +gl = act.nu.rws(act.nu.rw.fl(Bool.not(act.nu.any.occ(act.nu.eqvs(act.nu.st.eqs(st)), g0)), fl), sols, NuGl{Nil{}, g0})
       act.nu.wrap(List.append(&2, NuStm, act.nu.bd.ss(bd), act.nu.gl.ss(gl)), act.abs.body(None{}, body, act.ctx.of(n, act.nu.bd.bs(bd)), env, act.nu.gl.g(gl)))
 
 # a clause's case body: its equations solved, the binders cast, the goal
