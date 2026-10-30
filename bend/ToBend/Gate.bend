@@ -647,6 +647,34 @@ def tgt.loop(fuel: Nat, +bend: String, +secs: U32, +path: String, +head: List<&2
     case _ r:
       IO.pure(TgtRun, r)
 
+# Past the repairs' fuel, rounds that only drop (2026-10-29), so the file
+# written checks: Data.Fin.Base spent its 220 checks with fold′ still
+# failing (a repair and its callers' re-reading by Qfix undoing each
+# other), and its file, written as it stood, failed in every module that
+# imports it ("unlocated": Data.List.Base 0 of 121 items).
+def tgt.round.drop.of(v: TgtV, +head: List<&2, List<&2, U32>>, +ims: List<&2, T.BImport>, +checks: Nat, st: TgtSt) -> TgtRun:
+  match v st:
+    case TgPass{} st:
+      TgtRun{st, True{}, checks}
+    case TgFail{+n, +l, +w, sp} TgtSt{+its, ds}:
+      TgtRun{tgt.after.fail(tgt.blame(n, its, tgt.start(head, ims), l), w, TgtSt{its, ds}), False{}, checks}
+
+def tgt.round.drop(+bend: String, +secs: U32, +path: String, +head: List<&2, List<&2, U32>>, +ims: List<&2, T.BImport>, +checks: Nat, st: TgtSt) -> IO(TgtRun):
+  match st:
+    case TgtSt{+its, ds}:
+      +text = tgt.file(head, ims, its)
+      do IO<TgtRun>:
+        S.write(path, text)
+        +o : S.Out <- S.run(S.parent(path), Nil{}, secs, bend, [S.base(path), "--check-only"], Nil{})
+        return tgt.round.drop.of(tgt.verdict(S.Out.text(o)), head, ims, 1n+checks, TgtSt{its, ds})
+
+def tgt.loop.drop(fuel: Nat, +bend: String, +secs: U32, +path: String, +head: List<&2, List<&2, U32>>, +ims: List<&2, T.BImport>, r: TgtRun) -> IO(TgtRun):
+  match fuel r:
+    case 1n+p TgtRun{st, False{}, +checks}:
+      IO.bind(TgtRun, TgtRun, tgt.round.drop(bend, secs, path, head, ims, checks, st), tgt.loop.drop(p, bend, secs, path, head, ims))
+    case _ r:
+      IO.pure(TgtRun, r)
+
 def tgt.final(+path: String, +head: List<&2, List<&2, U32>>, +ims: List<&2, T.BImport>, r: TgtRun) -> IO(TgtRun):
   match r:
     case TgtRun{TgtSt{+its, ds}, d, c}:
@@ -785,7 +813,8 @@ def tgt.merge(a: TgtSt, ds: List<&2, TgtDrop>) -> TgtSt:
 def tgt.gate.go(+bend: String, +secs: U32, +path: String, +head: List<&2, List<&2, U32>>, +ims: List<&2, T.BImport>, +its: List<&2, T.BItem>, +st: TgtSt, +qe: QF.TqEnv) -> IO(TgtRun):
   do IO<TgtRun>:
     r : TgtRun <- tgt.loop(Nat.add(8n, Nat.mul(4n, List.length(&2, T.BItem, its))), bend, secs, path, head, ims, qe, TgtRun{st, tgt.empty(st), 0n})
-    tgt.final(path, head, ims, r)
+    r2 : TgtRun <- tgt.loop.drop(Nat.add(8n, List.length(&2, T.BItem, its)), bend, secs, path, head, ims, r)
+    tgt.final(path, head, ims, r2)
 
 
 # A module through the gate: its file at path holds only the items that
