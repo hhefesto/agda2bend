@@ -439,10 +439,19 @@ def tqf.kind.ty(s: TqSig, +args: T.Bt) -> T.Bt:
 # (2026-10-21: a projection's parameter `eq: Rel(a, A, l)` is a family of
 # kind l, as Rel's body `A -> A -> Kind(l)` says; read off Rel's own Type
 # sort it was &1, and IsEquivalence.refl took `IsEquivalence<a, &1, A, eq>`)
+# (a family's lambda applied is reduced: flip's C(x, y) at `C := x_4 =>
+# x_5 => Kind(l_2)` ends in l_2, not &1, so Flip.EqAndOrd's totalPreorder
+# returns a TotalPreorder<a, l_1, l_2>; 2026-10-30)
 def tqf.endq.unf(fuel: Nat, t: T.Bt, +e: TqEnv) -> T.Bt:
   match fuel t:
     case 1n+f T.BtPi{m, y, d, a, b}:
       tqf.endq.unf(f, b, e)
+    case 1n+f T.BtApp{T.BtLam{+m, +x, +b}, +a}:
+      +r = tqf.beta(64n, T.BtLam{m, x, b}, a)
+      Bool.pick(T.Bt, tqf.is.some(r), tqf.endq.unf(f, tqf.unf.get(r), e), tqf.q1())
+    case 1n+f T.BtApp{T.BtExpr{+l}, +a}:
+      +r = tqf.beta(64n, T.BtExpr{l}, a)
+      Bool.pick(T.Bt, tqf.is.some(r), tqf.endq.unf(f, tqf.unf.get(r), e), tqf.q1())
     case 1n+f T.BtApp{T.BtVar{+fn}, +args}:
       +u = tqf.unf(tqf.sig(e, fn), args)
       Bool.pick(T.Bt, tqf.is.some(u), tqf.endq.unf(f, tqf.unf.get(u), e), tqf.endq(T.BtApp{T.BtVar{fn}, args}))
@@ -899,13 +908,44 @@ def tqf.ret.keep(m: Maybe<&2, T.Bt>, +ret: T.Bt, +b: T.Bt, +ctx: List<&2, T.BPar
 # a sort reached through a type-valued call (`P ∖ Q : Pred A (ℓ₁ ⊔ ℓ₂)`,
 # whose body `P ∩ ∁ Q` is a Type, as ¬ is): the call opened, its end
 # weakened the same way, when the body is not of its kind
+# A type-valued def that Agda gives Set (`Type` here) whose body is Data is
+# Data: Nat's `_<_ = λ m n → suc m ≤ n` was `lt(..) -> Type` with ≤ Data,
+# so IsRelatedTo<…, &1, …> (lt's quantity) was a Type and the reasoning
+# syntax's specialised R (Data) refused it: Data.Nat.Properties' +-comm
+# (116 dependents in PLFA's run) and every `begin` over _<_.  A Data def
+# passes where Type is wanted (Bend 2.0.39, /tmp/bx/dk) (2026-10-30).
+def tqf.end.is.type(t: T.Bt) -> Bool:
+  match t:
+    case T.BtPi{m, y, d, a, b}:
+      tqf.end.is.type(b)
+    case T.BtType{}:
+      True{}
+    case _:
+      False{}
+
+def tqf.end.ty2data(t: T.Bt) -> T.Bt:
+  match t:
+    case T.BtPi{m, y, d, a, b}:
+      T.BtPi{m, y, d, a, tqf.end.ty2data(b)}
+    case T.BtType{}:
+      T.BtVar{S.b("Data")}
+    case t:
+      t
+
+def tqf.ret.typedata(isty: Bool, +ret: T.Bt, +b: T.Bt, +ctx: List<&2, T.BParam>, +e: TqEnv) -> T.Bt:
+  match isty:
+    case True{}:
+      Bool.pick(T.Bt, tqf.is(tqf.kind.fam(16n, b, ctx, e), "&2"), tqf.end.ty2data(ret), ret)
+    case False{}:
+      ret
+
 def tqf.ret.open(m: Maybe<&2, T.Bt>, +ret: T.Bt, +w: T.Bt, +b: T.Bt, +ctx: List<&2, T.BParam>, +e: TqEnv) -> T.Bt:
   match m:
     case Some{+q}:
       +k = tqf.kind.fam(16n, b, ctx, e)
       Bool.pick(T.Bt, tqf.same.q(q, k), ret, Bool.pick(T.Bt, tqf.is(k, "&2"), tqf.end.data(w), tqf.end.type(w)))
     case None{}:
-      ret
+      tqf.ret.typedata(tqf.end.is.type(ret), ret, b, ctx, e)
 
 def tqf.ret.sort(m: Maybe<&2, T.Bt>, +ret: T.Bt, +b: T.Bt, +ctx: List<&2, T.BParam>, +e: TqEnv) -> T.Bt:
   match m:
