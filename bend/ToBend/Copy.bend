@@ -530,12 +530,64 @@ def tcp.mode.of(m: T.BMode, +n: Nat, data: Bool, tpl: Bool, low: Bool) -> T.BMod
     case m False{}:
       tcp.mode.by(m, Nat.is_eq(n, 0n), Nat.is_lt(n, 2n), data, low)
 
+# A match's scrutinee is never a template: a template is syntax inlined at
+# each call, and Bend cannot match one (its match cannot infer the motive:
+# "expected : an annotated term (cannot infer) observed : \{...}").
+# Data.Maybe.Properties' <∣>-identityˡ (its type the copy `LeftIdentity`
+# of `open Algebra.Definitions {A = Maybe A} _≡_`) had its x a template
+# with one use; live, it checks.  A template's type that mentions the
+# scrutinee raises it again (tcp.close; tabulate's n, f's type Fin n → A):
+# Bend cannot have that one either way (2026-10-30).
+def tcp.scrut.mode(m: T.BMode, s: Bool) -> T.BMode:
+  match m s:
+    case T.BmTpl{} True{}:
+      T.BmLive{}
+    case m _:
+      m
+
+def tcp.scrut.xs(+x: List<&2, U32>, xs: T.Bt) -> Bool:
+  match xs:
+    case T.BtArgs{T.BtVar{+y}, rest}:
+      Bool.or(S.eq(x, y), tcp.scrut.xs(x, rest))
+    case T.BtArgs{a, rest}:
+      tcp.scrut.xs(x, rest)
+    case T.BtVar{+y}:
+      S.eq(x, y)
+    case _:
+      False{}
+
+# whether x is the scrutinee of a match in t (not under a binder of its name)
+def tcp.scrut(+x: List<&2, U32>, t: T.Bt) -> Bool:
+  match t:
+    case T.BtRw{e, p, b}:
+      tcp.scrut(x, b)
+    case T.BtLet{+y, v, b}:
+      Bool.or(tcp.scrut(x, v), Bool.and(Bool.not(S.eq(x, y)), tcp.scrut(x, b)))
+    case T.BtApp{f, a}:
+      Bool.or(tcp.scrut(x, f), tcp.scrut(x, a))
+    case T.BtLam{m, +y, b}:
+      Bool.and(Bool.not(S.eq(x, y)), tcp.scrut(x, b))
+    case T.BtCon{c, a}:
+      tcp.scrut(x, a)
+    case T.BtAnn{a, ty}:
+      tcp.scrut(x, a)
+    case T.BtMatch{xs, cs}:
+      Bool.or(tcp.scrut.xs(x, xs), tcp.scrut(x, cs))
+    case T.BtCase{p, b, rest}:
+      Bool.or(tcp.scrut(x, b), tcp.scrut(x, rest))
+    case T.BtExpr{e}:
+      tcp.scrut(x, e)
+    case T.BtArgs{a, rest}:
+      Bool.or(tcp.scrut(x, a), tcp.scrut(x, rest))
+    case _:
+      False{}
+
 # a parameter's mode from its uses in the body (a mode rises: erased, live,
 # then copied or a template; a live one with no live use falls to erased)
 def tcp.param(p: T.BParam, +body: T.Bt, +datas: List<&2, List<&2, U32>>) -> T.BMode:
   match p:
     case T.BParam{m, +x, +ty}:
-      tcp.mode.of(m, tcp.uses(x, body), tcp.dataish(ty, datas), tcp.in.tpl(x, body, False{}), Nat.is_eq(tcp.uses.unk(x, body), 0n))
+      tcp.scrut.mode(tcp.mode.of(m, tcp.uses(x, body), tcp.dataish(ty, datas), tcp.in.tpl(x, body, False{}), Nat.is_eq(tcp.uses.unk(x, body), 0n)), tcp.scrut(x, body))
 
 def tcp.params(ps: List<&2, T.BParam>, +body: T.Bt, +datas: List<&2, List<&2, U32>>) -> List<&2, T.BMode>:
   match ps:

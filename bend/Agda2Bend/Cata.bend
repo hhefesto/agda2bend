@@ -8834,14 +8834,22 @@ def act.ps.ents(r: ActPs) -> List<&2, T.Bt>:
 # a record field, a match on the record; for copattern clauses, the
 # record's constructor)
 # the kept (not dropped) parameters among the first n
+# the header parameters the clauses' first n patterns bind: a pattern past
+# the symbol's modes is one too (its type a copy the modes do not open:
+# `<∣>-identityˡ : LeftIdentity nothing _<∣>_` under `open
+# Algebra.Definitions {A = Maybe A} _≡_`, its x the header's from
+# act.params' inlining; counted as none, x was lifted as well, the body
+# `{==}(x)` and x a template, 2026-10-30)
 def act.kept.n(n: Nat, ms: List<&2, ActM>) -> Nat:
   match n ms:
     case 1n+p AmDrop{} <> t:
       act.kept.n(p, t)
     case 1n+p m <> t:
       1n+act.kept.n(p, t)
-    case _ _:
+    case 0n ms:
       0n
+    case n Nil{}:
+      n
 
 def act.bp.names(ps: List<&2, T.BParam>) -> List<&2, List<&2, U32>>:
   match ps:
