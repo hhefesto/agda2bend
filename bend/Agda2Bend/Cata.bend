@@ -9614,12 +9614,40 @@ def act.cop.step(m: Maybe<&2, ActRa>, +k: A.AgQ, +self: A.Ag, +unf: Map<&2, ActC
     case None{}:
       A.AgNone{}
 
-def act.cop.ft(fuel: Nat, ks: List<&2, A.AgQ>, c: A.Ag, +self: A.Ag, +unf: Map<&2, ActCopy>, +tab: Map<&2, ActSym>) -> A.Ag:
+# c opened (its unfolding, else its eta or one-leaf one, act.hr.open) until
+# its head is a record, for act.cop.step: agda-unimath's
+# `pr2 (is-prop-is-contr H x .x) refl = …` has `is-contr (x ＝ y)` there, a
+# type-valued definition that opens to Σ; read as the record itself, the
+# helper took Σ's pr2 projection's own Pis (-B, r) for its type and failed
+# (6647 dependents in the vb50d394 unimath run; 2026-10-31)
+# (AgNone when no record is reached within fuel openings)
+def act.cop.recof.ok(m: Maybe<&2, ActRa>, +tab: Map<&2, ActSym>) -> Bool:
+  match m:
+    case Some{ActRa{+q, es}}:
+      act.sym.is.rec(act.sym.got(Map.get(ActSym, act.sym.none(q), tab, act.key(q))))
+    case None{}:
+      False{}
+
+def act.cop.recof.next(m: Maybe<&2, ActRa>, +unf: Map<&2, ActCopy>) -> A.Ag:
+  match m:
+    case Some{ActRa{+q, +es}}:
+      act.hr.or(act.unfold.of(act.unf.got(Map.get(ActCopy, ActCopy{0n, A.AgNone{}}, unf, act.key(q))), es), act.hr.open(q, es, unf))
+    case None{}:
+      A.AgNone{}
+
+def act.cop.recof(fuel: Nat, +c: A.Ag, +unf: Map<&2, ActCopy>, +tab: Map<&2, ActSym>) -> A.Ag:
+  match fuel:
+    case 0n:
+      A.AgNone{}
+    case 1n+f:
+      Bool.pick(A.Ag, act.cop.recof.ok(act.cop.rec.args(c), tab), c, act.cop.recof(f, act.cop.recof.next(act.cop.rec.args(c), unf), unf, tab))
+
+def act.cop.ft(fuel: Nat, ks: List<&2, A.AgQ>, +c: A.Ag, +self: A.Ag, +unf: Map<&2, ActCopy>, +tab: Map<&2, ActSym>) -> A.Ag:
   match fuel ks:
     case _ Nil{}:
       c
     case 1n+f +k <> rest:
-      act.cop.ft(f, rest, act.cop.step(act.cop.rec.args(c), k, self, unf, tab), asb.push(self, A.AgEProj{k, A.AgENil{}}), unf, tab)
+      act.cop.ft(f, rest, act.cop.step(act.cop.rec.args(act.hr.or(act.cop.recof(8n, c, unf, tab), c)), k, self, unf, tab), asb.push(self, A.AgEProj{k, A.AgENil{}}), unf, tab)
     case _ _:
       A.AgNone{}
 
@@ -9630,14 +9658,27 @@ def act.cop.some(t: A.Ag) -> Maybe<&2, A.Ag>:
     case t:
       Some{t}
 
-def act.cop.hty(n: Nat, t: A.Ag, +dq: A.AgQ, +es: A.Ag, +ks: List<&2, A.AgQ>, +unf: Map<&2, ActCopy>, +tab: Map<&2, ActSym>) -> Maybe<&2, A.Ag>:
-  match n t:
-    case 0n c:
+# The helper's type: D's first n Pis, then the field's type at D's
+# instance.  Pis behind a type-valued definition are reached by opening it
+# (fuel: the openings): agda-unimath's `is-prop-all-elements-equal :
+# all-elements-equal A → is-prop A` has x y behind is-prop A (`(x y : A)
+# → is-contr (x ＝ y)`), and its `pr2 (… H x .x) refl` clause's helper
+# was left a gap, '?.a2b.cop' (2026-10-31)
+def act.cop.hty.go(fuel: Nat, n: Nat, t: A.Ag, +dq: A.AgQ, +es: A.Ag, +ks: List<&2, A.AgQ>, +unf: Map<&2, ActCopy>, +tab: Map<&2, ActSym>) -> Maybe<&2, A.Ag>:
+  match fuel n t:
+    case f 0n c:
       act.cop.some(act.inline(1024n, act.cop.ft(8n, ks, c, A.AgDef{dq, es}, unf, tab), ActEnv{Nil{}, tab, Map.new(&2, List<&2, U32>), unf}))
-    case 1n+p A.AgEl{s, A.AgPi{+i, +x, a, dep, b}}:
-      act.cop.pi(s, i, x, a, act.cop.hty(p, act.cop.abs(dep, b), dq, asb.elims.cat(asb.shift(es, 1n, 0n), A.AgEApp{i, A.AgVar{0n, x, A.AgENil{}}, A.AgENil{}}), ks, unf, tab))
-    case _ _:
+    case f n A.AgEl{s, A.AgEl{s2, x}}:
+      act.cop.hty.go(f, n, A.AgEl{s2, x}, dq, es, ks, unf, tab)
+    case f 1n+p A.AgEl{s, A.AgPi{+i, +x, a, dep, b}}:
+      act.cop.pi(s, i, x, a, act.cop.hty.go(f, p, act.cop.abs(dep, b), dq, asb.elims.cat(asb.shift(es, 1n, 0n), A.AgEApp{i, A.AgVar{0n, x, A.AgENil{}}, A.AgENil{}}), ks, unf, tab))
+    case 1n+g n A.AgEl{s, A.AgDef{+q, +es2}}:
+      act.cop.hty.go(g, n, A.AgEl{s, act.inline(1024n, act.hr.or(act.unfold.of(act.unf.got(Map.get(ActCopy, ActCopy{0n, A.AgNone{}}, unf, act.key(q))), es2), act.hr.open(q, es2, unf)), ActEnv{Nil{}, tab, Map.new(&2, List<&2, U32>), unf})}, dq, es, ks, unf, tab)
+    case _ _ _:
       None{}
+
+def act.cop.hty(n: Nat, t: A.Ag, +dq: A.AgQ, +es: A.Ag, +ks: List<&2, A.AgQ>, +unf: Map<&2, ActCopy>, +tab: Map<&2, ActSym>) -> Maybe<&2, A.Ag>:
+  act.cop.hty.go(8n, n, t, dq, es, ks, unf, tab)
 
 # the helper's name: D's, then each field's last part
 def act.cop.last(xs: List<&2, List<&2, U32>>) -> List<&2, U32>:
