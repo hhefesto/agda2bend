@@ -5050,6 +5050,126 @@ def act.sd.let.if(b: Bool, +d: List<&2, U32>, h: T.Bt, body: T.Bt) -> T.Bt:
     case False{}:
       body
 
+# The dotted fields' proofs and the casts of the fields, each bound before
+# its uses.  A proof's equation reads the scrutinee as the case binds it
+# (act.case.of's second act.sd.tops, at the case's own pattern: a field a
+# cast retypes is v_raw there, a dotted field its name), and a proof whose
+# dotted term names a cast field comes after that field's cast: Data.Fin.
+# Base's inject had a2b_dt1_is : {a2b_dt1 == to_N(n_0, i_1)} from x_3_eq :
+# {to_N(1n+n_0, Fin.suc{n_0_dot, i_1_raw, i_3_eq}) == 1n+a2b_dt1}, but
+# said Fin.suc{_, i_1, i_3_eq} and came before i_1 (the cast of i_1_raw
+# by n_0_dot_is): now n_0_dot_is, i_1, a2b_dt1_is, j.  With no such proof
+# the order is the old one, the proofs some cast uses, then the casts
+# (2026-10-30).
+type ActSq is Data:
+  ActSqH{sd: ActSd}
+  ActSqC{cv: ActCv}
+
+def act.sq.same(a: List<&2, List<&2, U32>>, b: List<&2, List<&2, U32>>) -> Bool:
+  match a b:
+    case Nil{} Nil{}:
+      True{}
+    case x <> xt y <> yt:
+      Bool.and(S.eq(x, y), act.sq.same(xt, yt))
+    case _ _:
+      False{}
+
+# the second reading when it has the first's dotted fields, else the first
+def act.sq.pick(+sd: List<&2, ActSd>, +sd2: List<&2, ActSd>) -> List<&2, ActSd>:
+  Bool.pick(List<&2, ActSd>, act.sq.same(act.sd.names(sd), act.sd.names(sd2)), sd2, sd)
+
+# whether every cast field h names is cast already
+def act.sq.h.ok(+h: T.Bt, cvn: List<&2, List<&2, U32>>, +dc: List<&2, List<&2, U32>>) -> Bool:
+  match cvn:
+    case Nil{}:
+      True{}
+    case +w <> t:
+      Bool.and(Bool.or(Bool.not(act.occurs(w, h)), act.used(w, dc)), act.sq.h.ok(h, t, dc))
+
+# whether every proof v's casts use is bound already
+def act.sq.c.ok(sds: List<&2, ActSd>, +v: List<&2, U32>, +ty: T.Bt, +dh: List<&2, List<&2, U32>>) -> Bool:
+  match sds:
+    case Nil{}:
+      True{}
+    case ActSd{+d, +s, h, +vs} <> +t:
+      Bool.and(Bool.or(Bool.not(act.sd.cast.at(v, ty, vs, s, t)), act.used(d, dh)), act.sq.c.ok(t, v, ty, dh))
+
+# the proofs some cast uses
+def act.sq.need(sds: List<&2, ActSd>, +cvn: List<&2, List<&2, U32>>) -> List<&2, ActSd>:
+  match sds:
+    case Nil{}:
+      Nil{}
+    case ActSd{+d, +s, +h, +vs} <> t:
+      +r = act.sq.need(t, cvn)
+      Bool.pick(List<&2, ActSd>, act.sd.any(vs, cvn), ActSd{d, s, h, vs} <> r, r)
+
+# the proofs ready (ok) or not, at the casts done
+def act.sq.hsel(hs: List<&2, ActSd>, +ok: Bool, +cvn: List<&2, List<&2, U32>>, +dc: List<&2, List<&2, U32>>) -> List<&2, ActSd>:
+  match hs:
+    case Nil{}:
+      Nil{}
+    case ActSd{+d, +s, +h, +vs} <> t:
+      +r = act.sq.hsel(t, ok, cvn, dc)
+      Bool.pick(List<&2, ActSd>, Bool.pick(Bool, ok, act.sq.h.ok(h, cvn, dc), Bool.not(act.sq.h.ok(h, cvn, dc))), ActSd{d, s, h, vs} <> r, r)
+
+# the casts ready (ok) or not, at the proofs bound
+def act.sq.csel(cs: List<&2, ActCv>, +ok: Bool, +sds: List<&2, ActSd>, +dh: List<&2, List<&2, U32>>) -> List<&2, ActCv>:
+  match cs:
+    case Nil{}:
+      Nil{}
+    case ActCv{+v, +ty} <> t:
+      +r = act.sq.csel(t, ok, sds, dh)
+      Bool.pick(List<&2, ActCv>, Bool.pick(Bool, ok, act.sq.c.ok(sds, v, ty, dh), Bool.not(act.sq.c.ok(sds, v, ty, dh))), ActCv{v, ty} <> r, r)
+
+def act.sq.hs(hs: List<&2, ActSd>) -> List<&2, ActSq>:
+  match hs:
+    case Nil{}:
+      Nil{}
+    case h <> t:
+      ActSqH{h} <> act.sq.hs(t)
+
+def act.sq.cs(cs: List<&2, ActCv>) -> List<&2, ActSq>:
+  match cs:
+    case Nil{}:
+      Nil{}
+    case c <> t:
+      ActSqC{c} <> act.sq.cs(t)
+
+def act.sq.nil(hs: List<&2, ActSd>, cs: List<&2, ActCv>) -> Bool:
+  match hs cs:
+    case Nil{} Nil{}:
+      True{}
+    case _ _:
+      False{}
+
+# each pass: the proofs ready, then the casts ready; when a pass moves
+# nothing (or the fuel ends) the rest in the old order
+def act.sq.run(fuel: Nat, +hs: List<&2, ActSd>, +cs: List<&2, ActCv>, +sds: List<&2, ActSd>, +cvn: List<&2, List<&2, U32>>, +dh: List<&2, List<&2, U32>>, +dc: List<&2, List<&2, U32>>) -> List<&2, ActSq>:
+  match fuel:
+    case 0n:
+      List.append(&2, ActSq, act.sq.hs(hs), act.sq.cs(cs))
+    case 1n+f:
+      +hr = act.sq.hsel(hs, True{}, cvn, dc)
+      +hw = act.sq.hsel(hs, False{}, cvn, dc)
+      +dh2 = List.append(&2, List<&2, U32>, dh, act.sd.names(hr))
+      +cr = act.sq.csel(cs, True{}, sds, dh2)
+      +cw = act.sq.csel(cs, False{}, sds, dh2)
+      +now = List.append(&2, ActSq, act.sq.hs(hr), act.sq.cs(cr))
+      Bool.pick(List<&2, ActSq>, act.sq.nil(hw, cw), now, Bool.pick(List<&2, ActSq>, act.sq.nil(hr, cr), List.append(&2, ActSq, act.sq.hs(hw), act.sq.cs(cw)), List.append(&2, ActSq, now, act.sq.run(f, hw, cw, sds, cvn, dh2, List.append(&2, List<&2, U32>, dc, act.sd.cvnames(cr))))))
+
+def act.sq.plan(+sds: List<&2, ActSd>, +cvs: List<&2, ActCv>, +cvn: List<&2, List<&2, U32>>) -> List<&2, ActSq>:
+  +hs = act.sq.need(sds, cvn)
+  act.sq.run(1n+Nat.add(List.length(&2, ActSd, hs), List.length(&2, ActCv, cvs)), hs, cvs, sds, cvn, Nil{}, Nil{})
+
+def act.sq.emit(steps: List<&2, ActSq>, +sds: List<&2, ActSd>, body: T.Bt) -> T.Bt:
+  match steps:
+    case Nil{}:
+      body
+    case ActSqH{ActSd{+d, s, h, vs}} <> t:
+      T.BtLet{act.sd.hn(d), h, act.sq.emit(t, sds, body)}
+    case ActSqC{ActCv{+v, +ty}} <> t:
+      act.sd.casts(sds, v, act.sd.raw(v), ty, act.sq.emit(t, sds, body))
+
 # the proofs of the dotted fields some cast uses
 def act.sd.lets(sds: List<&2, ActSd>, +cvs: List<&2, List<&2, U32>>, body: T.Bt) -> T.Bt:
   match sds:
@@ -5703,7 +5823,9 @@ def act.case.of(a: ActPat, +n: Nat, body: A.Ag, +env: ActEnv, rest: T.Bt, +rw: A
       +ctx = act.ctx.of(n, List.append(&2, ActBind, act.ds.binds(ds, bs), List.append(&2, ActBind, act.cq.binds.of(cq), List.append(&2, ActBind, act.cq.ct.binds(cts), bs))))
       +cvs = act.sd.plan(act.sd.allvs(sd, Nil{}), sd, tel, n, ctx, env, bs)
       +cvn = act.sd.cvnames(cvs)
-      T.BtCase{act.sd.prn(act.ds.undot(q0, List.append(&2, List<&2, U32>, List.append(&2, List<&2, U32>, List.append(&2, List<&2, U32>, act.ds.names(ds), act.sd.names(sd)), dn), con), bs), cvn), act.case.body(eqs, act.nrf.rw(rw, List.append(&2, List<&2, U32>, dn, act.cq.dv.of(cq))), g, act.ps.minus(hps, act.cq.ct.names(cts)), act.names(svars), act.ds.wrap(ds, g, act.sd.lets(sd, cvn, act.sd.cvs(cvs, sd, act.abs.body(abs, body, ctx, env, g))))), rest}
+      +qf = act.sd.prn(act.ds.undot(q0, List.append(&2, List<&2, U32>, List.append(&2, List<&2, U32>, List.append(&2, List<&2, U32>, act.ds.names(ds), act.sd.names(sd)), dn), con), bs), cvn)
+      +sdh = act.sq.pick(sd, act.sd.uniq(Bool.pick(List<&2, ActSd>, nr, Nil{}, act.sd.tops(p, svars, svars, qf, bs, uhps, p, svars, act.dt.all(bs, act.ctx.of(n, bs), env))), bs))
+      T.BtCase{qf, act.case.body(eqs, act.nrf.rw(rw, List.append(&2, List<&2, U32>, dn, act.cq.dv.of(cq))), g, act.ps.minus(hps, act.cq.ct.names(cts)), act.names(svars), act.ds.wrap(ds, g, act.sq.emit(act.sq.plan(sdh, cvs, cvn), sdh, act.abs.body(abs, body, ctx, env, g)))), rest}
 
 # the cases of a match from the clauses (an absurd clause is left out)
 def act.cases(cls: A.Ag, +scr: List<&2, Bool>, +ents: List<&2, T.Bt>, +pnames: List<&2, List<&2, U32>>, +env: ActEnv, +hps: List<&2, T.BParam>, +ret: T.Bt, +uhps: List<&2, T.BParam>) -> T.Bt:
