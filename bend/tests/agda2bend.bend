@@ -361,6 +361,17 @@ def gt.subd() -> T.BItem:
 def gt.subd.qe() -> QF.TqEnv:
   QF.TqEnv{Map.set(&2, QF.TqSig, Map.new(&2, QF.TqSig), "M.le", QF.TqType{Nil{}, v("Data"), Nil{}}), Nil{}, Nil{}}
 
+# def subq(-a: Quant, -A: Kind(a), h: A -> A -> Nat, x: A) -> Nat: h(x, x),
+# x of Kind(a), a quantity parameter of the def's: x is copied (+), not a
+# template, and the def specialised to &2 in a (Consequences.Setoid's
+# carrier elements, 2026-10-30)
+def gt.subq() -> T.BItem:
+  T.BiDef{S.b("subq"), [T.BParam{T.BmErased{}, S.b("a"), v("Quant")}, T.BParam{T.BmErased{}, S.b("A"), app("Kind", [v("a")])}, T.BParam{T.BmLive{}, S.b("h"), gt.arr(v("A"), gt.arr(v("A"), v("Nat")))}, T.BParam{T.BmLive{}, S.b("x"), v("A")}],
+    v("Nat"), T.BtExpr{app("h", [v("x"), v("x")])}, Nil{}}
+
+def gt.subq.out() -> List<&2, U32>:
+  gt.pr(Q.tcp.qd.apply(Q.tcp.finish(gt.subq(), Q.tcp.decide(gt.subq(), Nil{}, Q.tcp.qe0())), Q.tcp.qe0()))
+
 # def caller(y: Nat) -> Nat: Other.anon.f(y), another module's template applied
 def gt.tplcall() -> T.BItem:
   T.BiDef{S.b("caller"), [T.BParam{T.BmLive{}, S.b("y"), v("Nat")}], v("Nat"), T.BtExpr{app("Other.anon.f", [v("y")])}, Nil{}}
@@ -566,6 +577,8 @@ def gate.laws() -> IO(Unit):
     IO.print(verdict("a parameter typed by a family parameter applied keeps its known count: no template", Bool.not(S.infix(gt.pr(Q.tcp.finish(gt.sub(), Q.tcp.decide(gt.sub(), Nil{}, Q.tcp.qe0()))), S.b("~")))))
     IO.print(verdict("one typed by a def applied is a template", S.infix(gt.pr(Q.tcp.finish(gt.sub2(), Q.tcp.decide(gt.sub2(), Nil{}, Q.tcp.qe0()))), S.b("~xRy"))))
     IO.print(verdict("a parameter of another module's Data type used twice is copied, no template", S.infix(gt.pr(Q.tcp.finish(gt.subd(), Q.tcp.decide(gt.subd(), Nil{}, gt.subd.qe()))), S.b("+p: M.le<x, y>"))))
+    IO.print(verdict("an element of a quantity parameter's kind used twice is copied, no template", S.infix(gt.subq.out(), S.b("+x: A"))))
+    IO.print(verdict("and its type parameter is declared Data", S.infix(gt.subq.out(), S.b("-A: Data"))))
     IO.print(verdict("a family-typed parameter used twice is copied, its points not raised", S.infix(gt.pr(Q.tcp.finish(gt.subc(), Q.tcp.decide(gt.subc(), Nil{}, Q.tcp.qe0()))), S.b("+xRy: R(x, y)"))))
     IO.print(verdict("another module's template failing at its instance (f~0) blames the item that calls it", S.eq(G.tgt.blame(S.b("anon.f~0"), [gt.use(), gt.tplcall()], 0n, 47n), S.b("caller"))))
     IO.print(verdict("a template argument that mentions a lambda's variable is refused before any check", S.eq(G.tgt.tloc.item(gt.tl(T.BtTplArg{v("e1")})), S.b("e1"))))

@@ -499,11 +499,30 @@ def act.is.q1(t: T.Bt) -> Bool:
     case _:
       False{}
 
-# (quantity terms are names, so the minimum is written as one: "(a <&> b)")
+# (quantity terms are names, so the minimum is written as one: "(a <&> b)";
+# a level function applied, alpha(l1, l2), is written out the same way)
+def act.q.arg(t: T.Bt) -> List<&2, U32>:
+  match t:
+    case T.BtVar{n}:
+      n
+    case _:
+      S.b("&1")
+
+def act.q.names(as: T.Bt) -> List<&2, U32>:
+  match as:
+    case T.BtArgs{a, T.BtANil{}}:
+      act.q.arg(a)
+    case T.BtArgs{a, rest}:
+      List.append(&2, U32, act.q.arg(a), List.append(&2, U32, S.b(", "), act.q.names(rest)))
+    case _:
+      Nil{}
+
 def act.q.name(t: T.Bt) -> List<&2, U32>:
   match t:
     case T.BtVar{n}:
       n
+    case T.BtApp{T.BtVar{f}, as}:
+      List.append(&2, U32, f, 40 <> List.append(&2, U32, act.q.names(as), [41]))
     case _:
       S.b("&1")
 
@@ -538,6 +557,18 @@ def act.qt.ismin(s: ActSym) -> Bool:
     case _:
       False{}
 
+# a level function applied (unimath's large structures: `UU (α l)`, `β l1
+# l2` with α : Level → Level): its quantity applied to its arguments'
+# Kind(alpha(l)); before, the arguments were dropped and Kind(alpha) was
+# refused ('expected Quant observed @-x:Quant -> Quant', 2199 dependents in
+# the unimath run, Large_Relation_Prop and Large_Precategory)
+def act.qt.app(h: T.Bt, as: T.Bt) -> T.Bt:
+  match h:
+    case T.BtVar{f}:
+      T.BtApp{T.BtVar{f}, as}
+    case h:
+      h
+
 # a level term as a quantity
 def act.qt(t: A.Ag, +ctx: List<&2, T.Bt>, +env: ActEnv) -> T.Bt:
   match t:
@@ -553,12 +584,18 @@ def act.qt(t: A.Ag, +ctx: List<&2, T.Bt>, +env: ActEnv) -> T.Bt:
       act.qmin(act.qt(x, ctx, env), act.qt(rest, ctx, env))
     case A.AgLPlus{1n+k, x, rest}:
       act.q1()
-    case A.AgVar{+i, x, es}:
+    case A.AgVar{+i, x, A.AgENil{}}:
       act.ctx.at(i, ctx)
+    case A.AgVar{+i, x, +es}:
+      act.qt.app(act.ctx.at(i, ctx), act.qt(es, ctx, env))
     case A.AgDef{+q, A.AgEApp{i, a, A.AgEApp{i2, b, A.AgENil{}}}}:
       Bool.pick(T.Bt, act.qt.ismin(act.sym(env, q)), act.qmin(act.qt(a, ctx, env), act.qt(b, ctx, env)), act.q1())
     case A.AgDefX{+q, A.AgEApp{i, a, A.AgEApp{i2, b, A.AgENil{}}}}:
       Bool.pick(T.Bt, act.qt.ismin(act.sym(env, q)), act.qmin(act.qt(a, ctx, env), act.qt(b, ctx, env)), act.q1())
+    case A.AgEApp{i, a, rest}:
+      T.BtArgs{act.qt(a, ctx, env), act.qt(rest, ctx, env)}
+    case A.AgENil{}:
+      T.BtANil{}
     case _:
       act.q1()
 
@@ -8943,6 +8980,25 @@ def act.cod.q(n: Nat, t: A.Ag) -> Maybe<&2, A.AgQ>:
     case _ _:
       None{}
 
+# act.cod.q past type-valued definitions that open to the Pis the clauses
+# take (unimath's `subtype-positive-ℤ : subtype lzero ℤ` with clauses
+# `pr1 (subtype-positive-ℤ x) = …`: subtype l A opens to A → Prop l, and
+# Prop l to Σ), as the header's act.params.go reads them
+def act.cod.qu(fuel: Nat, n: Nat, t: A.Ag, +env: ActEnv) -> Maybe<&2, A.AgQ>:
+  match fuel n t:
+    case f n A.AgEl{s, x}:
+      act.cod.qu(f, n, x, env)
+    case f 1n+p A.AgPi{i, x, a, d, b}:
+      act.cod.qu(f, p, b, env)
+    case f 0n A.AgDef{q, es}:
+      Some{q}
+    case f 0n A.AgDefX{q, es}:
+      Some{q}
+    case 1n+g 1n+p A.AgDef{+q, +es}:
+      act.cod.qu(g, 1n+p, act.inline(1024n, act.unfold(env, q, es), env), env)
+    case _ _ _:
+      None{}
+
 def act.pats.all(ps: A.Ag) -> Nat:
   match ps:
     case A.AgPArg{i, x, p, rest}:
@@ -9077,13 +9133,29 @@ def act.cop.post(ps: A.Ag) -> A.Ag:
     case p:
       p
 
-# whether the patterns before the first projection are variables
+# whether the patterns before the first projection are variables (or dots:
+# unimath's `pr2 (is-prop-is-contr H x .x) refl = …`, its helper's clause
+# keeps the dot, and the refl after it is the helper's rewrite)
 def act.cop.topv(ps: A.Ag) -> Bool:
   match ps:
     case A.AgPArg{i, x, A.AgPProj{q}, rest}:
       True{}
     case A.AgPArg{i, x, A.AgPVar{v, n, o}, rest}:
       act.cop.topv(rest)
+    case A.AgPArg{i, x, A.AgPDot{t}, rest}:
+      act.cop.topv(rest)
+    case _:
+      False{}
+
+# whether a dot comes before the first projection
+def act.cop.topd(ps: A.Ag) -> Bool:
+  match ps:
+    case A.AgPArg{i, x, A.AgPProj{q}, rest}:
+      False{}
+    case A.AgPArg{i, x, A.AgPDot{t}, rest}:
+      True{}
+    case A.AgPArg{i, x, p, rest}:
+      act.cop.topd(rest)
     case _:
       False{}
 
@@ -9139,9 +9211,34 @@ def act.cop.hval.top(a: ActPat, +n: Nat, +ps: A.Ag, +env: ActEnv, +hk: String) -
     case ActPat{p, bs, ab}:
       act.t(A.AgDef{act.cop.hq(hk), act.cop.topes(ps)}, act.ctx.of(n, bs), env)
 
+# with a dot before the projection the clause does not bind that parameter:
+# the helper is applied to D's parameters themselves (the header's names,
+# position k-1 at index 0), one argument per pattern before the projection
+def act.cop.hdr.es(ps: A.Ag, +k: Nat, +j: Nat) -> A.Ag:
+  match ps:
+    case A.AgPArg{i, x, A.AgPProj{q}, rest}:
+      A.AgENil{}
+    case A.AgPArg{i, +x, p, rest}:
+      A.AgEApp{i, A.AgVar{Nat.sub(Nat.sub(k, 1n), j), x, A.AgENil{}}, act.cop.hdr.es(rest, k, 1n+j)}
+    case _:
+      A.AgENil{}
+
+def act.cop.hdr.n(ps: A.Ag) -> Nat:
+  match ps:
+    case A.AgPArg{i, x, A.AgPProj{q}, rest}:
+      0n
+    case A.AgPArg{i, x, p, rest}:
+      1n+act.cop.hdr.n(rest)
+    case _:
+      0n
+
+def act.cop.hval.hdr(+ps: A.Ag, +ents: List<&2, T.Bt>, +env: ActEnv, +hk: String) -> T.Bt:
+  +k = act.cop.hdr.n(ps)
+  act.t(A.AgDef{act.cop.hq(hk), act.cop.hdr.es(ps, k, 0n)}, List.reverse(&2, T.Bt, List.take(&2, T.Bt, ents, k)), env)
+
 def act.cop.hval.cl(+tel: A.Ag, +ps: A.Ag, +ents: List<&2, T.Bt>, +env: ActEnv, +hk: String) -> T.Bt:
   +n = act.tel.len(tel)
-  act.cop.hval.top(act.top(ps, act.copat.scr(ps, ents, env), ents, n, act.tel.hints(tel), act.names(ents), env), n, ps, env, hk)
+  Bool.pick(T.Bt, act.cop.topd(ps), act.cop.hval.hdr(ps, ents, env, hk), act.cop.hval.top(act.top(ps, act.copat.scr(ps, ents, env), ents, n, act.tel.hints(tel), act.names(ents), env), n, ps, env, hk))
 
 def act.cop.hval(cls: A.Ag, +key: String, +ents: List<&2, T.Bt>, +env: ActEnv, +hk: String, hit: Bool) -> T.Bt:
   match cls hit:
@@ -9956,7 +10053,7 @@ def act.fun.body(p: A.AgProj, +cls: A.Ag, +key: String, +ar: Nat, +t: A.Ag, +ent
     case A.AgPrOf{Some{r}, o, ix} _:
       act.proj.body(act.sym(env, r), env, key, ents)
     case _ True{}:
-      act.copat.body(act.copat.recq(4n, act.cod.q(ar, t), act.copat.isrec(env, act.cod.q(ar, t)), env), env, cls, ents, key)
+      act.copat.body(act.copat.recq(4n, act.cod.qu(8n, ar, t, env), act.copat.isrec(env, act.cod.qu(8n, ar, t, env)), env), env, cls, ents, key)
     case _ False{}:
       +cls2 = act.rf.of(cls, key, ms, act.ps.ps(r))
       act.lift.app(List.drop(&2, T.BParam, act.ps.ps(r), act.kept.n(act.cls.arity(cls), ms)), act.body(cls2, ents, env, act.ps.ps(r), act.ps.ret(r), act.uty.go(64n, ar, t, ms, act.scr(cls2, env), Nil{}, Nil{}, env)))

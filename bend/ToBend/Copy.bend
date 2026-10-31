@@ -529,6 +529,74 @@ def tcp.data.or.q(m: Maybe<&2, T.BItem>, +it: T.BItem, +why: List<&2, U32>) -> M
     case None{}:
       tcp.q.spec(it, why)
 
+# Data by specialisation ---------------------------------------------------------
+#
+# A value used live twice is copied (+, its type Data) or made a template,
+# and a template wants closed arguments: the eta-expanding callers of the
+# algebra lemmas pass a lambda's variables (Consequences.Setoid's
+# comm+idˡ⇒idʳ is `eta5 => comm∧idˡ⇒idʳ(…, ~eta5, comm, x)`, its x a
+# carrier element used live in comm x e and in idˡ x), so 147 items of the
+# Nat cone were dropped, 214 with them, "a template argument mentions a
+# local variable".  When the value's kind is one of the def's quantity
+# parameters (an element of S's Carrier, of Kind(a); a proof of x ≈ y, of
+# Kind(ℓ)), it is copied instead and the def is specialised to &2 in that
+# quantity (Bend's Kind(&2) is Data, so + checks: /tmp/bx/tq/inj/kd.bend):
+# weaker than the Agda original (Data carriers, Data relations), as the
+# user chose for quantities on 2026-10-20 (tcp.q.*).  A caller passing its
+# own quantity there is specialised by the gate (tcp.q.spec; 2026-10-30).
+def tcp.qd.var(+k: T.Bt, +qs: List<&2, List<&2, U32>>) -> List<&2, U32>:
+  match k:
+    case T.BtVar{+q}:
+      Bool.pick(List<&2, U32>, tcp.mem(q, qs), q, Nil{})
+    case _:
+      Nil{}
+
+# a function type, its head's type-valued definitions opened (¬ A is
+# `A -> ⊥`): never Data, whatever its level says (the level is Agda's,
+# Relation.Nullary.Negation.Core's stable took x: ¬ Stable A at A's level
+# a, copied it and lost; 2026-10-30)
+def tcp.qd.fun(t: T.Bt) -> Bool:
+  match t:
+    case T.BtPi{m, y, d, a, b}:
+      True{}
+    case _:
+      False{}
+
+# the quantity parameter of the def's (ctx) that ty's values' kind is, or empty
+def tcp.qd.of(+ty: T.Bt, +ctx: List<&2, T.BParam>, +qe: QF.TqEnv) -> List<&2, U32>:
+  Bool.pick(List<&2, U32>, tcp.qd.fun(QF.tqf.whnf(16n, ty, qe)), Nil{}, tcp.qd.var(QF.tqf.kind(8n, ty, ctx, qe), tcp.q.params(ctx)))
+
+def tcp.qd.nil(q: List<&2, U32>) -> Bool:
+  match q:
+    case Nil{}:
+      True{}
+    case h <> t:
+      False{}
+
+def tcp.qd.is(+ty: T.Bt, +ctx: List<&2, T.BParam>, +qe: QF.TqEnv) -> Bool:
+  Bool.not(tcp.qd.nil(tcp.qd.of(ty, ctx, qe)))
+
+def tcp.qd.add(+q: List<&2, U32>, +acc: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  Bool.pick(List<&2, List<&2, U32>>, Bool.or(tcp.qd.nil(q), tcp.mem(q, acc)), acc, q <> acc)
+
+# the quantities the copied parameters' kinds are
+def tcp.qd.qs(ps: List<&2, T.BParam>, +ctx: List<&2, T.BParam>, +qe: QF.TqEnv) -> List<&2, List<&2, U32>>:
+  match ps:
+    case Nil{}:
+      Nil{}
+    case T.BParam{T.BmCopy{}, x, +ty} <> t:
+      tcp.qd.add(tcp.qd.of(ty, ctx, qe), tcp.qd.qs(t, ctx, qe))
+    case p <> t:
+      tcp.qd.qs(t, ctx, qe)
+
+# a finished def specialised to &2 in those quantities
+def tcp.qd.apply(it: T.BItem, +qe: QF.TqEnv) -> T.BItem:
+  match it:
+    case T.BiDef{+n, +ps, +ret, +body, +doc}:
+      tcp.q.item(tcp.qd.qs(ps, ps, qe), T.BiDef{n, ps, ret, body, doc}, S.b("&2"))
+    case it:
+      it
+
 def tcp.mode.by(m: T.BMode, none: Bool, once: Bool, data: Bool, low: Bool) -> T.BMode:
   match none once data:
     case True{} _ _:
@@ -680,7 +748,7 @@ def tcp.data.k(+ty: T.Bt, +ctx: List<&2, T.BParam>, +qe: QF.TqEnv) -> Bool:
 def tcp.param(p: T.BParam, +body: T.Bt, +datas: List<&2, List<&2, U32>>, ns: List<&2, List<&2, U32>>, +qe: QF.TqEnv, +ctx: List<&2, T.BParam>) -> T.BMode:
   match p:
     case T.BParam{m, +x, +ty}:
-      +dt = Bool.or(Bool.or(tcp.dataish(ty, datas), Bool.or(tcp.dataish.q(ty, qe), tcp.data.k(ty, ctx, qe))), tcp.fam.app(ty, ns))
+      +dt = Bool.or(Bool.or(Bool.or(tcp.dataish(ty, datas), Bool.or(tcp.dataish.q(ty, qe), tcp.data.k(ty, ctx, qe))), tcp.fam.app(ty, ns)), tcp.qd.is(ty, ctx, qe))
       tcp.scrut.mode(tcp.mode.of(m, tcp.uses.nd(x, body, dt), dt, tcp.in.tpl(x, body, False{}), Nat.is_eq(tcp.uses.unk(x, body), 0n)), tcp.scrut(x, body))
 
 def tcp.params(ps: List<&2, T.BParam>, +body: T.Bt, +datas: List<&2, List<&2, U32>>, +ns: List<&2, List<&2, U32>>, +qe: QF.TqEnv, +ctx: List<&2, T.BParam>) -> List<&2, T.BMode>:

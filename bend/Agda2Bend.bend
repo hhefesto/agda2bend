@@ -915,7 +915,7 @@ def a2b.re.items(its: List<&2, T.BItem>, +nk: Map<&2, String>, +datas: List<&2, 
     case Nil{}:
       r
     case T.BiDef{+n, ps, ret, body, doc} <> t:
-      a2b.re.items(t, nk, datas, te, qe, qo, a2b.re.one(a2b.nk.got(Map.get(String, "", nk, S.str(n))), Q.tcp.decide(a2b.shape(T.BiDef{n, ps, ret, body, doc}, te, qo), datas, qe), r))
+      a2b.re.items(t, nk, datas, te, qe, qo, a2b.re.one(a2b.nk.got(Map.get(String, "", nk, S.str(n))), Q.tcp.decide(a2b.shape(T.BiDef{n, ps, ret, body, doc}, te, qo), datas, qo), r))
     case i <> t:
       a2b.re.items(t, nk, datas, te, qe, qo, r)
 
@@ -946,7 +946,7 @@ def a2b.finish(its: List<&2, T.BItem>, +datas: List<&2, List<&2, U32>>, +te: Q.T
       Nil{}
     case it <> t:
       +d = a2b.shape(it, te, qo)
-      Q.tcp.finish(d, Q.tcp.decide(d, datas, qe)) <> a2b.finish(t, datas, te, qe, qo)
+      Q.tcp.qd.apply(Q.tcp.finish(d, Q.tcp.decide(d, datas, qo)), qo) <> a2b.finish(t, datas, te, qe, qo)
 
 # (a mutual with-function's cycle broken first, WL.twl.items, and a
 # recursion on a later parameter split, RO.tro.items)
