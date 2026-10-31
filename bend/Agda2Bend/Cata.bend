@@ -5798,6 +5798,126 @@ def act.case.abs(m: Maybe<&2, ActAbs>, +p: T.Bt, +bs: List<&2, ActBind>, +n: Nat
     case None{}:
       rest
 
+# An absurd equation over a dotted parameter (Data.Vec.Base's cast at
+# n = suc _, x = []: Agda's eq : zero ≡ suc n, m dotted zero by []).  The
+# case leaves m a wildcard, which an earlier case's split of m puts in both
+# of Bend's branches: at m = suc m' eq is {1n+m' == 1n+n} and the clash is
+# []'s own equation {1n+m' == 0n}, while agda2bend refutes eq read at
+# m = 0n.  So eq is first transported along the index equation that dots
+# m, x_1_eq : {m == 0n}: eq_tr = {(%x_1_eq : {_ == 1n+n : Nat}; eq) :
+# {0n == 1n+n : Nat}}, true in either branch, and refuted instead (Vec's
+# cast, 18 dependents in the stdlib run; /tmp/bx/tq/vc/v2.bend;
+# 2026-10-30).  Only for an index equation at zero, true or false, of a
+# column no other wildcard's type the equation mentions.
+type ActXt is Data:
+  ActXt{e: List<&2, U32>, s: List<&2, U32>, v: T.Bt}
+
+def act.tr.val(+tag: String) -> Maybe<&2, T.Bt>:
+  Bool.pick(Maybe<&2, T.Bt>, String.eq(tag, "ix_eqz"), Some{T.BtNat{S.b("0")}}, Bool.pick(Maybe<&2, T.Bt>, String.eq(tag, "ix_eqt"), Some{T.BtCon{S.b("True"), T.BtANil{}}}, Bool.pick(Maybe<&2, T.Bt>, String.eq(tag, "ix_eqf"), Some{T.BtCon{S.b("False"), T.BtANil{}}}, None{})))
+
+def act.tr.isvar(t: T.Bt) -> Bool:
+  match t:
+    case T.BtVar{x}:
+      True{}
+    case _:
+      False{}
+
+def act.tr.some(m: Maybe<&2, T.Bt>) -> Bool:
+  match m:
+    case Some{t}:
+      True{}
+    case None{}:
+      False{}
+
+# whether the column of variable s is a wildcard in the case's patterns
+def act.tr.wild(xs: List<&2, T.Bt>, ps: T.Bt, +s: List<&2, U32>) -> Bool:
+  match xs ps:
+    case x <> xt T.BtArgs{p, rest}:
+      Bool.or(Bool.and(S.eq(act.var.name(x), s), act.wild(p)), act.tr.wild(xt, rest, s))
+    case _ _:
+      False{}
+
+# the wildcard columns the names mention
+def act.tr.wilds(xs: List<&2, T.Bt>, ps: T.Bt, +refs: List<&2, List<&2, U32>>) -> Nat:
+  match xs ps:
+    case x <> xt T.BtArgs{p, rest}:
+      Nat.add(Bool.pick(Nat, Bool.and(act.used(act.var.name(x), refs), act.wild(p)), 1n, 0n), act.tr.wilds(xt, rest, refs))
+    case _ _:
+      0n
+
+def act.tr.mk(+e: List<&2, U32>, +s: List<&2, U32>, m: Maybe<&2, T.Bt>) -> Maybe<&2, ActXt>:
+  match m:
+    case Some{v}:
+      Some{ActXt{e, s, v}}
+    case None{}:
+      None{}
+
+def act.tr.or(a: Maybe<&2, ActXt>, b: Maybe<&2, ActXt>) -> Maybe<&2, ActXt>:
+  match a:
+    case Some{r}:
+      Some{r}
+    case None{}:
+      b
+
+# the first equation field of a top constructor pattern at parameter xn
+# whose index (ixs, the parameter type's) is a wildcard column the absurd
+# equation mentions
+def act.tr.de(es: List<&2, ActDe>, +xn: List<&2, U32>, +ixs: List<&2, T.Bt>, +svars: List<&2, T.Bt>, +q: T.Bt, +refs: List<&2, List<&2, U32>>) -> Maybe<&2, ActXt>:
+  match es:
+    case Nil{}:
+      None{}
+    case ActDe{+j, +o, +tag} <> t:
+      +i = act.undead(act.ds.nth(ixs, o))
+      +s = act.var.name(i)
+      +v = act.tr.val(tag)
+      +ok = Bool.and(Bool.and(act.tr.isvar(i), act.tr.some(v)), Bool.and(act.tr.wild(svars, q, s), act.used(s, refs)))
+      Bool.pick(Maybe<&2, ActXt>, ok, act.tr.mk(List.append(&2, U32, act.at(xn, j), S.b("_eq")), s, v), act.tr.de(t, xn, ixs, svars, q, refs))
+
+def act.tr.top(p: T.Bt, +x: T.Bt, +svars: List<&2, T.Bt>, +q: T.Bt, +hps: List<&2, T.BParam>, +refs: List<&2, List<&2, U32>>) -> Maybe<&2, ActXt>:
+  match p:
+    case T.BtCon{c, +args}:
+      +fs = act.spine.list(args)
+      +es = act.ds.eqs(fs, 1n, 0n)
+      +xn = act.var.name(x)
+      act.tr.de(es, xn, act.list.last(List.length(&2, ActDe, es), act.ty.args(act.param.ty(hps, xn))), svars, q, refs)
+    case _:
+      None{}
+
+def act.tr.tops(ps: T.Bt, xs: List<&2, T.Bt>, +svars: List<&2, T.Bt>, +q: T.Bt, +hps: List<&2, T.BParam>, +refs: List<&2, List<&2, U32>>) -> Maybe<&2, ActXt>:
+  match ps xs:
+    case T.BtArgs{p, rest} +x <> xt:
+      act.tr.or(act.tr.top(p, x, svars, q, hps, refs), act.tr.tops(rest, xt, svars, q, hps, refs))
+    case _ _:
+      None{}
+
+# only an equation, one wildcard column in it
+def act.tr.eq(+t: T.Bt, +n: Nat, r: Maybe<&2, ActXt>) -> Maybe<&2, ActXt>:
+  match t:
+    case T.BtEq{ty, a, b}:
+      Bool.pick(Maybe<&2, ActXt>, Nat.is_eq(n, 1n), r, None{})
+    case _:
+      None{}
+
+def act.abs.tr.go(r: Maybe<&2, ActXt>, +x: List<&2, U32>, +ty: A.Ag, +ix: Nat, +xty: T.Bt, +ctx: List<&2, T.Bt>, +env: ActEnv, +goal: T.Bt, +q: T.Bt, +svars: List<&2, T.Bt>) -> T.Bt:
+  match r:
+    case None{}:
+      act.abs.body(Some{ActAbs{x, ty, ix}}, A.AgAbsurd{}, ctx, env, goal)
+    case Some{ActXt{+e, +s, +v}}:
+      +t0 = act.goal(svars, q, xty)
+      +xt = List.append(&2, U32, x, S.b("_tr"))
+      T.BtLet{xt, T.BtAnn{T.BtRw{T.BtVar{e}, T.tba.subst(t0, s, T.BtWild{}), T.BtExpr{T.BtVar{x}}}, T.tba.subst(t0, s, v)}, act.abs.body(Some{ActAbs{xt, ty, ix}}, A.AgAbsurd{}, ctx, env, goal)}
+
+# an absurd clause's body, its equation transported first when it needs
+# (above)
+def act.abs.tr(m: Maybe<&2, ActAbs>, body: A.Ag, +ctx: List<&2, T.Bt>, +env: ActEnv, +goal: T.Bt, +p: T.Bt, +q: T.Bt, +svars: List<&2, T.Bt>, +hps: List<&2, T.BParam>) -> T.Bt:
+  match m body:
+    case Some{ActAbs{+x, +ty, +ix}} A.AgAbsurd{}:
+      +xty = act.undead(act.param.ty(hps, x))
+      +refs = T.tba.refs(xty, Nil{})
+      act.abs.tr.go(act.tr.eq(xty, act.tr.wilds(svars, q, refs), act.tr.tops(p, svars, svars, q, hps, refs)), x, ty, ix, xty, ctx, env, goal, q, svars)
+    case m body:
+      act.abs.body(m, body, ctx, env, goal)
+
 # a case: its patterns, and its body after the rewrites its refl patterns
 # need (an absurd or cubical clause is left out)
 def act.case.of(a: ActPat, +n: Nat, body: A.Ag, +env: ActEnv, rest: T.Bt, +rw: ActRw, abs: Maybe<&2, ActAbs>, +dots: List<&2, ActDot>, +svars: List<&2, T.Bt>, +hps: List<&2, T.BParam>, +ret: T.Bt, +tel: A.Ag, +uhps: List<&2, T.BParam>, +aps: List<&2, A.Ag>) -> T.Bt:
@@ -5825,7 +5945,7 @@ def act.case.of(a: ActPat, +n: Nat, body: A.Ag, +env: ActEnv, rest: T.Bt, +rw: A
       +cvn = act.sd.cvnames(cvs)
       +qf = act.sd.prn(act.ds.undot(q0, List.append(&2, List<&2, U32>, List.append(&2, List<&2, U32>, List.append(&2, List<&2, U32>, act.ds.names(ds), act.sd.names(sd)), dn), con), bs), cvn)
       +sdh = act.sq.pick(sd, act.sd.uniq(Bool.pick(List<&2, ActSd>, nr, Nil{}, act.sd.tops(p, svars, svars, qf, bs, uhps, p, svars, act.dt.all(bs, act.ctx.of(n, bs), env))), bs))
-      T.BtCase{qf, act.case.body(eqs, act.nrf.rw(rw, List.append(&2, List<&2, U32>, dn, act.cq.dv.of(cq))), g, act.ps.minus(hps, act.cq.ct.names(cts)), act.names(svars), act.ds.wrap(ds, g, act.sq.emit(act.sq.plan(sdh, cvs, cvn), sdh, act.abs.body(abs, body, ctx, env, g)))), rest}
+      T.BtCase{qf, act.case.body(eqs, act.nrf.rw(rw, List.append(&2, List<&2, U32>, dn, act.cq.dv.of(cq))), g, act.ps.minus(hps, act.cq.ct.names(cts)), act.names(svars), act.ds.wrap(ds, g, act.sq.emit(act.sq.plan(sdh, cvs, cvn), sdh, act.abs.tr(abs, body, ctx, env, g, p, qf, svars, hps)))), rest}
 
 # the cases of a match from the clauses (an absurd clause is left out)
 def act.cases(cls: A.Ag, +scr: List<&2, Bool>, +ents: List<&2, T.Bt>, +pnames: List<&2, List<&2, U32>>, +env: ActEnv, +hps: List<&2, T.BParam>, +ret: T.Bt, +uhps: List<&2, T.BParam>) -> T.Bt:
