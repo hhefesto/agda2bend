@@ -562,9 +562,54 @@ def tcp.qd.fun(t: T.Bt) -> Bool:
     case _:
       False{}
 
+# a record or data type with a function type among its type arguments (a
+# family's, past its lambdas), or whose kind has a Type part (&1 absorbs
+# a minimum): never Data either, whatever the def's quantity.
+# agda-unimath's `is-contr A = Σ A (λ a → (x : A) → a ＝ x)` is, in the
+# signatures Copy reads, Sigma_<l, l, A, (a => @x:A -> {a == x : A})> (the
+# &1 its family's Pi asks for comes later), of kind l, so eq-is-contr'
+# (its x_rp used twice) was specialised to &2 with +x_rp and failed
+# 'expected Data observed Type': the 2f30a72 run lost it, and contraction,
+# is-prop-is-contr and their thousands of dependents with it.  A template,
+# as before, checks (2026-10-31).
+def tcp.qd.kind1(k: T.Bt) -> Bool:
+  match k:
+    case T.BtVar{+q}:
+      S.infix(q, S.b("&1"))
+    case _:
+      False{}
+
+def tcp.qd.pi.arg(fuel: Nat, a: T.Bt, +qe: QF.TqEnv) -> Bool:
+  match fuel a:
+    case 1n+f T.BtLam{m, y, b}:
+      tcp.qd.pi.arg(f, b, qe)
+    case 1n+f T.BtExpr{e}:
+      tcp.qd.pi.arg(f, e, qe)
+    case 1n+f T.BtDead{e}:
+      tcp.qd.pi.arg(f, e, qe)
+    case 1n+f T.BtTplArg{e}:
+      tcp.qd.pi.arg(f, e, qe)
+    case f a:
+      tcp.qd.fun(QF.tqf.whnf(16n, a, qe))
+
+def tcp.qd.args.pi(args: T.Bt, +qe: QF.TqEnv) -> Bool:
+  match args:
+    case T.BtArgs{a, rest}:
+      Bool.or(tcp.qd.pi.arg(16n, a, qe), tcp.qd.args.pi(rest, qe))
+    case _:
+      False{}
+
+def tcp.qd.rec1(+t: T.Bt, +ctx: List<&2, T.BParam>, +qe: QF.TqEnv) -> Bool:
+  match t:
+    case T.BtTyApp{n, +args}:
+      Bool.or(tcp.qd.args.pi(args, qe), tcp.qd.kind1(QF.tqf.kind(8n, t, ctx, qe)))
+    case _:
+      False{}
+
 # the quantity parameter of the def's (ctx) that ty's values' kind is, or empty
 def tcp.qd.of(+ty: T.Bt, +ctx: List<&2, T.BParam>, +qe: QF.TqEnv) -> List<&2, U32>:
-  Bool.pick(List<&2, U32>, tcp.qd.fun(QF.tqf.whnf(16n, ty, qe)), Nil{}, tcp.qd.var(QF.tqf.kind(8n, ty, ctx, qe), tcp.q.params(ctx)))
+  +w = QF.tqf.whnf(16n, ty, qe)
+  Bool.pick(List<&2, U32>, Bool.or(tcp.qd.fun(w), tcp.qd.rec1(w, ctx, qe)), Nil{}, tcp.qd.var(QF.tqf.kind(8n, ty, ctx, qe), tcp.q.params(ctx)))
 
 def tcp.qd.nil(q: List<&2, U32>) -> Bool:
   match q:
