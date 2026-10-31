@@ -116,3 +116,46 @@ least : Σ Nat (λ _ → Nat) → Σ Nat (λ _ → Nat)
 pr1 (least (pair zero p)) = p
 pr2 (least (pair zero p)) = zero
 least (pair (suc n) p) = least (pair n p)
+
+-- is-equiv-comp: record patterns whose fields go to templates (section-comp's)
+infixr 16 _∘_
+_∘_ : {l1 l2 l3 : Level} {A : Set l1} {B : Set l2} {C : Set l3} → (B → C) → (A → B) → A → C
+(g ∘ f) x = g (f x)
+
+id : {l : Level} {A : Set l} → A → A
+id x = x
+
+_~_ : {l1 l2 : Level} {A : Set l1} {B : Set l2} → (A → B) → (A → B) → Set (l1 ⊔ l2)
+f ~ g = (x : _) → f x ＝ g x
+
+ap : {l1 l2 : Level} {A : Set l1} {B : Set l2} (f : A → B) {x y : A} → x ＝ y → f x ＝ f y
+ap f refl = refl
+
+is-section : {l1 l2 : Level} {A : Set l1} {B : Set l2} (f : A → B) → (B → A) → Set l2
+is-section f g = (f ∘ g) ~ id
+
+section : {l1 l2 : Level} {A : Set l1} {B : Set l2} (f : A → B) → Set (l1 ⊔ l2)
+section f = Σ _ (is-section f)
+
+is-retraction : {l1 l2 : Level} {A : Set l1} {B : Set l2} (f : A → B) → (B → A) → Set l1
+is-retraction f g = (g ∘ f) ~ id
+
+retraction : {l1 l2 : Level} {A : Set l1} {B : Set l2} (f : A → B) → Set (l1 ⊔ l2)
+retraction f = Σ _ (is-retraction f)
+
+is-equiv : {l1 l2 : Level} {A : Set l1} {B : Set l2} (f : A → B) → Set (l1 ⊔ l2)
+is-equiv f = Σ (section f) (λ _ → retraction f)
+
+module _ {l1 l2 l3 : Level} {A : Set l1} {B : Set l2} {X : Set l3} (g : B → X) (h : A → B) where
+
+  section-comp : section h → section g → section (g ∘ h)
+  pr1 (section-comp t s) = pr1 t ∘ pr1 s
+  pr2 (section-comp t s) x = ap g (pr2 t (pr1 s x)) ∙ pr2 s x
+
+  retraction-comp : retraction g → retraction h → retraction (g ∘ h)
+  pr1 (retraction-comp r q) = pr1 q ∘ pr1 r
+  pr2 (retraction-comp r q) x = ap (pr1 q) (pr2 r (h x)) ∙ pr2 q x
+
+  is-equiv-comp : is-equiv h → is-equiv g → is-equiv (g ∘ h)
+  pr1 (is-equiv-comp (pair sh rh) (pair sg rg)) = section-comp sh sg
+  pr2 (is-equiv-comp (pair sh rh) (pair sg rg)) = retraction-comp rg rh

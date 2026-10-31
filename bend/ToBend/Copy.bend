@@ -1484,13 +1484,25 @@ def tcp.rp.self(bs: List<&2, TcpRb>, +n: List<&2, U32>) -> Bool:
 def tcp.rp.one(+bs: List<&2, TcpRb>, +b: T.Bt, +x: List<&2, U32>, +n: List<&2, U32>) -> Bool:
   Bool.and(Nat.is_eq(tcp.rp.uses(bs, b), 1n), Bool.and(Nat.is_eq(tcp.uses.unk(List.append(&2, U32, x, S.b("_rp")), b), 0n), Bool.not(tcp.rp.self(bs, n))))
 
-# read as projections: a field of function type used twice (tcp.rp.dup), or
-# one field used once (tcp.rp.one); the result's type not the record's, no
-# field matched
+# whether a field variable is passed inside a template argument, which takes
+# no local variable: as a projection of the record parameter, a template
+# itself then, it is closed (agda-unimath's is-equiv-comp passes the sh and
+# sg of `(sh , rh) (sg , rg)` to section-comp's templates; 97 dependents in
+# its cone, 2026-10-31)
+def tcp.rp.tpl(bs: List<&2, TcpRb>, +b: T.Bt) -> Bool:
+  match bs:
+    case Nil{}:
+      False{}
+    case TcpRb{+x, v, ty} <> t:
+      Bool.or(tcp.in.tpl(x, b, False{}), tcp.rp.tpl(t, b))
+
+# read as projections: a field of function type used twice (tcp.rp.dup), a
+# field in a template argument (tcp.rp.tpl), or one field used once
+# (tcp.rp.one); the result's type not the record's, no field matched
 def tcp.rp.ok(m: Maybe<&2, List<&2, TcpRb>>, +b: T.Bt, +x: List<&2, U32>, +ret: T.Bt, +qe: QF.TqEnv, +n: List<&2, U32>) -> Bool:
   match m:
     case Some{+bs}:
-      Bool.and(Bool.or(tcp.rp.dup(bs, b, qe), tcp.rp.one(bs, b, x, n)), Bool.and(Bool.not(tcp.mem(x, T.tba.refs(ret, Nil{}))), Bool.not(tcp.rp.scr(bs, b))))
+      Bool.and(Bool.or(Bool.or(tcp.rp.dup(bs, b, qe), tcp.rp.tpl(bs, b)), tcp.rp.one(bs, b, x, n)), Bool.and(Bool.not(tcp.mem(x, T.tba.refs(ret, Nil{}))), Bool.not(tcp.rp.scr(bs, b))))
     case None{}:
       False{}
 
@@ -1578,14 +1590,61 @@ def tcp.rp.ren(ps: List<&2, T.BParam>, +x: List<&2, U32>, +y: List<&2, U32>, +se
 # put into field types and the body, under binders Agda often names x too
 # (Σ's λ x → B in A × B), and the substitutions do not rename binders, so
 # is-equiv-is-invertible's K read pr2 of H (2026-10-30).
-def tcp.rp.item(it: T.BItem, +e: TcpEnv, +qe: QF.TqEnv) -> T.BItem:
+def tcp.rp.some(ok: Bool, it: T.BItem) -> Maybe<&2, T.BItem>:
+  match ok:
+    case True{}:
+      Some{it}
+    case False{}:
+      None{}
+
+# the def read as projections, or None
+def tcp.rp.try(it: T.BItem, +e: TcpEnv, +qe: QF.TqEnv) -> Maybe<&2, T.BItem>:
   match it:
     case T.BiDef{+n, +ps, +ret, T.BtMatch{T.BtArgs{T.BtVar{+x0}, T.BtANil{}}, T.BtCase{T.BtArgs{+p, T.BtANil{}}, +b, T.BtCEnd{}}}, +doc}:
       +x = List.append(&2, U32, x0, S.b("_rp"))
       +ps2 = tcp.rp.ren(ps, x0, x, False{})
       +b2 = tcp.rp.sub(b, x0, T.BtVar{x})
       +bs : Maybe<&2, List<&2, TcpRb>> = tcp.rp.go(64n, [TcpRw{p, T.BtVar{x}, tcp.vty(ps2, x)}], e, qe, Nil{})
-      Bool.pick(T.BItem, tcp.rp.ok(bs, b2, x0, ret, qe, n), T.BiDef{n, ps2, ret, tcp.rp.body(bs, b2), doc}, T.BiDef{n, ps, ret, T.BtMatch{T.BtArgs{T.BtVar{x0}, T.BtANil{}}, T.BtCase{T.BtArgs{p, T.BtANil{}}, b, T.BtCEnd{}}}, doc})
+      tcp.rp.some(tcp.rp.ok(bs, b2, x0, ret, qe, n), T.BiDef{n, ps2, ret, tcp.rp.body(bs, b2), doc})
+    case _:
+      None{}
+
+# A match on several parameters at once, by one case, as nested matches,
+# each read as projections in turn while it may be (is-equiv-comp's x x_17
+# at pair{sh, rh} pair{sg, rg}; 2026-10-31)
+def tcp.rp.nest(fuel: Nat, b: T.Bt) -> T.Bt:
+  match fuel b:
+    case 1n+f T.BtMatch{T.BtArgs{+x0, T.BtArgs{+xa, +xr}}, T.BtCase{T.BtArgs{+p, T.BtArgs{+pa, +pr}}, +bb, T.BtCEnd{}}}:
+      T.BtMatch{T.BtArgs{x0, T.BtANil{}}, T.BtCase{T.BtArgs{p, T.BtANil{}}, tcp.rp.nest(f, T.BtMatch{T.BtArgs{xa, xr}, T.BtCase{T.BtArgs{pa, pr}, bb, T.BtCEnd{}}}), T.BtCEnd{}}}
+    case _ b:
+      b
+
+def tcp.rp.multi(b: T.Bt) -> Bool:
+  match b:
+    case T.BtMatch{T.BtArgs{x0, T.BtArgs{xa, xr}}, T.BtCase{T.BtArgs{p, T.BtArgs{pa, pr}}, bb, T.BtCEnd{}}}:
+      True{}
+    case _:
+      False{}
+
+# the last def read, while the next match reads too (fuel: the matches)
+def tcp.rp.go.on(fuel: Nat, m: Maybe<&2, T.BItem>, +last: T.BItem, +e: TcpEnv, +qe: QF.TqEnv) -> T.BItem:
+  match fuel m:
+    case 1n+f Some{+r}:
+      tcp.rp.go.on(f, tcp.rp.try(r, e, qe), r, e, qe)
+    case _ _:
+      last
+
+def tcp.rp.at(multi: Bool, +n: List<&2, U32>, +ps: List<&2, T.BParam>, +ret: T.Bt, +body: T.Bt, +doc: List<&2, List<&2, U32>>, +e: TcpEnv, +qe: QF.TqEnv) -> T.BItem:
+  match multi:
+    case True{}:
+      tcp.rp.go.on(8n, tcp.rp.try(T.BiDef{n, ps, ret, tcp.rp.nest(8n, body), doc}, e, qe), T.BiDef{n, ps, ret, body, doc}, e, qe)
+    case False{}:
+      tcp.rp.go.on(1n, tcp.rp.try(T.BiDef{n, ps, ret, body, doc}, e, qe), T.BiDef{n, ps, ret, body, doc}, e, qe)
+
+def tcp.rp.item(it: T.BItem, +e: TcpEnv, +qe: QF.TqEnv) -> T.BItem:
+  match it:
+    case T.BiDef{+n, +ps, +ret, +body, +doc}:
+      tcp.rp.at(tcp.rp.multi(body), n, ps, ret, body, doc, e, qe)
     case it:
       it
 

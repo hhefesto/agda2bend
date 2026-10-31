@@ -813,8 +813,10 @@ def ctx.laws() -> IO(Unit):
 # (eq-is-contr'); a copattern clause matching after its projection, its
 # record behind is-contr, gets a helper typed at the definition's instance
 # (is-prop-is-contr); copattern groups are a case each (two), a plain
-# clause beside them one of its own (is-successor-is-nonzero, least); the
-# gate keeps all 33 items (Bend 2.0.39; 19 of 30 at 2f30a72).
+# clause beside them one of its own (is-successor-is-nonzero, least);
+# is-equiv-comp's record patterns, whose fields go to section-comp's
+# templates, read as projections, its parameters templates; the gate
+# keeps all 45 items (Bend 2.0.39; 32 of 44 at 2f30a72).
 def cop.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, tr: D.A2bTr) -> IO(D.A2bG):
   match tr:
     case D.A2bTr{its, g}:
@@ -825,6 +827,7 @@ def cop.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<
         IO.print(verdict("a copattern helper is typed at the definition's instance", S.infix(text, S.b("x_10: {x_6 == y : A}) -> {eq_is_contr(~l, ~A, ~x, x_6, y) == x_10"))))
         IO.print(verdict("copattern clauses in groups are a case each", S.infix(text, S.b("pair{n, 1n+1n+0n}"))))
         IO.print(verdict("a plain clause beside copattern clauses is a case of its own", Bool.and(S.infix(text, S.b("pair{x_0, {==}}")), S.infix(text, S.b("least(pair{n, p})")))))
+        IO.print(verdict("record patterns whose fields go to templates read as projections", S.infix(text, S.b("~x_rp: is_equiv(l1, l2, A, B, h)"))))
         return g
 
 def cop.laws() -> IO(Unit):
