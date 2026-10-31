@@ -650,18 +650,45 @@ def tcp.pnames(ps: List<&2, T.BParam>) -> List<&2, List<&2, U32>>:
     case T.BParam{m, x, ty} <> t:
       x <> tcp.pnames(t)
 
-def tcp.param(p: T.BParam, +body: T.Bt, +datas: List<&2, List<&2, U32>>, ns: List<&2, List<&2, U32>>) -> T.BMode:
+# An imported type whose signature says Data counts as Data too: datas
+# holds the module's own types only, so Nat.Base's _≤_ was not Data in
+# Nat.Properties, and a ≤ proof used twice (*-mono-≤'s u≤v) became a
+# template, which every eta-expanding caller (*-monoˡ-≤, *-monoʳ-≤) then
+# passed a lambda's variable: "a template applied to closed ~ arguments"
+# (2026-10-30).
+def tcp.data.sig(s: QF.TqSig) -> Bool:
+  match s:
+    case QF.TqType{ps, T.BtVar{+d}, cs}:
+      S.eq(d, S.b("Data"))
+    case _:
+      False{}
+
+def tcp.dataish.q(t: T.Bt, +qe: QF.TqEnv) -> Bool:
+  match t:
+    case T.BtVar{+x}:
+      tcp.data.sig(QF.tqf.sig(qe, x))
+    case T.BtTyApp{+n, a}:
+      tcp.data.sig(QF.tqf.sig(qe, n))
+    case _:
+      False{}
+
+# so does a type the signatures say is Data, its values' quantity &2
+# (QF.tqf.kind: a def returning Data, a field type specialised to &2)
+def tcp.data.k(+ty: T.Bt, +ctx: List<&2, T.BParam>, +qe: QF.TqEnv) -> Bool:
+  QF.tqf.is(QF.tqf.kind(8n, ty, ctx, qe), "&2")
+
+def tcp.param(p: T.BParam, +body: T.Bt, +datas: List<&2, List<&2, U32>>, ns: List<&2, List<&2, U32>>, +qe: QF.TqEnv, +ctx: List<&2, T.BParam>) -> T.BMode:
   match p:
     case T.BParam{m, +x, +ty}:
-      +dt = Bool.or(tcp.dataish(ty, datas), tcp.fam.app(ty, ns))
+      +dt = Bool.or(Bool.or(tcp.dataish(ty, datas), Bool.or(tcp.dataish.q(ty, qe), tcp.data.k(ty, ctx, qe))), tcp.fam.app(ty, ns))
       tcp.scrut.mode(tcp.mode.of(m, tcp.uses.nd(x, body, dt), dt, tcp.in.tpl(x, body, False{}), Nat.is_eq(tcp.uses.unk(x, body), 0n)), tcp.scrut(x, body))
 
-def tcp.params(ps: List<&2, T.BParam>, +body: T.Bt, +datas: List<&2, List<&2, U32>>, +ns: List<&2, List<&2, U32>>) -> List<&2, T.BMode>:
+def tcp.params(ps: List<&2, T.BParam>, +body: T.Bt, +datas: List<&2, List<&2, U32>>, +ns: List<&2, List<&2, U32>>, +qe: QF.TqEnv, +ctx: List<&2, T.BParam>) -> List<&2, T.BMode>:
   match ps:
     case Nil{}:
       Nil{}
     case +p <> t:
-      tcp.param(p, body, datas, ns) <> tcp.params(t, body, datas, ns)
+      tcp.param(p, body, datas, ns, qe, ctx) <> tcp.params(t, body, datas, ns, qe, ctx)
 
 # Templates go first, so a parameter a template's type mentions must be a
 # template too (`~x: A` cannot come before A otherwise): the names the
@@ -804,7 +831,7 @@ def tcp.vres(+ps: List<&2, T.BParam>, t: T.Bt, ty: T.Bt, +qe: QF.TqEnv) -> T.Bt:
 def tcp.decide(it: T.BItem, +datas: List<&2, List<&2, U32>>, +qe: QF.TqEnv) -> List<&2, T.BMode>:
   match it:
     case T.BiDef{n, +ps, +ret, +body, doc}:
-      List.append(&2, T.BMode, tcp.close(List.length(&2, T.BParam, ps), ps, tcp.params(ps, tcp.vres(ps, body, T.BtWild{}, qe), List.append(&2, List<&2, U32>, tcp.ty.params(ps), datas), tcp.pnames(ps))), tcp.ret.ms(body, ret))
+      List.append(&2, T.BMode, tcp.close(List.length(&2, T.BParam, ps), ps, tcp.params(ps, tcp.vres(ps, body, T.BtWild{}, qe), List.append(&2, List<&2, U32>, tcp.ty.params(ps), datas), tcp.pnames(ps), qe, ps)), tcp.ret.ms(body, ret))
     case _:
       Nil{}
 
