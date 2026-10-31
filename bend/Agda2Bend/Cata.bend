@@ -9229,10 +9229,13 @@ def act.pats.all(ps: A.Ag) -> Nat:
     case _:
       0n
 
+# whether some clause is a copattern clause (2026-10-31: the first one only
+# before, so is-successor-is-nonzero-ℕ, a plain clause first, read its
+# pr1 and pr2 clauses as cases of their own)
 def act.copat.is(cls: A.Ag) -> Bool:
   match cls:
     case A.AgCl{tel, +ps, body, ty, ca, rest}:
-      Bool.not(Nat.is_eq(act.pats.len(ps), act.pats.all(ps)))
+      Bool.or(Bool.not(Nat.is_eq(act.pats.len(ps), act.pats.all(ps))), act.copat.is(rest))
     case _:
       False{}
 
@@ -9929,11 +9932,134 @@ def act.copat.rec.go(split: Bool, +k: String, +cref: List<&2, U32>, +fs: List<&2
       +scr = act.copat.scr.k(cls, k, ents, env)
       T.BtMatch{T.tba.args(act.scr.vars(scr, ents)), act.copat.cases(act.copat.kcls(cls, k), 0n, cls, k, scr, cref, fs, ar, ents, env, dk)}
 
+# Copattern definitions in groups (2026-10-31) ------------------------------
+#
+# Clauses that split a parameter at different patterns: each group of
+# copattern clauses (each projection path once) builds the record at its
+# pattern, and a plain clause among them gives the value whole.
+# agda-unimath's well-ordering-principle-ℕ (pr1/pr2 at `pair zero-ℕ p`, a
+# plain clause at `pair (succ-ℕ n) p`, 124 dependents in the vb50d394 run)
+# and is-successor-is-nonzero-ℕ (a plain clause at zero-ℕ, pr1/pr2 at
+# succ-ℕ x).  Before, only the first group was read and the other cases
+# were missing ('cases for Succ'), or, with a plain clause first, each
+# field became a case of its own.
+
+type ActGk is Data:
+  GkEnd{}
+  GkPlain{}
+  GkMore{}
+  GkNew{}
+
+def act.copat.str.in(+p: String, ps: List<&2, String>) -> Bool:
+  match ps:
+    case Nil{}:
+      False{}
+    case h <> t:
+      Bool.or(String.eq(h, p), act.copat.str.in(p, t))
+
+# the next clause's place: the end, a plain clause, one more of the group
+# (its projection path not seen in it), or a new group's first
+def act.copat.gkind.of(+p: String, +seen: List<&2, String>) -> ActGk:
+  Bool.pick(ActGk, String.eq(p, ""), GkPlain{}, Bool.pick(ActGk, act.copat.str.in(p, seen), GkNew{}, GkMore{}))
+
+def act.copat.gkind(cls: A.Ag, +seen: List<&2, String>) -> ActGk:
+  match cls:
+    case A.AgCl{tel, +ps, body, ty, ca, rest}:
+      act.copat.gkind.of(act.cop.pstr(act.cop.path(ps)), seen)
+    case _:
+      GkEnd{}
+
+# a finished group (cur, reversed) before the rest
+def act.copat.gput(cur: List<&2, A.Ag>, rest: List<&2, List<&2, A.Ag>>) -> List<&2, List<&2, A.Ag>>:
+  match cur:
+    case Nil{}:
+      rest
+    case h <> t:
+      List.reverse(&2, A.Ag, h <> t) <> rest
+
+# the clauses cut into groups, each its clauses in order (one clause each,
+# its rest AgClEnd); seen: the current group's paths, cur: its clauses in
+# reverse
+def act.copat.groups(cls: A.Ag, k: ActGk, +seen: List<&2, String>, +cur: List<&2, A.Ag>) -> List<&2, List<&2, A.Ag>>:
+  match cls k:
+    case A.AgCl{+tel, +ps, +body, +ty, +ca, +rest} GkPlain{}:
+      act.copat.gput(cur, [A.AgCl{tel, ps, body, ty, ca, A.AgClEnd{}}] <> act.copat.groups(rest, act.copat.gkind(rest, Nil{}), Nil{}, Nil{}))
+    case A.AgCl{+tel, +ps, +body, +ty, +ca, +rest} GkMore{}:
+      +p = act.cop.pstr(act.cop.path(ps))
+      act.copat.groups(rest, act.copat.gkind(rest, p <> seen), p <> seen, A.AgCl{tel, ps, body, ty, ca, A.AgClEnd{}} <> cur)
+    case A.AgCl{+tel, +ps, +body, +ty, +ca, +rest} GkNew{}:
+      +p = act.cop.pstr(act.cop.path(ps))
+      act.copat.gput(cur, act.copat.groups(rest, act.copat.gkind(rest, [p]), [p], [A.AgCl{tel, ps, body, ty, ca, A.AgClEnd{}}]))
+    case _ _:
+      act.copat.gput(cur, Nil{})
+
+def act.copat.chain(cs: List<&2, A.Ag>) -> A.Ag:
+  match cs:
+    case A.AgCl{tel, ps, body, ty, ca, r} <> t:
+      A.AgCl{tel, ps, body, ty, ca, act.copat.chain(t)}
+    case _:
+      A.AgClEnd{}
+
+# the parameters any clause splits
+def act.copat.scr.all(cls: A.Ag, +ents: List<&2, T.Bt>, +env: ActEnv) -> List<&2, Bool>:
+  match cls:
+    case A.AgCl{tel, +ps, body, ty, ca, rest}:
+      act.bools.or(act.copat.scr(ps, ents, env), act.copat.scr.all(rest, ents, env))
+    case _:
+      Nil{}
+
+# a group's value: a plain clause's own, else the record its clauses build
+def act.copat.gval(plain: Bool, +tel: A.Ag, +ps: A.Ag, body: A.Ag, +grp: A.Ag, +cref: List<&2, U32>, +fs: List<&2, String>, +ar: Nat, +ents: List<&2, T.Bt>, +env: ActEnv, +dk: String) -> T.Bt:
+  match plain:
+    case True{}:
+      act.copat.of(tel, ps, body, ents, env)
+    case False{}:
+      act.copat.recval(cref, fs, ar, grp, ents, env, dk)
+
+# a group's case, its pattern its first clause's
+def act.copat.gcase(g: List<&2, A.Ag>, +scr: List<&2, Bool>, +cref: List<&2, U32>, +fs: List<&2, String>, +ar: Nat, +ents: List<&2, T.Bt>, +env: ActEnv, +dk: String, rest: T.Bt) -> T.Bt:
+  match g:
+    case A.AgCl{+tel, +ps, +body, +ty, +ca, +r} <> +t:
+      +sp = act.pat.p(act.top(ps, scr, ents, act.tel.len(tel), act.tel.hints(tel), act.names(ents), env))
+      T.BtCase{sp, T.BtExpr{act.copat.substs(act.scr.vars(scr, ents), sp, act.copat.gval(String.eq(act.copat.key(ps), ""), tel, ps, body, act.copat.chain(A.AgCl{tel, ps, body, ty, ca, r} <> t), cref, fs, ar, ents, env, dk))}, rest}
+    case _:
+      rest
+
+def act.copat.gcases(gs: List<&2, List<&2, A.Ag>>, +scr: List<&2, Bool>, +cref: List<&2, U32>, +fs: List<&2, String>, +ar: Nat, +ents: List<&2, T.Bt>, +env: ActEnv, +dk: String) -> T.Bt:
+  match gs:
+    case g <> t:
+      act.copat.gcase(g, scr, cref, fs, ar, ents, env, dk, act.copat.gcases(t, scr, cref, fs, ar, ents, env, dk))
+    case Nil{}:
+      T.BtCEnd{}
+
+# whether every clause splits a parameter
+def act.copat.scr.each(cls: A.Ag, +ents: List<&2, T.Bt>, +env: ActEnv) -> Bool:
+  match cls:
+    case A.AgCl{tel, +ps, body, ty, ca, rest}:
+      Bool.and(act.any(act.copat.scr(ps, ents, env)), act.copat.scr.each(rest, ents, env))
+    case _:
+      True{}
+
+# more than one group, every clause splitting a parameter: the groups'
+# match.  (A field defined once for all, the others split, as Dec's
+# `does (map′ … p) = does p` beside `proof (map′ … (true because …))`,
+# stays act.copat.rec.go's.)
+def act.copat.multi.is(+cls: A.Ag, +ents: List<&2, T.Bt>, +env: ActEnv) -> Bool:
+  Bool.and(Nat.is_lt(1n, List.length(&2, List<&2, A.Ag>, act.copat.groups(cls, act.copat.gkind(cls, Nil{}), Nil{}, Nil{}))), act.copat.scr.each(cls, ents, env))
+
+def act.copat.rec.sel(multi: Bool, split: Bool, +k: String, +cref: List<&2, U32>, +fs: List<&2, String>, +ar: Nat, +cls: A.Ag, +ents: List<&2, T.Bt>, +env: ActEnv, +dk: String) -> T.Bt:
+  match multi:
+    case True{}:
+      +scr = act.copat.scr.all(cls, ents, env)
+      T.BtMatch{T.tba.args(act.scr.vars(scr, ents)), act.copat.gcases(act.copat.groups(cls, act.copat.gkind(cls, Nil{}), Nil{}, Nil{}), scr, cref, fs, ar, ents, env, dk)}
+    case False{}:
+      act.copat.rec.go(split, k, cref, fs, ar, cls, ents, env, dk)
+
 def act.copat.rec(r: ActSym, +env: ActEnv, +cls: A.Ag, +ents: List<&2, T.Bt>, +dk: String) -> T.Bt:
   match r:
     case ActSym{+m, n, A.AkRecord{}, ms, +ar, b, +fs, +c, cp}:
       +k = act.copat.split.key(cls, ents, env)
-      act.copat.rec.go(Bool.and(Bool.not(act.copat.split.cl(cls, ents, env)), Bool.not(String.eq(k, ""))), k, act.ref.of(act.is.here(env, m), env, m, c), fs, ar, cls, ents, env, dk)
+      act.copat.rec.sel(act.copat.multi.is(cls, ents, env), Bool.and(Bool.not(act.copat.split.cl(cls, ents, env)), Bool.not(String.eq(k, ""))), k, act.ref.of(act.is.here(env, m), env, m, c), fs, ar, cls, ents, env, dk)
     case _:
       T.BtExpr{act.todo("copattern clauses whose type is not a record")}
 

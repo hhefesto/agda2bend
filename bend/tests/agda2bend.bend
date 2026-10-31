@@ -805,6 +805,41 @@ def ctx.laws() -> IO(Unit):
     g5 : D.A2bG <- ctx.of(al, ral, ds, D.a2b.mod.items(S.b("A2bCtx"), al, ds, g4))
     return Unit{}
 
+# fixtures/agda2bend/src/A2bCop.agda (its export A2bCop.sexp, after
+# Agda.Primitive, Agda.Builtin.Bool, Agda.Builtin.Nat and
+# Agda.Builtin.Equality): agda-unimath's shapes (2026-10-31).  Pis behind a
+# clause-defined family open (is-trunc-app); is-contr, a record whose
+# family is a function type, used twice is a template, not Data
+# (eq-is-contr'); a copattern clause matching after its projection, its
+# record behind is-contr, gets a helper typed at the definition's instance
+# (is-prop-is-contr); copattern groups are a case each (two), a plain
+# clause beside them one of its own (is-successor-is-nonzero, least); the
+# gate keeps all 33 items (Bend 2.0.39; 19 of 30 at 2f30a72).
+def cop.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, tr: D.A2bTr) -> IO(D.A2bG):
+  match tr:
+    case D.A2bTr{its, g}:
+      +text = D.a2b.raw.text(S.b("A2bCop"), al, ral, List.length(&2, A.AgDecl, ds), its)
+      do IO<D.A2bG>:
+        IO.print(verdict("Pis behind a clause-defined family open, and no gap is left", Bool.and(S.infix(text, S.b("def is_trunc_app(")), Bool.not(S.infix(text, S.b("?TODO"))))))
+        IO.print(verdict("a record whose family is a function type, used twice, is a template", S.infix(text, S.b("def eq_is_contr_p(~l: Quant, ~A: Kind(l), ~x_rp: is_contr(l, A)"))))
+        IO.print(verdict("a copattern helper is typed at the definition's instance", S.infix(text, S.b("x_10: {x_6 == y : A}) -> {eq_is_contr(~l, ~A, ~x, x_6, y) == x_10"))))
+        IO.print(verdict("copattern clauses in groups are a case each", S.infix(text, S.b("pair{n, 1n+1n+0n}"))))
+        IO.print(verdict("a plain clause beside copattern clauses is a case of its own", Bool.and(S.infix(text, S.b("pair{x_0, {==}}")), S.infix(text, S.b("least(pair{n, p})")))))
+        return g
+
+def cop.laws() -> IO(Unit):
+  +order : List<&2, List<&2, U32>> = [S.b("Agda.Primitive"), S.b("Agda.Builtin.Bool"), S.b("Agda.Builtin.Nat"), S.b("Agda.Builtin.Equality"), S.b("A2bCop")]
+  +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
+  +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
+  do IO<Unit>:
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g2 : D.A2bG <- abs.mod("Agda.Builtin.Bool", al, g1)
+    g3 : D.A2bG <- abs.mod("Agda.Builtin.Nat", al, g2)
+    g4 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g3)
+    +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bCop.sexp"))
+    g5 : D.A2bG <- cop.of(al, ral, ds, D.a2b.mod.items(S.b("A2bCop"), al, ds, g4))
+    return Unit{}
+
 def main() -> IO(Unit):
   do IO<Unit>:
     +bool : List<&2, U32> <- S.read("fixtures/agda2bend/Agda.Builtin.Bool.sexp")
@@ -818,3 +853,4 @@ def main() -> IO(Unit):
     abs.laws()
     inj.laws()
     ctx.laws()
+    cop.laws()
