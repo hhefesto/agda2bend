@@ -1444,13 +1444,20 @@ def tqf.env.put(+n: List<&2, U32>, s: TqSig, e: TqEnv) -> TqEnv:
       TqEnv{Map.set(&2, TqSig, sig, S.str(n), s), here, alts}
 
 # The module's items solved in order, each one's signature added for those
-# after it (their own names are printed bare).
+# after it (their own names are printed bare).  An item is solved with its
+# own signature (as written) in scope, so its recursive calls are solved as
+# its callers' are (2026-10-31): agda-unimath's `is-trunc (succ-𝕋 k) A = (x y
+# : A) → is-trunc k (x ＝ y)` kept Agda's level at its own call,
+# `is_trunc(l, k_1, …)`, where every caller had `is_trunc(&2, k, x == y)`
+# (an identity type is Data), so a header that takes x y behind
+# is_trunc(l, succ{k}, A) met Bend's reduction of it with a quantity of
+# its own ('expected is_trunc(&2, k, …) observed is_trunc(l, k, …)').
 def tqf.items(its: List<&2, T.BItem>, +e: TqEnv) -> List<&2, T.BItem>:
   match its:
     case Nil{}:
       Nil{}
-    case it <> t:
-      +it2 = tqf.item(it, e)
+    case +it <> t:
+      +it2 = tqf.item(it, tqf.env.put(tqf.name.of(it), tqf.sig.of(it), e))
       it2 <> tqf.items(t, tqf.env.put(tqf.name.of(it2), tqf.sig.of(it2), e))
 
 

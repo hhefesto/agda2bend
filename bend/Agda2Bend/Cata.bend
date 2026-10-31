@@ -2316,6 +2316,229 @@ def act.sym.of(+mo: List<&2, U32>, +nm: List<&2, U32>, d: A.AgDecl, +tab: Map<&2
     case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, +fl, lang, +ty, +dd}:
       act.sym.vms(act.sym.d(dd, Bool.or(act.flag(A.AkCopy{}, fl), act.inl.d(act.ends.sort(ty), dd)), act.ends.sort(ty), act.tylevel(dd, ty, unf), mo, nm, act.modes.u(8n, ty, act.tylevel(dd, ty, unf), tab, unf), act.role(act.qs(q), act.ends.level(ty)), act.ixs.heads(dd, ty)), act.tylevel(dd, ty, unf), ty, tab, unf)
 
+# Header reductions (2026-10-31) ----------------------------------------------
+#
+# A header reads the Pis its clauses take behind the type-valued definition
+# its type ends in, by substitution (act.unfold, a one-leaf body).  Two
+# shapes do not open so (agda-unimath: 778 of corpus-um's 1909 dropped
+# roots were "a type with fewer Pis than its clauses take parameters"):
+# - a field of a definition by copatterns, reached through definitions that
+#   open to it: `P ⊆ Q = type-Prop (leq-prop-subtype P Q)`, type-Prop's pr1
+#   of leq-prop-subtype, which opens (its eta unfolding, act.etu.of) to
+#   `Π-Prop A …`, whose pr1 clause (act.cop.key) is the Pi;
+# - a definition by clauses at arguments that decide them: `is-trunc
+#   (succ-𝕋 k) A = (x y : A) → is-trunc k (x ＝ y)` (its case tree splits,
+#   so act.unf.d gives no leaf): the first clause the arguments match, every
+#   one before it refuted by a constructor (left to right, the first
+#   pattern that decides; one undecided stops the search), its body at the
+#   arguments.
+# Both are Agda's own reductions, done where Bend would do them: Bend opens
+# the same definitions at the same arguments.
+
+def act.hr.or(a: A.Ag, b: A.Ag) -> A.Ag:
+  match a:
+    case A.AgNone{}:
+      b
+    case a:
+      a
+
+# a definition at es opened: its eta unfolding, else its one leaf ("one:",
+# act.one.of)
+def act.hr.open(+g: A.AgQ, +es: A.Ag, +unf: Map<&2, ActCopy>) -> A.Ag:
+  act.hr.or(act.etu.at(act.unf.got(Map.get(ActCopy, ActCopy{0n, A.AgNone{}}, unf, act.etu.key(g))), es), act.unfold.of(act.unf.got(Map.get(ActCopy, ActCopy{0n, A.AgNone{}}, unf, "one:" ++ act.key(g))), es))
+
+# a record argument opened (fuel: the openings) until a copattern clause of
+# the field q is found, the rest of the spine applied to it
+def act.hr.cop(fuel: Nat, t: A.Ag, +q: A.AgQ, +rest: A.Ag, +unf: Map<&2, ActCopy>) -> A.Ag:
+  match fuel t:
+    case 1n+f A.AgDef{+g, +es}:
+      act.hr.or(act.cop.push(act.unfold.of(act.unf.got(Map.get(ActCopy, ActCopy{0n, A.AgNone{}}, unf, act.cop.key(g, q))), es), rest), act.hr.cop(f, act.hr.open(g, es, unf), q, rest, unf))
+    case 1n+f A.AgDefX{+g, +es}:
+      act.hr.or(act.cop.push(act.unfold.of(act.unf.got(Map.get(ActCopy, ActCopy{0n, A.AgNone{}}, unf, act.cop.key(g, q))), es), rest), act.hr.cop(f, act.hr.open(g, es, unf), q, rest, unf))
+    case _ _:
+      A.AgNone{}
+
+def act.hr.proj.last(m: Maybe<&2, A.Ag>, +q: A.AgQ, +rest: A.Ag, +unf: Map<&2, ActCopy>) -> A.Ag:
+  match m:
+    case Some{t}:
+      act.hr.cop(4n, t, q, rest, unf)
+    case None{}:
+      A.AgNone{}
+
+# q's call split at its arity: a projection's record is its last argument
+def act.hr.proj(s: ActSplit, +q: A.AgQ, +unf: Map<&2, ActCopy>) -> A.Ag:
+  match s:
+    case ActSplit{vs, rest, True{}}:
+      act.hr.proj.last(act.ag.last(vs), q, rest, unf)
+    case _:
+      A.AgNone{}
+
+# A clause's patterns against the arguments: matched (each pattern
+# variable's de Bruijn index with its argument), refuted, or undecided.
+type ActHp is Data:
+  ActHp{p: A.Ag, t: A.Ag}
+
+type ActHb is Data:
+  ActHb{ix: Nat, t: A.Ag}
+
+type ActHm is Data:
+  HmYes{bs: List<&2, ActHb>}
+  HmNo{}
+  HmStuck{}
+
+def act.hr.zip(ps: A.Ag, es: A.Ag, acc: List<&2, ActHp>) -> List<&2, ActHp>:
+  match ps es:
+    case A.AgPArg{i, x, p, prest} A.AgEApp{i2, t, erest}:
+      ActHp{p, t} <> act.hr.zip(prest, erest, acc)
+    case _ _:
+      acc
+
+def act.hr.no(hit: Bool, m: ActHm) -> ActHm:
+  match hit:
+    case True{}:
+      m
+    case False{}:
+      HmNo{}
+
+# left to right: a variable or a dot binds or skips, a constructor against
+# a constructor decides (a definition at a constructor pattern is opened
+# first, by its eta unfolding: one-𝕋), anything else is undecided
+def act.hr.mt(fuel: Nat, xs: List<&2, ActHp>, bs: List<&2, ActHb>, +unf: Map<&2, ActCopy>) -> ActHm:
+  match fuel xs:
+    case _ Nil{}:
+      HmYes{bs}
+    case 1n+f ActHp{A.AgPVar{x, ix, o}, t} <> rest:
+      act.hr.mt(f, rest, ActHb{ix, t} <> bs, unf)
+    case 1n+f ActHp{A.AgPDot{d}, t} <> rest:
+      act.hr.mt(f, rest, bs, unf)
+    case 1n+f ActHp{A.AgPCon{q, r, fo, sub}, A.AgCon{q2, o, es2}} <> rest:
+      act.hr.no(String.eq(act.key(q), act.key(q2)), act.hr.mt(f, act.hr.zip(sub, es2, rest), bs, unf))
+    case 1n+f ActHp{A.AgPCon{q, r, fo, sub}, A.AgDef{g, ges}} <> rest:
+      act.hr.mt(f, ActHp{A.AgPCon{q, r, fo, sub}, act.hr.open(g, ges, unf)} <> rest, bs, unf)
+    case 1n+f ActHp{A.AgPLit{A.AgLNat{s}}, A.AgLit{A.AgLNat{s2}}} <> rest:
+      act.hr.no(S.eq(s, s2), act.hr.mt(f, rest, bs, unf))
+    case _ _:
+      HmStuck{}
+
+def act.hr.find(bs: List<&2, ActHb>, +i: Nat) -> A.Ag:
+  match bs:
+    case Nil{}:
+      A.AgNone{}
+    case ActHb{+ix, t} <> rest:
+      Bool.pick(A.Ag, Nat.is_eq(ix, i), t, act.hr.find(rest, i))
+
+# the values of a clause's n variables, from index 0 (the last) up
+def act.hr.vs(n: Nat, +bs: List<&2, ActHb>, +i: Nat) -> List<&2, A.Ag>:
+  match n:
+    case 0n:
+      Nil{}
+    case 1n+m:
+      act.hr.find(bs, i) <> act.hr.vs(m, bs, 1n+i)
+
+def act.hr.ok(ts: List<&2, A.Ag>) -> Bool:
+  match ts:
+    case Nil{}:
+      True{}
+    case A.AgNone{} <> t:
+      False{}
+    case h <> t:
+      act.hr.ok(t)
+
+def act.hr.tel.len(tel: A.Ag) -> Nat:
+  match tel:
+    case A.AgTel{x, i, ty, rest}:
+      1n+act.hr.tel.len(rest)
+    case _:
+      0n
+
+# an absurd clause's body is no type
+def act.hr.real(t: A.Ag) -> A.Ag:
+  match t:
+    case A.AgAbsurd{}:
+      A.AgNone{}
+    case t:
+      t
+
+def act.hr.put(body: A.Ag, +vs: List<&2, A.Ag>, +n: Nat, s: ActSplit) -> A.Ag:
+  match s:
+    case ActSplit{xs, rest, True{}}:
+      asb.push(asb.subst(act.hr.real(body), 0n, vs, n), rest)
+    case _:
+      A.AgNone{}
+
+def act.hr.inst(+vs: List<&2, A.Ag>, +n: Nat, +np: Nat, body: A.Ag, +es: A.Ag) -> A.Ag:
+  Bool.pick(A.Ag, act.hr.ok(vs), act.hr.put(body, vs, n, act.split(np, es)), A.AgNone{})
+
+# a clause's verdict: matched, its body at the arguments (n: its variables,
+# np: its patterns); refuted, the next clause's (alt); undecided, none
+def act.hr.body(m: ActHm, +n: Nat, +np: Nat, body: A.Ag, +es: A.Ag, alt: A.Ag) -> A.Ag:
+  match m:
+    case HmYes{+bs}:
+      act.hr.real(act.hr.inst(act.hr.vs(n, bs, 0n), n, np, body, es))
+    case HmNo{}:
+      alt
+    case HmStuck{}:
+      A.AgNone{}
+
+def act.hr.cls(fuel: Nat, cls: A.Ag, +es: A.Ag, +unf: Map<&2, ActCopy>) -> A.Ag:
+  match fuel cls:
+    case 1n+f A.AgCl{+tel, +ps, body, ty, ca, rest}:
+      act.hr.body(act.hr.mt(256n, act.hr.zip(ps, es, Nil{}), Nil{}, unf), act.hr.tel.len(tel), act.pats.len(ps), body, es, act.hr.cls(f, rest, es, unf))
+    case _ _:
+      A.AgNone{}
+
+def act.hr.tcl(c: ActCopy) -> A.Ag:
+  match c:
+    case ActCopy{n, b}:
+      b
+
+# q at es reduced by one of the two (AgNone when neither applies)
+def act.hr.red(+env: ActEnv, +q: A.AgQ, +es: A.Ag) -> A.Ag:
+  match env:
+    case ActEnv{mod, +tab, al, +unf}:
+      act.hr.or(act.hr.proj(act.split(act.sym.arity(act.sym.got(Map.get(ActSym, act.sym0(), tab, act.key(q)))), es), q, unf), act.hr.cls(64n, act.hr.tcl(act.unf.got(Map.get(ActCopy, ActCopy{0n, A.AgNone{}}, unf, "tcl:" ++ act.key(q)))), es, unf))
+
+def act.params.open.red(+q: A.AgQ, r: A.Ag, +env: ActEnv) -> A.Ag:
+  match r:
+    case A.AgNone{}:
+      A.AgDummy{List.append(&2, U32, act.qs(q), S.b(" does not open")), A.AgENil{}}
+    case r:
+      act.inline(1024n, r, env)
+
+# A header's type-valued end opened (u: its unfolding; AgNone when it has
+# none, then reduced as above, else a dummy that names the definition, for
+# the gap's message).
+def act.params.open(+q: A.AgQ, u: A.Ag, +es: A.Ag, +env: ActEnv) -> A.Ag:
+  match u:
+    case A.AgNone{}:
+      act.params.open.red(q, act.hr.red(env, q, es), env)
+    case u:
+      act.inline(1024n, u, env)
+
+# what a header found where it wanted a Pi (for the gap's message)
+def act.params.head(t: A.Ag) -> String:
+  match t:
+    case A.AgEl{s, x}:
+      act.params.head(x)
+    case A.AgDummy{+x, es}:
+      S.str(x)
+    case A.AgDef{+q, es}:
+      "at " ++ S.str(act.qs(q))
+    case A.AgVar{i, +x, es}:
+      "at a variable " ++ S.str(x)
+    case A.AgStored{x}:
+      "at a stored type"
+    case A.AgSort{x}:
+      "at a sort"
+    case A.AgNone{}:
+      "at nothing"
+    case A.AgBeta{f, es}:
+      "at a redex"
+    case A.AgDefX{+q, es}:
+      "at a copy of " ++ S.str(act.qs(q))
+    case _:
+      "at another term"
+
 # seen: the names this header has given so far (a non-dependent Pi's
 # parameter is in no context, but its name is taken)
 def act.params.go(fuel: Nat, n: Nat, t: A.Ag, ms: List<&2, ActM>, +ctx: List<&2, T.Bt>, +seen: List<&2, List<&2, U32>>, +env: ActEnv, +renv: ActEnv) -> ActPs:
@@ -2330,9 +2553,9 @@ def act.params.go(fuel: Nat, n: Nat, t: A.Ag, ms: List<&2, ActM>, +ctx: List<&2,
       +m = act.mode(i, a, act.opaque.env(d, a, env))
       act.params.put(m, nm, act.t(a, ctx, env), act.params.go(f, p, b, Nil{}, act.bind(d, act.entry(m, nm), ctx), nm <> seen, env, renv))
     case 1n+g 1n+p A.AgEl{s, A.AgDef{+q, +es}} ms:
-      act.params.go(g, 1n+p, A.AgEl{s, act.inline(1024n, act.unfold(env, q, es), env)}, ms, ctx, seen, env, renv)
+      act.params.go(g, 1n+p, A.AgEl{s, act.params.open(q, act.unfold(env, q, es), es, env)}, ms, ctx, seen, env, renv)
     case f 1n+p t ms:
-      ActPs{Nil{}, act.todo("a type with fewer Pis than its clauses take parameters"), ctx, Nil{}, False{}}
+      ActPs{Nil{}, act.todo("a type with fewer Pis than its clauses take parameters (" ++ act.params.head(t) ++ ")"), ctx, Nil{}, False{}}
 
 # The fuel bounds the unfoldings a header may take (each a type-valued
 # definition opened to reach the Pis the clauses take).
@@ -10855,6 +11078,39 @@ def act.etu.of(d: A.AgDecl, +unf: Map<&2, ActCopy>, +tab: Map<&2, ActSym>) -> Ma
   match d:
     case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, +fl, lang, +ty, A.AgDFun{A.AgPrNone{}, r, w, e, t, mu, cls, tree}}:
       act.etu.go(Bool.or(act.flag(A.AkCopy{}, fl), act.ends.sort(ty)), act.cls.arity(cls), ty, tree, unf, tab)
+    case _:
+      None{}
+
+# A function whose case tree is one leaf (no split), neither a projection, a
+# copy nor type-valued, whose type ends in a record or in a type-valued
+# definition (agda-unimath's `leq-prop-subtype P Q = Π-Prop A … : Prop _`):
+# its leaf, under "one:" KEY, which a header opens to reach a copattern
+# clause of the field it projects (act.hr.cop).
+def act.kind.rec(s: ActSym) -> Bool:
+  match s:
+    case ActSym{m, n, A.AkRecord{}, ms, ar, b, fs, c, cp}:
+      True{}
+    case _:
+      False{}
+
+def act.one.end(t: A.Ag, +unf: Map<&2, ActCopy>, +tab: Map<&2, ActSym>) -> Bool:
+  match t:
+    case A.AgEl{s, A.AgDef{+q, es}}:
+      Bool.or(act.kind.rec(act.sym.got(Map.get(ActSym, act.sym0(), tab, act.key(q)))), act.unf.has.got(Map.has(&2, ActCopy, unf, act.key(q))))
+    case _:
+      False{}
+
+def act.one.when(ok: Bool, +n: Nat, body: A.Ag) -> Maybe<&2, ActCopy>:
+  match ok:
+    case True{}:
+      Some{ActCopy{n, body}}
+    case False{}:
+      None{}
+
+def act.one.of(d: A.AgDecl, +unf: Map<&2, ActCopy>, +tab: Map<&2, ActSym>) -> Maybe<&2, ActCopy>:
+  match d:
+    case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, +fl, lang, +ty, A.AgDFun{A.AgPrNone{}, r, w, e, t, mu, cls, A.AgDone{xs, body}}}:
+      act.one.when(Bool.and(Bool.not(act.flag(A.AkCopy{}, fl)), Bool.and(Bool.not(act.ends.sort(ty)), act.one.end(act.target(ty), unf, tab))), act.vars.len(xs), body)
     case _:
       None{}
 
