@@ -6207,12 +6207,110 @@ def act.case.of(a: ActPat, +n: Nat, body: A.Ag, +env: ActEnv, rest: T.Bt, +rw: A
       +sdh = act.sq.pick(sd, act.sd.uniq(Bool.pick(List<&2, ActSd>, nr, Nil{}, act.sd.tops(p, svars, svars, qf, bs, uhps, p, svars, act.dt.all(bs, act.ctx.of(n, bs), env))), bs))
       T.BtCase{qf, act.case.body(eqs, act.nrf.rw(rw, List.append(&2, List<&2, U32>, dn, act.cq.dv.of(cq))), g, act.ps.minus(hps, act.cq.ct.names(cts)), act.names(svars), act.ds.wrap(ds, g, act.sq.emit(act.sq.plan(sdh, cvs, cvn), sdh, act.abs.tr(abs, body, ctx, env, g, p, qf, svars, hps)))), rest}
 
+# Unit's eta (2026-10-31).  A pattern variable of the builtin unit type is
+# the pattern Unit{}, and the body reads it as Unit{}: Agda's eta makes
+# `inr (inl _)` the clause of `inr (inl star)`, and Bend, with no eta for
+# Unit, reduces `pred-ℤ (succ-ℤ (inr (inl x)))` only at Unit{}
+# (agda-unimath's is-retraction-pred-ℤ, 185 dependents dropped on
+# "expected pred_u2124(succ_u2124(..inl{x_0}..)) observed ..inl{x_0}..";
+# is-section-pred-ℤ, 65).  Only a variable a pattern binds; a parameter
+# the match does not split stays a variable.
+def act.b.unit(b: ActB) -> Bool:
+  match b:
+    case AbUnit{}:
+      True{}
+    case _:
+      False{}
+
+def act.unit.ty(t: A.Ag) -> Bool:
+  match t:
+    case A.AgEl{s, A.AgDef{+q, A.AgENil{}}}:
+      act.b.unit(act.builtin(act.qs(q)))
+    case _:
+      False{}
+
+def act.unit.put(u: Bool, +k: Nat, r: List<&2, Nat>) -> List<&2, Nat>:
+  match u:
+    case True{}:
+      k <> r
+    case False{}:
+      r
+
+# the telescope positions (from its start) of unit type
+def act.unit.pos(t: A.Ag, +k: Nat) -> List<&2, Nat>:
+  match t:
+    case A.AgTel{x, i, ty, rest}:
+      act.unit.put(act.unit.ty(ty), k, act.unit.pos(rest, 1n+k))
+    case _:
+      Nil{}
+
+def act.unit.mem(+k: Nat, xs: List<&2, Nat>) -> Bool:
+  match xs:
+    case Nil{}:
+      False{}
+    case +h <> t:
+      Bool.or(Nat.is_eq(h, k), act.unit.mem(k, t))
+
+def act.unit.has(p: T.Bt, +nm: List<&2, U32>) -> Bool:
+  match p:
+    case T.BtArgs{a, rest}:
+      Bool.or(act.unit.has(a, nm), act.unit.has(rest, nm))
+    case T.BtCon{c, a}:
+      act.unit.has(a, nm)
+    case T.BtSucc{a}:
+      act.unit.has(a, nm)
+    case T.BtPv{m, x}:
+      S.eq(x, nm)
+    case _:
+      False{}
+
+def act.unit.pv(p: T.Bt, +nm: List<&2, U32>) -> T.Bt:
+  match p:
+    case T.BtArgs{a, rest}:
+      T.BtArgs{act.unit.pv(a, nm), act.unit.pv(rest, nm)}
+    case T.BtCon{c, a}:
+      T.BtCon{c, act.unit.pv(a, nm)}
+    case T.BtSucc{a}:
+      T.BtSucc{act.unit.pv(a, nm)}
+    case T.BtPv{m, +x}:
+      Bool.pick(T.Bt, S.eq(x, nm), T.BtCon{S.b("Unit"), T.BtANil{}}, T.BtPv{m, x})
+    case p:
+      p
+
+def act.unit.at(+us: List<&2, Nat>, +p: T.Bt, +pos: Nat, +nm: List<&2, U32>) -> Bool:
+  Bool.and(act.unit.mem(pos, us), act.unit.has(p, nm))
+
+def act.unit.bs(+us: List<&2, Nat>, +p: T.Bt, bs: List<&2, ActBind>) -> List<&2, ActBind>:
+  match bs:
+    case Nil{}:
+      Nil{}
+    case ActBind{+pos, T.BtVar{+nm}} <> t:
+      Bool.pick(ActBind, act.unit.at(us, p, pos, nm), ActBind{pos, T.BtCon{S.b("Unit"), T.BtANil{}}}, ActBind{pos, T.BtVar{nm}}) <> act.unit.bs(us, p, t)
+    case b <> t:
+      b <> act.unit.bs(us, p, t)
+
+def act.unit.p(+us: List<&2, Nat>, bs: List<&2, ActBind>, +p: T.Bt) -> T.Bt:
+  match bs:
+    case Nil{}:
+      p
+    case ActBind{+pos, T.BtVar{+nm}} <> t:
+      act.unit.p(us, t, Bool.pick(T.Bt, act.unit.at(us, p, pos, nm), act.unit.pv(p, nm), p))
+    case b <> t:
+      act.unit.p(us, t, p)
+
+def act.unit.fix(us: List<&2, Nat>, a: ActPat) -> ActPat:
+  match us a:
+    case Nil{} a:
+      a
+    case +u ActPat{+p, +bs, ab}:
+      ActPat{act.unit.p(u, bs, p), act.unit.bs(u, p, bs), ab}
+
 # the cases of a match from the clauses (an absurd clause is left out)
 def act.cases(cls: A.Ag, +scr: List<&2, Bool>, +ents: List<&2, T.Bt>, +pnames: List<&2, List<&2, U32>>, +env: ActEnv, +hps: List<&2, T.BParam>, +ret: T.Bt, +uhps: List<&2, T.BParam>) -> T.Bt:
   match cls:
     case A.AgCl{+tel, +ps, body, ty, ca, rest}:
       +n = act.tel.len(tel)
-      act.case.of(act.top.d(ps, scr, ents, n, act.tel.hints(tel), pnames, env, Nil{}, 1n), n, body, env, act.cases(rest, scr, ents, pnames, env, hps, ret, uhps), act.rw.scan(ps, ents, env), act.abs.find(ps, ents, tel, n), act.dots(ps, ents), act.scr.vars(scr, ents), hps, ret, tel, uhps, act.nrf.sps(ps, scr))
+      act.case.of(act.unit.fix(act.unit.pos(tel, 0n), act.top.d(ps, scr, ents, n, act.tel.hints(tel), pnames, env, Nil{}, 1n)), n, body, env, act.cases(rest, scr, ents, pnames, env, hps, ret, uhps), act.rw.scan(ps, ents, env), act.abs.find(ps, ents, tel, n), act.dots(ps, ents), act.scr.vars(scr, ents), hps, ret, tel, uhps, act.nrf.sps(ps, scr))
     case _:
       T.BtCEnd{}
 
@@ -6922,8 +7020,12 @@ def act.ps.ret(r: ActPs) -> T.Bt:
     case ActPs{ps, ret, ctx, es, ok}:
       ret
 
-# A constructor's own arguments as fields (a Level one is dropped), each
-# type in the scope of the data type's parameters and the earlier fields.
+# A constructor's own arguments as fields, each type in the scope of the
+# data type's parameters and the earlier fields.  A Level one is a Quant
+# field when levels are quantities (act.quant.on), as the applications and
+# the patterns of the constructor already pass and bind it (agda-unimath's
+# telescope, whose UUω constructors take their own levels: 64 dependents
+# dropped on "gap: level"); dropped otherwise.
 def act.cfield.put(lv: Bool, +nm: List<&2, U32>, ty: T.Bt, fs: List<&2, T.BField>) -> List<&2, T.BField>:
   match lv:
     case True{}:
@@ -7031,7 +7133,7 @@ def act.ix.fields(ixs: List<&2, T.BParam>, +pars: Nat, t: A.Ag, +ctx: List<&2, T
 def act.cfields(t: A.Ag, +ctx: List<&2, T.Bt>, +seen: List<&2, List<&2, U32>>, +env: ActEnv, +ixs: List<&2, T.BParam>, +pars: Nat) -> List<&2, T.BField>:
   match t:
     case A.AgEl{s, A.AgPi{i, +x, +a, d, b}}:
-      +lv = act.ty.level(a)
+      +lv = Bool.and(act.ty.level(a), Bool.not(act.quant.on()))
       +nm = act.fresh.in(x, ctx, seen)
       act.cfield.put(lv, nm, act.t(a, ctx, env), act.cfields(b, act.bind(d, Bool.pick(T.Bt, lv, act.level(), T.BtVar{nm}), ctx), nm <> seen, env, ixs, pars))
     case t:
@@ -7572,11 +7674,12 @@ def act.nu.heads.put(lv: Bool, h: String, t: List<&2, String>) -> List<&2, Strin
     case False{}:
       h <> t
 
-# a constructor's own arguments' data keys (a Level one is dropped, as a field)
+# a constructor's own arguments' data keys (a Level one is dropped when it
+# is as a field, act.cfields)
 def act.nu.heads(t: A.Ag) -> List<&2, String>:
   match t:
     case A.AgEl{s, A.AgPi{i, x, +a, d, b}}:
-      act.nu.heads.put(act.ty.level(a), act.nu.head.of(a), act.nu.heads(b))
+      act.nu.heads.put(Bool.and(act.ty.level(a), Bool.not(act.quant.on())), act.nu.head.of(a), act.nu.heads(b))
     case _:
       Nil{}
 
@@ -10063,6 +10166,66 @@ def act.copat.rec(r: ActSym, +env: ActEnv, +cls: A.Ag, +ents: List<&2, T.Bt>, +d
     case _:
       T.BtExpr{act.todo("copattern clauses whose type is not a record")}
 
+# The record of copattern clauses whose definition's type reaches a record
+# only past a split (agda-unimath's is-trunc-succ-is-trunc: is-trunc
+# neg-two-𝕋 A is is-contr A, a Σ, only in the clauses at neg-two-𝕋; 64
+# dependents dropped on "copattern clauses whose type is not a record"):
+# the record whose fields hold the clauses' first projection, read off the
+# projection's type (its record argument's head) (2026-10-31).
+def act.copat.pkey(cls: A.Ag, +acc: String) -> String:
+  match cls:
+    case A.AgCl{tel, +ps, body, ty, ca, rest}:
+      act.copat.pkey(rest, Bool.pick(String, String.eq(acc, ""), act.copat.key(ps), acc))
+    case _:
+      acc
+
+def act.copat.fmem(+k: String, xs: List<&2, String>) -> Bool:
+  match xs:
+    case Nil{}:
+      False{}
+    case +h <> t:
+      Bool.or(String.eq(h, k), act.copat.fmem(k, t))
+
+def act.copat.isfield(s: ActSym, +k: String) -> Bool:
+  match s:
+    case ActSym{m, n, A.AkRecord{}, ms, ar, b, fs, c, cp}:
+      act.copat.fmem(k, fs)
+    case _:
+      False{}
+
+def act.copat.prec.dom(a: A.Ag, +k: String, +env: ActEnv) -> Maybe<&2, A.AgQ>:
+  match a:
+    case A.AgEl{s, A.AgDef{+q, es}}:
+      Bool.pick(Maybe<&2, A.AgQ>, act.copat.isfield(act.sym(env, q), k), Some{q}, None{})
+    case _:
+      None{}
+
+def act.copat.prec.or(a: Maybe<&2, A.AgQ>, b: Maybe<&2, A.AgQ>) -> Maybe<&2, A.AgQ>:
+  match a:
+    case Some{q}:
+      Some{q}
+    case None{}:
+      b
+
+def act.copat.prec.ty(fuel: Nat, t: A.Ag, +k: String, +env: ActEnv) -> Maybe<&2, A.AgQ>:
+  match fuel t:
+    case 1n+f A.AgEl{s, A.AgPi{i, x, a, d, b}}:
+      act.copat.prec.or(act.copat.prec.dom(a, k, env), act.copat.prec.ty(f, b, k, env))
+    case _ _:
+      None{}
+
+def act.copat.prec(+cls: A.Ag, +env: ActEnv) -> Maybe<&2, A.AgQ>:
+  +k = act.copat.pkey(cls, "")
+  act.copat.prec.ty(64n, act.fty.env(env, k), k, env)
+
+# the record a definition's type gives, else its clauses' projection's
+def act.copat.recq.or(q: Maybe<&2, A.AgQ>, +cls: A.Ag, +env: ActEnv) -> Maybe<&2, A.AgQ>:
+  match q:
+    case Some{+r}:
+      Bool.pick(Maybe<&2, A.AgQ>, act.sym.is.rec(act.sym(env, r)), Some{r}, act.copat.prec(cls, env))
+    case None{}:
+      act.copat.prec(cls, env)
+
 def act.copat.body(q: Maybe<&2, A.AgQ>, +env: ActEnv, +cls: A.Ag, +ents: List<&2, T.Bt>, +dk: String) -> T.Bt:
   match q:
     case Some{r}:
@@ -10443,7 +10606,7 @@ def act.fun.body(p: A.AgProj, +cls: A.Ag, +key: String, +ar: Nat, +t: A.Ag, +ent
     case A.AgPrOf{Some{r}, o, ix} _:
       act.proj.body(act.sym(env, r), env, key, ents)
     case _ True{}:
-      act.copat.body(act.copat.recq(4n, act.cod.qu(8n, ar, t, env), act.copat.isrec(env, act.cod.qu(8n, ar, t, env)), env), env, cls, ents, key)
+      act.copat.body(act.copat.recq.or(act.copat.recq(4n, act.cod.qu(8n, ar, t, env), act.copat.isrec(env, act.cod.qu(8n, ar, t, env)), env), cls, env), env, cls, ents, key)
     case _ False{}:
       +cls2 = act.rf.of(cls, key, ms, act.ps.ps(r))
       act.lift.app(List.drop(&2, T.BParam, act.ps.ps(r), act.kept.n(act.cls.arity(cls), ms)), act.body(cls2, ents, env, act.ps.ps(r), act.ps.ret(r), act.uty.go(64n, ar, t, ms, act.scr(cls2, env), Nil{}, Nil{}, env)))

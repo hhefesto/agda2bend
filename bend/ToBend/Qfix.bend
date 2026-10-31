@@ -129,8 +129,42 @@ def tqf.noparen(xs: List<&2, U32>) -> List<&2, U32>:
     case +c <> t:
       tqf.np.put(Bool.or(U32.is_eq(c, 40), U32.is_eq(c, 41)), c, tqf.noparen(t))
 
+# a quantity's name with a level function applied spelled out (Cata's
+# act.q.name), so that `beta(l1, l2)` is an atom of its own, not the &1
+# tqf.name makes of any non-variable (agda-unimath's large structures:
+# `type-Prop (R x y) : Set (β l1 l2)` kept Kind(beta(l1, l2)) over a Type
+# body, "expected Kind(beta(&1, &1)) observed Type", 2026-10-31)
+def tqf.qarg(t: T.Bt) -> List<&2, U32>:
+  match t:
+    case T.BtVar{n}:
+      n
+    case T.BtDead{T.BtVar{n}}:
+      n
+    case _:
+      S.b("&1")
+
+def tqf.qnames(as: T.Bt) -> List<&2, U32>:
+  match as:
+    case T.BtArgs{a, T.BtANil{}}:
+      tqf.qarg(a)
+    case T.BtArgs{a, rest}:
+      List.append(&2, U32, tqf.qarg(a), List.append(&2, U32, S.b(", "), tqf.qnames(rest)))
+    case _:
+      Nil{}
+
+def tqf.qname(t: T.Bt) -> List<&2, U32>:
+  match t:
+    case T.BtVar{n}:
+      n
+    case T.BtApp{T.BtVar{f}, as}:
+      List.append(&2, U32, f, 40 <> List.append(&2, U32, tqf.qnames(as), [41]))
+    case T.BtDead{T.BtVar{n}}:
+      n
+    case _:
+      S.b("&1")
+
 def tqf.atoms(t: T.Bt) -> List<&2, List<&2, U32>>:
-  S.split.str(tqf.noparen(tqf.name(t)), S.b(" <&> "))
+  S.split.str(tqf.noparen(tqf.qname(t)), S.b(" <&> "))
 
 def tqf.mem(+x: List<&2, U32>, xs: List<&2, List<&2, U32>>) -> Bool:
   match xs:

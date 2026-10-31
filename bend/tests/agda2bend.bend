@@ -843,6 +843,40 @@ def cop.laws() -> IO(Unit):
     g5 : D.A2bG <- cop.of(al, ral, ds, D.a2b.mod.items(S.b("A2bCop"), al, ds, g4))
     return Unit{}
 
+# fixtures/agda2bend/src/A2bUm.agda (its export A2bUm.sexp, after
+# Agda.Primitive, Agda.Builtin.Bool, Agda.Builtin.Nat, Agda.Builtin.Unit and
+# Agda.Builtin.Equality): agda-unimath's shapes, second (2026-10-31).  A
+# Setω data type's constructors take their own levels as Quant fields
+# (telescope); a type-valued definition's sort at a level function applied
+# is weakened to Type over a Type body, as at a level variable
+# (large-relation-Large-Relation-Prop); a pattern variable of unit type is
+# the pattern Unit{}, so that succ and pred reduce at it
+# (is-retraction-pred-ℤ); the gate keeps all 21 items (Bend 2.0.39; 14 of
+# 21 at 84a5dc7).
+def um.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, tr: D.A2bTr) -> IO(D.A2bG):
+  match tr:
+    case D.A2bTr{its, g}:
+      +text = D.a2b.raw.text(S.b("A2bUm"), al, ral, List.length(&2, A.AgDecl, ds), its)
+      do IO<D.A2bG>:
+        IO.print(verdict("a constructor's own levels are Quant fields", S.infix(text, S.b("telescope.base_telescope{l1: Quant, x_4: Kind(l1), ix_eq: {l == l1 : Quant}"))))
+        IO.print(verdict("a sort at a level function applied is weakened over a Type body", S.infix(text, S.b("x_11: A(l1), x_12: A(l2)) -> Type:"))))
+        IO.print(verdict("a pattern variable of unit type is the pattern Unit{}", S.infix(text, S.b("case plus.inr{plus.inl{Unit{}}}:\n      {==}"))))
+        return g
+
+def um.laws() -> IO(Unit):
+  +order : List<&2, List<&2, U32>> = [S.b("Agda.Primitive"), S.b("Agda.Builtin.Bool"), S.b("Agda.Builtin.Nat"), S.b("Agda.Builtin.Unit"), S.b("Agda.Builtin.Equality"), S.b("A2bUm")]
+  +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
+  +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
+  do IO<Unit>:
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g2 : D.A2bG <- abs.mod("Agda.Builtin.Bool", al, g1)
+    g3 : D.A2bG <- abs.mod("Agda.Builtin.Nat", al, g2)
+    g4 : D.A2bG <- abs.mod("Agda.Builtin.Unit", al, g3)
+    g5 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g4)
+    +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bUm.sexp"))
+    g6 : D.A2bG <- um.of(al, ral, ds, D.a2b.mod.items(S.b("A2bUm"), al, ds, g5))
+    return Unit{}
+
 def main() -> IO(Unit):
   do IO<Unit>:
     +bool : List<&2, U32> <- S.read("fixtures/agda2bend/Agda.Builtin.Bool.sexp")
@@ -857,3 +891,4 @@ def main() -> IO(Unit):
     inj.laws()
     ctx.laws()
     cop.laws()
+    um.laws()
