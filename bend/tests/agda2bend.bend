@@ -1257,6 +1257,36 @@ def cdi.laws() -> IO(Unit):
     g3 : D.A2bG <- cdi.of(al, ral, ds, D.a2b.mod.items(S.b("A2bCdi"), al, ds, g2))
     return Unit{}
 
+# fixtures/agda2bend/src/A2bRr.agda (its export A2bRr.sexp, after
+# Agda.Primitive and Agda.Builtin.Equality): a refl whose equation's side
+# is a call that reduces to a dotted variable once an earlier refl is in
+# (inv-tr D refl v is v, refl ∙ q is q) is rewritten at that variable:
+# map-inv-fiber-map-Σ's second refl, is-section-map-inv-fiber-map-Σ's (its
+# goal mentions it: J), is-section-is-injective-concat's; and a binder the
+# rewrite's value mentions is renamed (the goal's `λ a → …` under f a).
+# The gate keeps all 39 items (35 at 7adf6f3; 2026-11-01).
+def rr.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, tr: D.A2bTr) -> IO(D.A2bG):
+  match tr:
+    case D.A2bTr{its, g}:
+      +text = D.a2b.raw.text.of(S.b("A2bRr"), al, ral, List.length(&2, A.AgDecl, ds), its)
+      do IO<D.A2bG>:
+        IO.print(verdict("a refl at a call that reduces to a dotted variable rewrites at it", S.infix(text, S.b("a2b_dt2 => x_2_2_rfl => (%x_2_2_rfl : anon.fiber("))))
+        IO.print(verdict("the same when the goal mentions the refl, by J", S.infix(text, S.b("a2b_dt2 => x_2_2_rfl => (%x_2_2_rfl@x_2_2_rfl : {comp("))))
+        IO.print(verdict("a refl past refl ∙ q rewrites at q", S.infix(text, S.b("q => r => s => (%s@s : {ap(l, l, {x == z : A}"))))
+        IO.print(verdict("a binder the rewrite's value mentions is renamed", S.infix(text, S.b("pair{f(a), _}), a_c => x_13 => "))))
+        return g
+
+def rr.laws() -> IO(Unit):
+  +order : List<&2, List<&2, U32>> = [S.b("Agda.Primitive"), S.b("Agda.Builtin.Equality"), S.b("A2bRr")]
+  +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
+  +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
+  do IO<Unit>:
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
+    +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bRr.sexp"))
+    g3 : D.A2bG <- rr.of(al, ral, ds, D.a2b.mod.items(S.b("A2bRr"), al, ds, g2))
+    return Unit{}
+
 def main() -> IO(Unit):
   do IO<Unit>:
     +bool : List<&2, U32> <- S.read("fixtures/agda2bend/Agda.Builtin.Bool.sexp")
@@ -1285,3 +1315,4 @@ def main() -> IO(Unit):
     tele.laws()
     rfl.laws()
     cdi.laws()
+    rr.laws()

@@ -382,41 +382,100 @@ def tba.subst.isvar(+v: Bt) -> Bool:
 # second J under the first's generalized parameters kept the header's
 # name: `{..}(x_27)` under `x_27_b =>`, agda-unimath's
 # left-unsplice-coherence-square-identifications).
-def tba.subst(t: Bt, +x: List<&2, U32>, +v: Bt) -> Bt:
+# Capture (2026-11-01).  A binder y (a lambda's, a Pi's, a let's) that v
+# mentions is renamed under it, y_c fresh against v and the binder's body,
+# so v's y is not captured: agda-unimath's is-section-map-inv-fiber-map-Σ,
+# whose goal has `λ a → …` and whose second rewrite puts f a, the clause's
+# a, there ("expected : A observed : Σ …").  One pass: ren holds the
+# renamed binders in scope (innermost first), on whether x is still free
+# (a binder of x shadows it).
+type TbRen is Data:
+  TbRen{a: List<&2, U32>, b: List<&2, U32>}
+
+# y, else y with _c appended until no name of avoid (both of Bool.pick's
+# arms are evaluated, so a short fuel)
+def tba.fresh(fuel: Nat, +y: List<&2, U32>, +avoid: List<&2, List<&2, U32>>) -> List<&2, U32>:
+  match fuel:
+    case 0n:
+      y
+    case 1n+f:
+      Bool.pick(List<&2, U32>, tba.subst.in(y, avoid), tba.fresh(f, List.append(&2, U32, y, [95, 99]), avoid), y)
+
+# a binder's name: y, or a fresh one when y is captured (cap)
+def tba.ren.nm(cap: Bool, +y: List<&2, U32>, +fv: List<&2, List<&2, U32>>, +b: Bt) -> List<&2, U32>:
+  match cap:
+    case True{}:
+      tba.fresh(12n, List.append(&2, U32, y, [95, 99]), List.append(&2, List<&2, U32>, fv, tba.refs(b, Nil{})))
+    case False{}:
+      y
+
+# the scope under a binder y named y2: kept empty while nothing is renamed
+def tba.ren.push(+y: List<&2, U32>, +y2: List<&2, U32>, ren: List<&2, TbRen>) -> List<&2, TbRen>:
+  match ren:
+    case Nil{}:
+      Bool.pick(List<&2, TbRen>, S.eq(y, y2), Nil{}, [TbRen{y, y2}])
+    case ren:
+      TbRen{y, y2} <> ren
+
+def tba.ren.get(ren: List<&2, TbRen>, +y: List<&2, U32>) -> Maybe<&2, List<&2, U32>>:
+  match ren:
+    case Nil{}:
+      None{}
+    case TbRen{+a, +b} <> t:
+      Bool.pick(Maybe<&2, List<&2, U32>>, S.eq(a, y), Some{b}, tba.ren.get(t, y))
+
+def tba.ren.var(m: Maybe<&2, List<&2, U32>>, +hit: Bool, +y: List<&2, U32>, +v: Bt) -> Bt:
+  match m:
+    case Some{z}:
+      BtVar{z}
+    case None{}:
+      Bool.pick(Bt, hit, v, BtVar{y})
+
+def tba.subst.go(t: Bt, +x: List<&2, U32>, +v: Bt, +fv: List<&2, List<&2, U32>>, +on: Bool, +ren: List<&2, TbRen>) -> Bt:
   match t:
     case BtExpr{e}:
-      BtExpr{tba.subst(e, x, v)}
+      BtExpr{tba.subst.go(e, x, v, fv, on, ren)}
     case BtRw{e, p, b}:
-      BtRw{tba.subst(e, x, v), tba.subst(p, x, v), tba.subst(b, x, v)}
+      BtRw{tba.subst.go(e, x, v, fv, on, ren), tba.subst.go(p, x, v, fv, on, ren), tba.subst.go(b, x, v, fv, on, ren)}
     case BtLet{+y, w, +b}:
-      BtLet{y, tba.subst(w, x, v), Bool.pick(Bt, S.eq(x, y), b, tba.subst(b, x, v))}
+      +on2 = Bool.and(on, Bool.not(S.eq(x, y)))
+      +y2 = tba.ren.nm(Bool.and(on2, tba.subst.in(y, fv)), y, fv, b)
+      BtLet{y2, tba.subst.go(w, x, v, fv, on, ren), tba.subst.go(b, x, v, fv, on2, tba.ren.push(y, y2, ren))}
     case BtMatch{+xs, cs}:
-      BtMatch{Bool.pick(Bt, tba.subst.isvar(v), tba.subst(xs, x, v), xs), tba.subst(cs, x, v)}
+      BtMatch{tba.subst.go(xs, x, v, fv, Bool.and(on, tba.subst.isvar(v)), ren), tba.subst.go(cs, x, v, fv, on, ren)}
     case BtCase{+p, +b, rest}:
-      BtCase{p, Bool.pick(Bt, tba.subst.in(x, tba.pvars(p, Nil{})), b, tba.subst(b, x, v)), tba.subst(rest, x, v)}
+      BtCase{p, tba.subst.go(b, x, v, fv, Bool.and(on, Bool.not(tba.subst.in(x, tba.pvars(p, Nil{})))), ren), tba.subst.go(rest, x, v, fv, on, ren)}
     case BtVar{+y}:
-      Bool.pick(Bt, S.eq(x, y), v, BtVar{y})
+      tba.ren.var(tba.ren.get(ren, y), Bool.and(on, S.eq(x, y)), y, v)
     case BtApp{f, a}:
-      BtApp{tba.subst(f, x, v), tba.subst(a, x, v)}
+      BtApp{tba.subst.go(f, x, v, fv, on, ren), tba.subst.go(a, x, v, fv, on, ren)}
     case BtTplArg{a}:
-      BtTplArg{tba.subst(a, x, v)}
+      BtTplArg{tba.subst.go(a, x, v, fv, on, ren)}
     case BtLam{m, +y, +b}:
-      BtLam{m, y, Bool.pick(Bt, S.eq(x, y), b, tba.subst(b, x, v))}
+      +on2 = Bool.and(on, Bool.not(S.eq(x, y)))
+      +y2 = tba.ren.nm(Bool.and(on2, tba.subst.in(y, fv)), y, fv, b)
+      BtLam{m, y2, tba.subst.go(b, x, v, fv, on2, tba.ren.push(y, y2, ren))}
     case BtPi{m, +y, d, a, +b}:
-      BtPi{m, y, d, tba.subst(a, x, v), Bool.pick(Bt, S.eq(x, y), b, tba.subst(b, x, v))}
+      +on2 = Bool.and(on, Bool.not(S.eq(x, y)))
+      +y2 = tba.ren.nm(Bool.and(on2, tba.subst.in(y, fv)), y, fv, b)
+      BtPi{m, y2, d, tba.subst.go(a, x, v, fv, on, ren), tba.subst.go(b, x, v, fv, on2, tba.ren.push(y, y2, ren))}
     case BtCon{c, a}:
-      BtCon{c, tba.subst(a, x, v)}
+      BtCon{c, tba.subst.go(a, x, v, fv, on, ren)}
     case BtTyApp{n, a}:
-      BtTyApp{n, tba.subst(a, x, v)}
+      BtTyApp{n, tba.subst.go(a, x, v, fv, on, ren)}
     case BtEq{ty, a, b}:
-      BtEq{tba.subst(ty, x, v), tba.subst(a, x, v), tba.subst(b, x, v)}
+      BtEq{tba.subst.go(ty, x, v, fv, on, ren), tba.subst.go(a, x, v, fv, on, ren), tba.subst.go(b, x, v, fv, on, ren)}
     case BtSucc{a}:
-      BtSucc{tba.subst(a, x, v)}
+      BtSucc{tba.subst.go(a, x, v, fv, on, ren)}
     case BtAnn{a, ty}:
-      BtAnn{tba.subst(a, x, v), tba.subst(ty, x, v)}
+      BtAnn{tba.subst.go(a, x, v, fv, on, ren), tba.subst.go(ty, x, v, fv, on, ren)}
     case BtDead{a}:
-      BtDead{tba.subst(a, x, v)}
+      BtDead{tba.subst.go(a, x, v, fv, on, ren)}
     case BtArgs{a, rest}:
-      BtArgs{tba.subst(a, x, v), tba.subst(rest, x, v)}
+      BtArgs{tba.subst.go(a, x, v, fv, on, ren), tba.subst.go(rest, x, v, fv, on, ren)}
     case t:
       t
+
+def tba.subst(t: Bt, +x: List<&2, U32>, +v: Bt) -> Bt:
+  tba.subst.go(t, x, v, tba.refs(v, Nil{}), True{}, Nil{})
+

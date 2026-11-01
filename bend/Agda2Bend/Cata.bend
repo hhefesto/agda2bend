@@ -3581,6 +3581,56 @@ def act.inj.sname(s: ActStep, +x: List<&2, U32>) -> ActStep:
     case ActStep{k, p, g, y, e2}:
       ActStep{k, p, g, y, List.append(&2, U32, x, S.b("_sym"))}
 
+# An endpoint that reduces to a dotted variable at refl (2026-11-01).  A
+# refl's equation whose side is a call that only reduces once an earlier
+# refl is in (agda-unimath's map-inv-fiber-map-Σ ((a , refl) , c , refl):
+# the second refl is at g a c ＝ inv-tr D (pr2 s) (pr2 t), inv-tr D refl v
+# is v) gave no rewrite, the side being no variable ("expected :
+# pair{f(a), g(a, c)} observed : pair{f(a), a2b_dt2}").  Agda's unifier
+# solved it, so the call reduces to a variable or a constructor of one;
+# when it mentions exactly one dotted variable v, which the other side does
+# not, the step is read at v: the motive's goal[v := _] is Bend's own
+# reading too, as Bend's conversion reduces the call the same way.
+def act.rr.dv(+b: T.Bt, ds: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  match ds:
+    case Nil{}:
+      Nil{}
+    case +h <> t:
+      +r = act.rr.dv(b, t)
+      Bool.pick(List<&2, List<&2, U32>>, act.mentions(b, [h]), h <> r, r)
+
+def act.rr.one(vs: List<&2, List<&2, U32>>, +a: T.Bt, +keep: T.Bt) -> T.Bt:
+  match vs:
+    case [+v]:
+      Bool.pick(T.Bt, act.mentions(a, [v]), keep, T.BtVar{v})
+    case _:
+      keep
+
+# (only a call: a successor or a constructor of a dotted variable is
+# act.eq.pk's or act.inj's, pred-cancel's {1n+m == 1n+n})
+def act.rr.call(t: T.Bt) -> Bool:
+  match t:
+    case T.BtApp{T.BtVar{f}, a}:
+      True{}
+    case _:
+      False{}
+
+def act.rr.side(isv: Bool, +s: T.Bt, +other: T.Bt, +ds: List<&2, List<&2, U32>>) -> T.Bt:
+  match isv:
+    case True{}:
+      s
+    case False{}:
+      Bool.pick(T.Bt, act.rr.call(s), act.rr.one(act.rr.dv(s, ds), other, s), s)
+
+def act.rr.ep(ty: T.Bt, +ds: List<&2, List<&2, U32>>) -> T.Bt:
+  match ty:
+    case T.BtEq{+t, +a, +b}:
+      +b1 = act.rr.side(act.bt.isvar(b), b, a, ds)
+      +a1 = act.rr.side(Bool.or(act.bt.isvar(a), act.dotted(b1, ds)), a, b1, ds)
+      T.BtEq{t, a1, b1}
+    case ty:
+      ty
+
 def act.rws(fuel: Nat, pj: List<&2, ActInj>, es: List<&2, T.Bt>, +ds: List<&2, List<&2, U32>>, +goal: T.Bt, +hps: List<&2, T.BParam>, +svs: List<&2, List<&2, U32>>, body: T.Bt) -> T.Bt:
   match fuel pj es:
     case 1n+q ActInj{+x, +h, +ety, +v} <> r es:
@@ -3591,7 +3641,7 @@ def act.rws(fuel: Nat, pj: List<&2, ActInj>, es: List<&2, T.Bt>, +ds: List<&2, L
       +hps3 = Bool.pick(List<&2, T.BParam>, Nat.is_eq(k, 0n), hps, act.gen.hps(hps, act.gen.names(gs), bn, act.step.fill(k, ety), Nil{}))
       act.step.wrap(s, v, goal, gs, bn, act.rws(q, r, es, ds, act.step.goal(s), hps3, svs, act.step.body(k, ety, body)))
     case 1n+q ActOne{+e} <> r es:
-      +ety0 = act.param.ty(hps, act.var.name(e))
+      +ety0 = act.rr.ep(act.param.ty(hps, act.var.name(e)), ds)
       +pk = act.eq.pk(ety0)
       +ety = act.eq.pty(pk, ety0)
       +s0 = act.step.pk(pk, ety0, e, ds, goal, act.ps.minus(hps, svs))
@@ -3955,20 +4005,32 @@ def act.ixp.rvar(t: T.Bt) -> Bool:
     case _:
       False{}
 
-def act.ixp.keep(eqs: List<&2, T.BParam>, +goal: T.Bt) -> List<&2, T.BParam>:
+# (or t a call of dotted variables that a does not mention, which reduces
+# to one once the earlier refls are in: act.rr.ep; is-section-map-inv-
+# fiber-map-Σ's second refl, at g a c ＝ inv-tr D (pr2 s) (pr2 t), whose
+# goal mentions it; 2026-11-01)
+def act.ixp.rdv(ty: T.Bt, +ds: List<&2, List<&2, U32>>) -> Bool:
+  match ty:
+    case T.BtEq{t, +a, +b}:
+      +vs = act.rr.dv(b, ds)
+      Bool.and(act.rr.call(b), Bool.and(Bool.not(List.is_empty(&2, List<&2, U32>, vs)), Bool.not(act.mentions(a, vs))))
+    case _:
+      False{}
+
+def act.ixp.keep(eqs: List<&2, T.BParam>, +goal: T.Bt, +ds: List<&2, List<&2, U32>>) -> List<&2, T.BParam>:
   match eqs:
     case Nil{}:
       Nil{}
     case T.BParam{+m, +x, +ty} <> +t:
-      +r = act.ixp.keep(t, goal)
-      Bool.pick(List<&2, T.BParam>, Bool.and(act.occurs(x, goal), Bool.not(act.ixp.rvar(ty))), r, T.BParam{m, x, ty} <> r)
+      +r = act.ixp.keep(t, goal, ds)
+      Bool.pick(List<&2, T.BParam>, Bool.and(act.occurs(x, goal), Bool.not(Bool.or(act.ixp.rvar(ty), act.ixp.rdv(ty, ds)))), r, T.BParam{m, x, ty} <> r)
 
 def act.case.body.or(m: Maybe<&2, T.Bt>, +eqs: List<&2, T.BParam>, +rs: List<&2, T.Bt>, +ds: List<&2, List<&2, U32>>, +goal: T.Bt, +hps: List<&2, T.BParam>, +svs: List<&2, List<&2, U32>>, +body: T.Bt) -> T.Bt:
   match m:
     case Some{b}:
       b
     case None{}:
-      act.rws(256n, Nil{}, List.append(&2, T.Bt, rs, act.ps.vars(act.ixp.keep(eqs, goal))), ds, goal, List.append(&2, T.BParam, hps, eqs), svs, body)
+      act.rws(256n, Nil{}, List.append(&2, T.Bt, rs, act.ps.vars(act.ixp.keep(eqs, goal, ds))), ds, goal, List.append(&2, T.BParam, hps, eqs), svs, body)
 
 def act.case.body(+eqs: List<&2, T.BParam>, rw: ActRw, +goal: T.Bt, +hps: List<&2, T.BParam>, +svs: List<&2, List<&2, U32>>, +body: T.Bt) -> T.Bt:
   match rw:
