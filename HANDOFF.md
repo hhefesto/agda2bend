@@ -2,6 +2,13 @@
 
 Working notes, so the work can continue from another machine or agent. Newest first. Times are UTC-6. agda2bend was split out of ana (github:hhefesto/ana) on 2026-10-22. ana's HANDOFF.md, before that date, has the rest of the history.
 
+## The fresh agda-unimath run on an -O2 build (2026-10-31, 22:15-22:55)
+
+- **Pushed (the user 22:30: "do push commits"):** fb1a537..a5c6b6a (edab99b, 452a9c0, 4f773d2, a5c6b6a), before a2b-ab31nib finished; at 24 of its 97 modules it had lost nothing against ab22nib (494 -> 512 checked) and foundation-core.coherently-invertible-maps checks 102 of 102 (84 in ab22nib, 0 dropped).
+- **-O2:** bin/agda2bend-O2-dg31 (= bin/agda2bend-O2-va5c6b6a): clang -O2 of bin/agda2bend-dg31.c, 26 min under load ~80, 3.4 GB.  Same output as -O0 on four fixtures; the translator's own time 5.8 s -> 1.5 s (bend's checks unchanged, 6 s).  The full runs spend about two thirds of their time in the translator, so a run should take about half as long.  `emit`'s import order of 2934 modules: 8.4 min -> 3.3 min.
+- **Running (22:55):** a2b-umemit6 (ev-um/umemit6.sh: export-um with the -O2 a5c6b6a binary into run/a2b/corpus-um6; ev-um/umemit6.log); a2b-umemit5 (07330f7) stopped after 246 modules, corpus-um5 kept.  a2b-ab31nib still runs (the comparison); a2b-umemit (b50d394, ana's a2bum waits for it) at 2843 of 2939; a2b-stdlib2 at 579 of 1657 (ana's a2bm9 waits for it); a2b-umexpni.
+- **Next:** the roots of corpus-um6 (roots.awk) once a few hundred modules are in; the old corpus-um's biggest roots (is-prop-is-contr 8494, contraction 6509, Large-Relation-Prop 2185) are fixed since b50d394.  Unit's eta at a lambda (is-contr-unit's `pr2 _ = refl`, 34 dependents in corpus-um5, and is-prop-unit under positive-ℤ, ℚ, ℝ): Bend matches no lambda's binder ("can't be matched in this position", also a destructuring let), and a rewrite needs its motive (`%a2b_unit_qe(x_0) : {Unit{} == _ : Unit}; {==}` checks, with a def a2b_unit_qe(x: Unit) -> {Unit{} == x : Unit} by match), so the field's type is wanted: the copattern clause's type, or a lifted def.
+
 ## Refls at split records' dotted fields, copattern self-references, clauses of different lengths, alternatives under their own names (2026-10-31, 20:20-22:15)
 
 - **Pushed:** fb1a537 (91919a4..fb1a537): ecaaab6 after a2b-ab22nib against a2b-ab21nib, 97 modules of export-umni: 1153 -> 1155 checked, 0 lost (commuting-squares-of-identifications and -of-homotopies +1 each).
