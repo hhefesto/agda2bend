@@ -1498,11 +1498,18 @@ def tcp.rp.tpl(bs: List<&2, TcpRb>, +b: T.Bt) -> Bool:
 
 # read as projections: a field of function type used twice (tcp.rp.dup), a
 # field in a template argument (tcp.rp.tpl), or one field used once
-# (tcp.rp.one); the result's type not the record's, no field matched
+# (tcp.rp.one); the result's type not the record's (but for a field in a
+# template argument, which no match can give: agda-unimath's
+# coherence-transposition-is-coherently-invertible at (g , S , R , H), its
+# type of map-inv-is-coherently-invertible H and the like, passes g S R to
+# coherence-transposition-coherence-is-coherently-invertible's templates;
+# 18 dependents in export-umni's first 97 modules, 2026-10-31), no field
+# matched
 def tcp.rp.ok(m: Maybe<&2, List<&2, TcpRb>>, +b: T.Bt, +x: List<&2, U32>, +ret: T.Bt, +qe: QF.TqEnv, +n: List<&2, U32>) -> Bool:
   match m:
     case Some{+bs}:
-      Bool.and(Bool.or(Bool.or(tcp.rp.dup(bs, b, qe), tcp.rp.tpl(bs, b)), tcp.rp.one(bs, b, x, n)), Bool.and(Bool.not(tcp.mem(x, T.tba.refs(ret, Nil{}))), Bool.not(tcp.rp.scr(bs, b))))
+      +tpl = tcp.rp.tpl(bs, b)
+      Bool.and(Bool.or(Bool.or(tcp.rp.dup(bs, b, qe), tpl), tcp.rp.one(bs, b, x, n)), Bool.and(Bool.or(tpl, Bool.not(tcp.mem(x, T.tba.refs(ret, Nil{})))), Bool.not(tcp.rp.scr(bs, b))))
     case None{}:
       False{}
 

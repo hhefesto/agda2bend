@@ -890,9 +890,9 @@ def hid.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<
     case D.A2bTr{its, g}:
       +text = D.a2b.raw.text.of(S.b("A2bHid"), al, ral, List.length(&2, A.AgDecl, ds), its)
       do IO<D.A2bG>:
-        IO.print(verdict("a lambda over a hidden binder passed to a combinator gives the def a combinator-unfolded alternative", S.infix(text, S.b("(act.fun.alt.cmb), tried when the other did not check\ndef anon.coh_hid__a2b_nu("))))
+        IO.print(verdict("a lambda over a hidden binder passed to a combinator gives the def a combinator-unfolded alternative", S.infix(text, S.b("(act.fun.alt.cmb), tried when the other did not check\ndef anon.coh_hid__a2b_nu2("))))
         IO.print(verdict("the alternative unfolds the combinator's calls and beta-reduces", S.infix(text, S.b("\n  nat_htpy(l2, l3, B(x), C(x), g(x), g_p(x), G(x), f(x), f_p(x), F(x))\n\n# Agda: A2bHid._.coh-hid-explicit"))))
-        IO.print(verdict("a def that passes a combinator no such lambda has no alternative", Bool.not(S.infix(text, S.b("def anon.coh_hid_explicit__a2b_nu(")))))
+        IO.print(verdict("a def that passes a combinator no such lambda has no alternative", Bool.not(S.infix(text, S.b("def anon.coh_hid_explicit__a2b_nu2(")))))
         return g
 
 def hid.laws() -> IO(Unit):
@@ -919,10 +919,10 @@ def rec.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<
     case D.A2bTr{its, g}:
       +text = D.a2b.raw.text.of(S.b("A2bRec"), al, ral, List.length(&2, A.AgDecl, ds), its)
       do IO<D.A2bG>:
-        IO.print(verdict("a record-typed variable the goal mentions is split in the def's record-split alternative", S.infix(text, S.b("(act.esp), tried when the other did not check\ndef tot_id_p__a2b_nu(-l1: Quant, -l2: Quant, -A: Kind(l1), -B: A -> Kind(l2), x: Sigma_<l1, l2, A, B>)"))))
+        IO.print(verdict("a record-typed variable the goal mentions is split in the def's record-split alternative", S.infix(text, S.b("(act.esp), tried when the other did not check\ndef tot_id_p__a2b_nu3(-l1: Quant, -l2: Quant, -A: Kind(l1), -B: A -> Kind(l2), x: Sigma_<l1, l2, A, B>)"))))
         IO.print(verdict("the split is the record's constructor pattern, a variable for each field", S.infix(text, S.b("  match x:\n    case pair{p_1, p_2}:\n      {==}\n\n# Agda: A2bRec.preserves-comp-tot"))))
-        IO.print(verdict("a record of no fields splits to its constructor alone", S.infix(text, S.b("def center_unit__a2b_nu(x: unit) -> {star{} == x : unit}:\n  match x:\n    case star{}:\n      {==}"))))
-        IO.print(verdict("a def whose clause matches the record already has no record-split alternative", Bool.not(S.infix(text, S.b("def anon.tot__a2b_nu(")))))
+        IO.print(verdict("a record of no fields splits to its constructor alone", S.infix(text, S.b("def center_unit__a2b_nu3(x: unit) -> {star{} == x : unit}:\n  match x:\n    case star{}:\n      {==}"))))
+        IO.print(verdict("a def whose clause matches the record already has no record-split alternative", Bool.not(S.infix(text, S.b("def anon.tot__a2b_nu3(")))))
         return g
 
 def rec.laws() -> IO(Unit):
@@ -1023,6 +1023,32 @@ def eqq.laws() -> IO(Unit):
     g3 : D.A2bG <- eqq.of(al, ral, ds, D.a2b.mod.items(S.b("A2bEqq"), al, ds, g2))
     return Unit{}
 
+# fixtures/agda2bend/src/A2bTrl.agda (its export A2bTrl.sexp, after
+# Agda.Primitive and Agda.Builtin.Equality): clauses of different lengths
+# (agda-unimath's is-trunc-retract-of: the neg-two clause leaves H to its
+# body, the succ one takes H x y, is-trunc (succ k) A opening to (x y : A)
+# → …): the longer clause takes its extra variables as lambdas, so the lift
+# applies both clauses alike; the gate keeps all 8 items (Bend 2.0.39; 7 at
+# 91919a4, 2026-10-31: x y unbound).
+def trl.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, tr: D.A2bTr) -> IO(D.A2bG):
+  match tr:
+    case D.A2bTr{its, g}:
+      +text = D.a2b.raw.text.of(S.b("A2bTrl"), al, ral, List.length(&2, A.AgDecl, ds), its)
+      do IO<D.A2bG>:
+        IO.print(verdict("a clause longer than the shortest takes its extra variables as lambdas", S.infix(text, S.b("    case u01d54b.succ{k_1}:\n      x_b => y => is_trunc_id(l, k_1, {x_b == y : A}, x(x_b, y))"))))
+        return g
+
+def trl.laws() -> IO(Unit):
+  +order : List<&2, List<&2, U32>> = [S.b("Agda.Primitive"), S.b("Agda.Builtin.Equality"), S.b("A2bTrl")]
+  +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
+  +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
+  do IO<Unit>:
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
+    +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bTrl.sexp"))
+    g3 : D.A2bG <- trl.of(al, ral, ds, D.a2b.mod.items(S.b("A2bTrl"), al, ds, g2))
+    return Unit{}
+
 def main() -> IO(Unit):
   do IO<Unit>:
     +bool : List<&2, U32> <- S.read("fixtures/agda2bend/Agda.Builtin.Bool.sexp")
@@ -1043,3 +1069,4 @@ def main() -> IO(Unit):
     unw.laws()
     eqp.laws()
     eqq.laws()
+    trl.laws()

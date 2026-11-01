@@ -967,13 +967,22 @@ def a2b.qe(+qs: Map<&2, QF.TqSig>, +al: Map<&2, List<&2, U32>>, +m: List<&2, U32
 
 # act.nu's alternatives among a module's items (Cata.bend act.fun.alt:
 # NAME__a2b_nu) go beside them, under their def's name, for the gate
+# (NAME__a2b_nu2, the combinator-unfolded one, and NAME__a2b_nu3, the
+# record-split one: one name for several, Order's tor.map kept only the
+# last, so a def with both lost its combinator one; 2026-10-31)
+def a2b.alt.n.is(+n: List<&2, U32>) -> Bool:
+  Bool.or(S.suffix(n, S.b("__a2b_nu")), Bool.or(S.suffix(n, S.b("__a2b_nu2")), S.suffix(n, S.b("__a2b_nu3"))))
+
 def a2b.alt.is(it: T.BItem) -> Bool:
-  S.suffix(QF.tqf.name.of(it), S.b("__a2b_nu"))
+  a2b.alt.n.is(QF.tqf.name.of(it))
+
+def a2b.alt.cut(+n: List<&2, U32>) -> Nat:
+  Bool.pick(Nat, S.suffix(n, S.b("__a2b_nu")), 8n, 9n)
 
 def a2b.alt.name(it: T.BItem) -> T.BItem:
   match it:
     case T.BiDef{+n, ps, ret, body, doc}:
-      T.BiDef{List.take(&2, U32, n, Nat.sub(S.len(n), 8n)), ps, ret, body, doc}
+      T.BiDef{List.take(&2, U32, n, Nat.sub(S.len(n), a2b.alt.cut(n))), ps, ret, body, doc}
     case it:
       it
 

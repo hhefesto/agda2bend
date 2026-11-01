@@ -11015,6 +11015,172 @@ def act.uty.go(fuel: Nat, n: Nat, t: A.Ag, ms: List<&2, ActM>, scr: List<&2, Boo
     case _ _ _ _ _:
       Nil{}
 
+
+# Clauses of different lengths (2026-10-31).  A clause may take more
+# patterns than another when its split opens the type: agda-unimath's
+# is-trunc-retract-of at neg-two-𝕋 is `is-contr-retract-of _` (5
+# patterns, R and H left to the body) and at succ-𝕋 k takes R H x y (9;
+# is-trunc (succ-𝕋 k) A is (x y : A) → is-trunc k (x ＝ y)), where the
+# header has 7.  The lift (act.lift.app) is by the first clause's length,
+# so x y were left unbound ("gap: a pattern variable the clause does not
+# bind"; 10 dependents in export-umni's first 97 modules) and R H applied
+# twice.  A clause longer than the shortest whose patterns past it are
+# variables, the telescope's last ones in order, takes those as lambdas
+# instead (its telescope that much shorter, its type their Pi): every
+# clause is then as long as the shortest, and the lift applies each alike.
+def act.cln.min(cls: A.Ag, +m: Nat) -> Nat:
+  match cls:
+    case A.AgCl{tel, +ps, body, ty, ca, rest}:
+      +a = act.pats.len(ps)
+      act.cln.min(rest, Bool.pick(Nat, Nat.is_lt(a, m), a, m))
+    case _:
+      m
+
+# whether the patterns from the k-th (j counts from 0) are variables, the
+# last of a patterns at index 0
+def act.cln.ok(ps: A.Ag, +j: Nat, +k: Nat, +a: Nat) -> Bool:
+  match ps:
+    case A.AgPArg{i, x, A.AgPVar{y, +ix, o}, rest}:
+      Bool.and(Bool.or(Nat.is_lt(j, k), Nat.is_eq(Nat.add(Nat.add(ix, j), 1n), a)), act.cln.ok(rest, 1n+j, k, a))
+    case A.AgPArg{i, x, p, rest}:
+      Bool.and(Nat.is_lt(j, k), act.cln.ok(rest, 1n+j, k, a))
+    case _:
+      True{}
+
+# whether a variable below d (under depth binders) occurs in t
+def act.cln.occ1(t: A.Ag, +d: Nat, +depth: Nat) -> Bool:
+  match t:
+    case A.AgVar{+i, x, es}:
+      Bool.or(Bool.and(Nat.is_le(depth, i), Nat.is_lt(i, Nat.add(d, depth))), act.cln.occ1(es, d, depth))
+    case A.AgLam{i, x, +dep, b}:
+      act.cln.occ1(b, d, asb.under(dep, depth))
+    case A.AgPi{i, x, a, +dep, b}:
+      Bool.or(act.cln.occ1(a, d, depth), act.cln.occ1(b, d, asb.under(dep, depth)))
+    case A.AgDef{q, es}:
+      act.cln.occ1(es, d, depth)
+    case A.AgCon{q, o, es}:
+      act.cln.occ1(es, d, depth)
+    case A.AgEl{s, a}:
+      act.cln.occ1(a, d, depth)
+    case A.AgBeta{f, es}:
+      Bool.or(act.cln.occ1(f, d, depth), act.cln.occ1(es, d, depth))
+    case A.AgDontCare{a}:
+      act.cln.occ1(a, d, depth)
+    case A.AgEApp{i, a, rest}:
+      Bool.or(act.cln.occ1(a, d, depth), act.cln.occ1(rest, d, depth))
+    case A.AgEProj{q, rest}:
+      act.cln.occ1(rest, d, depth)
+    case _:
+      False{}
+
+def act.cln.occ(+t: A.Ag, +d: Nat) -> Bool:
+  act.cln.occ1(t, d, 0n)
+
+def act.cln.mentions(+t: A.Ag, +d: Nat) -> Bool:
+  act.cln.occ(t, d)
+
+# a pattern's variables renumbered for a telescope d entries shorter
+def act.cln.ren(p: A.Ag, +d: Nat) -> A.Ag:
+  match p:
+    case A.AgPArg{i, x, q, rest}:
+      A.AgPArg{i, x, act.cln.ren(q, d), act.cln.ren(rest, d)}
+    case A.AgPVar{y, +ix, o}:
+      A.AgPVar{y, Nat.sub(ix, d), o}
+    case A.AgPCon{q, r, fo, sub}:
+      A.AgPCon{q, r, fo, act.cln.ren(sub, d)}
+    case p:
+      p
+
+# the first k patterns, renumbered for the d variables the rest bound
+def act.cln.take(ps: A.Ag, k: Nat, +d: Nat) -> A.Ag:
+  match ps k:
+    case A.AgPArg{i, x, p, rest} 1n+q:
+      A.AgPArg{i, x, act.cln.ren(p, d), act.cln.take(rest, q, d)}
+    case _ _:
+      A.AgPEnd{}
+
+# whether a dot pattern among the first k mentions a variable below d
+def act.cln.dots(ps: A.Ag, k: Nat, +d: Nat) -> Bool:
+  match ps k:
+    case A.AgPArg{i, x, A.AgPDot{+t}, rest} 1n+q:
+      Bool.or(act.cln.mentions(t, d), act.cln.dots(rest, q, d))
+    case A.AgPArg{i, x, A.AgPCon{c, r, fo, sub}, rest} 1n+q:
+      Bool.or(act.cln.dots(sub, 64n, d), act.cln.dots(rest, q, d))
+    case A.AgPArg{i, x, p, rest} 1n+q:
+      act.cln.dots(rest, q, d)
+    case _ _:
+      False{}
+
+def act.cln.ttake(tel: A.Ag, k: Nat) -> A.Ag:
+  match tel k:
+    case A.AgTel{x, i, ty, rest} 1n+q:
+      A.AgTel{x, i, ty, act.cln.ttake(rest, q)}
+    case _ _:
+      A.AgTEnd{}
+
+def act.cln.tdrop(tel: A.Ag, k: Nat) -> A.Ag:
+  match tel k:
+    case A.AgTel{x, i, ty, rest} 1n+q:
+      act.cln.tdrop(rest, q)
+    case t _:
+      t
+
+# the body under a lambda for each pattern from the k-th
+def act.cln.lams(ps: A.Ag, k: Nat, body: A.Ag) -> A.Ag:
+  match ps k:
+    case A.AgPArg{i, x, p, rest} 1n+q:
+      act.cln.lams(rest, q, body)
+    case A.AgPArg{i, x, A.AgPVar{y, ix, o}, rest} 0n:
+      A.AgLam{i, y, True{}, act.cln.lams(rest, 0n, body)}
+    case _ _:
+      body
+
+def act.cln.sort(t: A.Ag) -> A.Ag:
+  match t:
+    case A.AgEl{+s, a}:
+      s
+    case _:
+      A.AgNone{}
+
+# the type under a Pi for each of the telescope's entries
+def act.cln.pis(tel: A.Ag, ty: A.Ag) -> A.Ag:
+  match tel ty:
+    case A.AgTel{x, i, a, rest} A.AgNone{}:
+      A.AgNone{}
+    case A.AgTel{x, i, a, rest} ty:
+      +b = act.cln.pis(rest, ty)
+      A.AgEl{act.cln.sort(b), A.AgPi{i, x, a, True{}, b}}
+    case _ ty:
+      ty
+
+def act.cln.one(on: Bool, +k: Nat, +a: Nat, +tel: A.Ag, +ps: A.Ag, body: A.Ag, +ty: A.Ag, ca: Bool, rest: A.Ag) -> A.Ag:
+  match on:
+    case True{}:
+      +n = act.tel.len(tel)
+      +keep = Nat.sub(n, Nat.sub(a, k))
+      A.AgCl{act.cln.ttake(tel, keep), act.cln.take(ps, k, Nat.sub(a, k)), act.cln.lams(ps, k, body), act.cln.pis(act.cln.tdrop(tel, keep), ty), ca, rest}
+    case False{}:
+      A.AgCl{tel, ps, body, ty, ca, rest}
+
+def act.cln.absurd(b: A.Ag) -> Bool:
+  match b:
+    case A.AgAbsurd{}:
+      True{}
+    case _:
+      False{}
+
+def act.cln.go(cls: A.Ag, +k: Nat) -> A.Ag:
+  match cls:
+    case A.AgCl{+tel, +ps, +body, ty, ca, rest}:
+      +a = act.pats.len(ps)
+      +on = Bool.and(Bool.and(Bool.and(Nat.is_lt(k, a), Nat.is_le(Nat.sub(a, k), act.tel.len(tel))), Bool.not(act.cln.dots(ps, k, Nat.sub(a, k)))), Bool.and(act.cln.ok(ps, 0n, k, a), Bool.not(act.cln.absurd(body))))
+      act.cln.one(on, k, a, tel, ps, body, ty, ca, act.cln.go(rest, k))
+    case c:
+      c
+
+def act.cln.norm(+cls: A.Ag) -> A.Ag:
+  act.cln.go(cls, act.cln.min(cls, act.cls.arity(cls)))
+
 def act.fun.body(p: A.AgProj, +cls: A.Ag, +key: String, +ar: Nat, +t: A.Ag, +ents: List<&2, T.Bt>, +env: ActEnv, copat: Bool, +r: ActPs, +ms: List<&2, ActM>) -> T.Bt:
   match p copat:
     case A.AgPrOf{Some{r}, o, ix} _:
@@ -11022,8 +11188,9 @@ def act.fun.body(p: A.AgProj, +cls: A.Ag, +key: String, +ar: Nat, +t: A.Ag, +ent
     case _ True{}:
       act.copat.body(act.copat.recq.or(act.copat.recq(4n, act.cod.qu(8n, ar, t, env), act.copat.isrec(env, act.cod.qu(8n, ar, t, env)), env), cls, env), env, cls, ents, key)
     case _ False{}:
-      +cls2 = act.rf.of(cls, key, ms, act.ps.ps(r))
-      act.lift.app(List.drop(&2, T.BParam, act.ps.ps(r), act.kept.n(act.cls.arity(cls), ms)), act.body(cls2, ents, env, act.ps.ps(r), act.ps.ret(r), act.uty.go(64n, ar, t, ms, act.scr(cls2, env), Nil{}, Nil{}, env)))
+      +clsn = act.cln.norm(cls)
+      +cls2 = act.rf.of(clsn, key, ms, act.ps.ps(r))
+      act.lift.app(List.drop(&2, T.BParam, act.ps.ps(r), act.kept.n(act.cls.arity(clsn), ms)), act.body(cls2, ents, env, act.ps.ps(r), act.ps.ret(r), act.uty.go(64n, ar, t, ms, act.scr(cls2, env), Nil{}, Nil{}, env)))
 
 def act.fun.item(+nm: List<&2, U32>, +ms: List<&2, ActM>, +cls: A.Ag, body: T.Bt, r: ActPs, doc: List<&2, List<&2, U32>>, +env: ActEnv) -> List<&2, T.BItem>:
   match r:
@@ -11070,11 +11237,11 @@ def act.fun.alt.cmb.gap(gap: Bool, b: T.Bt, +nm: List<&2, U32>, +ms: List<&2, Ac
     case True{}:
       Nil{}
     case False{}:
-      act.fun.item(List.append(&2, U32, nm, S.b("__a2b_nu")), ms, cls, b, r, List.append(&2, List<&2, U32>, doc, [S.b("agda2bend: the combinator-unfolded translation (act.fun.alt.cmb), tried when the other did not check")]), env)
+      act.fun.item(List.append(&2, U32, nm, S.b("__a2b_nu2")), ms, cls, b, r, List.append(&2, List<&2, U32>, doc, [S.b("agda2bend: the combinator-unfolded translation (act.fun.alt.cmb), tried when the other did not check")]), env)
 
 # A def's combinator alternative (2026-10-31): its body with every
 # combinator's call unfolded and beta-reduced (act.cmb.force), as a
-# combinator's own body is, as NAME__a2b_nu for the gate, which checks it
+# combinator's own body is, as NAME__a2b_nu2 for the gate, which checks it
 # in the def's place before it drops the def.  A combinator's header reads
 # a hidden binder of a parameter's Pi erased (act.sig.env: _·r_'s `H : {x
 # : A} → g {x} ~ h {x}`, so that `H (f x)` uses x once), and a caller's
@@ -11325,7 +11492,7 @@ def act.fun.alt.esp.gap(gap: Bool, b: T.Bt, +nm: List<&2, U32>, +ms: List<&2, Ac
     case True{}:
       Nil{}
     case False{}:
-      act.fun.item(List.append(&2, U32, nm, S.b("__a2b_nu")), ms, cls, b, r, List.append(&2, List<&2, U32>, doc, [S.b("agda2bend: the record-split translation (act.esp), tried when the other did not check")]), env)
+      act.fun.item(List.append(&2, U32, nm, S.b("__a2b_nu3")), ms, cls, b, r, List.append(&2, List<&2, U32>, doc, [S.b("agda2bend: the record-split translation (act.esp), tried when the other did not check")]), env)
 
 # the record-split alternative (none when no parameter splits, or when it
 # leaves a gap)
