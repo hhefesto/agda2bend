@@ -358,10 +358,42 @@ def tba.minus(xs: List<&2, List<&2, U32>>, +bound: Map<&2, Bool>) -> List<&2, Li
 def tba.item.refs(+it: BItem) -> List<&2, List<&2, U32>>:
   tba.minus(tba.item.fold(~tba.refs, it, Nil{}), tba.set(tba.item.names(it, tba.item.fold(~tba.binds, it, Nil{})), Map.new(&2, Bool)))
 
+def tba.subst.in(+x: List<&2, U32>, xs: List<&2, List<&2, U32>>) -> Bool:
+  match xs:
+    case Nil{}:
+      False{}
+    case +y <> t:
+      Bool.or(S.eq(x, y), tba.subst.in(x, t))
+
+def tba.subst.isvar(+v: Bt) -> Bool:
+  match v:
+    case BtVar{y}:
+      True{}
+    case _:
+      False{}
+
 # t with the variable x replaced by v (a binder of x shadows it; names are
-# unique within a def, so no binder captures v)
+# unique within a def, so no binder captures v).  Bodies too: a rewrite, a
+# let, a match and its cases (a pattern variable or a let named x shadows
+# it; a match's scrutinees only for a variable v, as Bend matches only on
+# variables), and an expression body.  Until 2026-10-31 these were left as
+# they were, so a rewrite step's "the body has a for b" (Cata's
+# act.step.body) and act.alpha's renaming missed a step inside a lambda (a
+# second J under the first's generalized parameters kept the header's
+# name: `{..}(x_27)` under `x_27_b =>`, agda-unimath's
+# left-unsplice-coherence-square-identifications).
 def tba.subst(t: Bt, +x: List<&2, U32>, +v: Bt) -> Bt:
   match t:
+    case BtExpr{e}:
+      BtExpr{tba.subst(e, x, v)}
+    case BtRw{e, p, b}:
+      BtRw{tba.subst(e, x, v), tba.subst(p, x, v), tba.subst(b, x, v)}
+    case BtLet{+y, w, +b}:
+      BtLet{y, tba.subst(w, x, v), Bool.pick(Bt, S.eq(x, y), b, tba.subst(b, x, v))}
+    case BtMatch{+xs, cs}:
+      BtMatch{Bool.pick(Bt, tba.subst.isvar(v), tba.subst(xs, x, v), xs), tba.subst(cs, x, v)}
+    case BtCase{+p, +b, rest}:
+      BtCase{p, Bool.pick(Bt, tba.subst.in(x, tba.pvars(p, Nil{})), b, tba.subst(b, x, v)), tba.subst(rest, x, v)}
     case BtVar{+y}:
       Bool.pick(Bt, S.eq(x, y), v, BtVar{y})
     case BtApp{f, a}:

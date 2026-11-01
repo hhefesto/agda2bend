@@ -10373,10 +10373,80 @@ def act.lift.absurd(+e: T.Bt) -> Bool:
     case _:
       False{}
 
+# A generalizing step's term (act.gen.wrap) that generalized n itself (the
+# body is translated over the whole header, so a parameter past the clause's
+# own, whose type mentions the split index, is in the motive: agda-unimath's
+# `left-whisker-concat-coherence-square-identifications refl top left right
+# bottom = id`, the square past them) takes the lift inside, at the lambda
+# binding n's place, not once more outside (that was `{..}(top, left,
+# x_24)(x_24)`, "non-inferrable term", 2026-10-31).
+def act.lift.isn(a: T.Bt, +n: List<&2, U32>) -> Bool:
+  match a:
+    case T.BtVar{x}:
+      S.eq(x, n)
+    case T.BtDead{T.BtVar{x}}:
+      S.eq(x, n)
+    case T.BtTplArg{T.BtVar{x}}:
+      S.eq(x, n)
+    case _:
+      False{}
+
+# the step's lambdas' body applied to the generalized parameter (a head
+# lambda takes it, as act.lift.one's; no call back to act.lift.one, as Bend
+# has no mutual recursion, so a step inside a step is applied as a value)
+def act.lift.term(b: T.Bt, +m: T.BMode, +x: List<&2, U32>) -> T.Bt:
+  match b:
+    case T.BtLam{lm, y, e}:
+      T.tba.subst(e, y, T.BtVar{x})
+    case T.BtExpr{T.BtLam{lm, y, e}}:
+      T.BtExpr{T.tba.subst(e, y, T.BtVar{x})}
+    case T.BtExpr{+e}:
+      Bool.pick(T.Bt, act.lift.absurd(e), T.BtExpr{e}, T.BtExpr{T.BtApp{e, T.BtArgs{act.lift.arg(m, x), T.BtANil{}}}})
+    case T.BtRw{e, p, rb}:
+      T.BtRw{e, p, act.lift.term(rb, m, x)}
+    case T.BtLet{y, v, rb}:
+      T.BtLet{y, v, act.lift.term(rb, m, x)}
+    case +e:
+      Bool.pick(T.Bt, act.lift.absurd(e), e, T.BtApp{e, T.BtArgs{act.lift.arg(m, x), T.BtANil{}}})
+
+def act.lift.gen.lam(lm: T.BMode, +x: List<&2, U32>, r: Maybe<&2, T.Bt>) -> Maybe<&2, T.Bt>:
+  match r:
+    case Some{b}:
+      Some{T.BtLam{lm, x, b}}
+    case None{}:
+      None{}
+
+def act.lift.gen.or(r: Maybe<&2, T.Bt>, +e: T.Bt, +p: T.Bt, +l: T.Bt, +g: T.Bt, +as: T.Bt, +m: T.BMode, +n: List<&2, U32>) -> T.Bt:
+  match r:
+    case Some{l2}:
+      T.BtExpr{T.BtApp{T.BtAnn{T.BtRw{e, p, l2}, g}, as}}
+    case None{}:
+      T.BtExpr{T.BtApp{T.BtApp{T.BtAnn{T.BtRw{e, p, l}, g}, as}, T.BtArgs{act.lift.arg(m, n), T.BtANil{}}}}
+
+# the step's arguments against its lambdas, cur the name n has here: n
+# itself, or the lambda's at its argument once the step generalized it.
+# The body was written at the header's goal (past n), so the lift goes to
+# the innermost value in any case, a step right inside too (a second J over
+# the first's generalized parameters: a split on two equations); None only
+# when the step's lambdas and arguments do not pair up.
+def act.lift.gen(fuel: Nat, as: T.Bt, l: T.Bt, +m: T.BMode, +cur: List<&2, U32>) -> Maybe<&2, T.Bt>:
+  match fuel as l:
+    case 1n+f T.BtArgs{a, ar} T.BtLam{lm, +x, b}:
+      +c2 = Bool.pick(List<&2, U32>, act.lift.isn(a, cur), x, cur)
+      act.lift.gen.lam(lm, x, act.lift.gen(f, ar, b, m, c2))
+    case 1n+f T.BtANil{} T.BtExpr{T.BtApp{T.BtAnn{T.BtRw{+e, +p, +l2}, +g}, +as2}}:
+      Some{act.lift.gen.or(act.lift.gen(f, as2, l2, m, cur), e, p, l2, g, as2, m, cur)}
+    case 1n+f T.BtANil{} b:
+      Some{act.lift.term(b, m, cur)}
+    case _ _ _:
+      None{}
+
 def act.lift.one(b: T.Bt, +m: T.BMode, +n: List<&2, U32>) -> T.Bt:
   match b:
     case T.BtExpr{T.BtLam{lm, x, e}}:
       T.BtExpr{T.tba.subst(e, x, T.BtVar{n})}
+    case T.BtExpr{T.BtApp{T.BtAnn{T.BtRw{+e, +p, +l}, +g}, +as}}:
+      act.lift.gen.or(act.lift.gen(64n, as, l, m, n), e, p, l, g, as, m, n)
     case T.BtExpr{+e}:
       Bool.pick(T.Bt, act.lift.absurd(e), T.BtExpr{e}, T.BtExpr{T.BtApp{e, T.BtArgs{act.lift.arg(m, n), T.BtANil{}}}})
     case T.BtMatch{xs, cs}:
