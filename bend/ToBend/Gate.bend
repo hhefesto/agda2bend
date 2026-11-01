@@ -1040,7 +1040,50 @@ def tgt.gate.go(+bend: String, +secs: U32, +path: String, +head: List<&2, List<&
 # check (with the header and imports given); the answer has the kept
 # items, the drops and the number of checks run.  pre: the items left
 # after tgt.ext, and its drops.
+# A def the static checks drop (a gap, a template argument that is not
+# closed: tgt.gapless) has its alternatives tried there too, before any
+# check (2026-10-31): the first that passes them goes in its place.  They
+# were tried only after a failed check, so agda-unimath's
+# is-coherently-invertible-is-equiv (= is-coherently-invertible-is-
+# invertible ∘ is-invertible-is-equiv, its eta-expansions passing a
+# lambda's variable to the templates) was dropped with its
+# combinator-unfolded alternative never tried: 189 dependents in
+# export-umni's first 166 modules, the largest root.
+def tgt.static.ok(+it: T.BItem) -> Bool:
+  Bool.and(List.is_empty(&2, List<&2, U32>, tgt.gaps(it)), S.eq(tgt.tloc.item(it), Nil{}))
+
+# the first of n's alternatives from m on that passes the static checks
+def tgt.pre.alt(fuel: Nat, m: Maybe<&2, T.BItem>, +n: List<&2, U32>, +qe: QF.TqEnv) -> Maybe<&2, T.BItem>:
+  match fuel m:
+    case 1n+f Some{+alt}:
+      Bool.pick(Maybe<&2, T.BItem>, tgt.static.ok(alt), Some{alt}, tgt.pre.alt(f, QF.tqf.alt.next(qe, n, QF.tqf.alt.mk.it(alt)), n, qe))
+    case _ _:
+      None{}
+
+def tgt.pre.put(m: Maybe<&2, T.BItem>, +n: List<&2, U32>, +all: List<&2, T.BItem>, +qe: QF.TqEnv) -> List<&2, T.BItem>:
+  match m:
+    case Some{alt}:
+      tgt.alt.in(n, all, alt, qe)
+    case None{}:
+      all
+
+def tgt.pre.one(ok: Bool, +it: T.BItem, +all: List<&2, T.BItem>, +qe: QF.TqEnv) -> List<&2, T.BItem>:
+  match ok:
+    case True{}:
+      all
+    case False{}:
+      +n = tgt.name(it)
+      tgt.pre.put(tgt.pre.alt(8n, QF.tqf.alt.next(qe, n, QF.tqf.alt.mk.it(it)), n, qe), n, all, qe)
+
+def tgt.pre.alts(its: List<&2, T.BItem>, all: List<&2, T.BItem>, +qe: QF.TqEnv) -> List<&2, T.BItem>:
+  match its:
+    case Nil{}:
+      all
+    case +it <> t:
+      tgt.pre.alts(t, tgt.pre.one(tgt.static.ok(it), it, all, qe), qe)
+
 def tgt.gate(+bend: String, +secs: U32, +path: String, +head: List<&2, List<&2, U32>>, +ims: List<&2, T.BImport>, pre: TgtSt, +qe: QF.TqEnv) -> IO(TgtRun):
   match pre:
-    case TgtSt{+its, d0}:
+    case TgtSt{+its0, d0}:
+      +its = tgt.pre.alts(its0, its0, qe)
       tgt.gate.go(bend, secs, path, head, ims, its, tgt.deps(S.b("uses a dropped item"), tgt.merge(tgt.gapless(its), d0)), qe)

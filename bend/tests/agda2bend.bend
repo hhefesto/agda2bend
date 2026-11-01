@@ -1108,6 +1108,38 @@ def cs.laws() -> IO(Unit):
     g3 : D.A2bG <- cs.of(al, ral, ds, D.a2b.mod.items(S.b("A2bCs"), al, ds, g2))
     return Unit{}
 
+# fixtures/agda2bend/src/A2bTpl.agda (its export A2bTpl.sexp, after
+# Agda.Primitive and Agda.Builtin.Equality): re2 = re ∘ re, re's parameter
+# a template (used three times), so re2's eta-expansions pass a lambda's
+# variable to it and the gate's static checks drop re2 before any check.
+# Its combinator-unfolded alternative, re(~re(~x)) with x a template too,
+# goes in its place there now (agda-unimath's
+# is-coherently-invertible-is-equiv; 2026-10-31: tried only after a failed
+# check before, so never; the gate keeps all 10 items, 9 before).
+def tpl.pre(p: List<&2, T.BItem> & List<&2, T.BItem>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +nd: Nat, +qs: Map<&2, QF.TqSig>) -> List<&2, U32>:
+  match p:
+    case (+main, alts):
+      D.a2b.raw.text.of(S.b("A2bTpl"), al, ral, nd, G.tgt.pre.alts(main, main, D.a2b.qe.alts(qs, al, S.b("A2bTpl"), alts)))
+
+def tpl.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, tr: D.A2bTr) -> IO(D.A2bG):
+  match tr:
+    case D.A2bTr{its, D.A2bG{tab, unf, kept, pj, +qs}}:
+      +text = tpl.pre(D.a2b.alts.split(its), al, ral, List.length(&2, A.AgDecl, ds), qs)
+      do IO<D.A2bG>:
+        IO.print(verdict("a def the static checks drop has its alternative in its place before any check", S.infix(text, S.b("tried when the other did not check\ndef anon.re2(~l1: Quant, ~l2: Quant, ~A: Kind(l1), ~B: Kind(l2), ~f: A -> B, ~x: anon.is_inv(l1, l2, A, B, f)) -> anon.is_inv(l1, l2, A, B, f):\n  anon.re(~l1, ~l2, ~A, ~B, ~f, ~anon.re(~l1, ~l2, ~A, ~B, ~f, ~x))"))))
+        return D.A2bG{tab, unf, kept, pj, qs}
+
+def tpl.laws() -> IO(Unit):
+  +order : List<&2, List<&2, U32>> = [S.b("Agda.Primitive"), S.b("Agda.Builtin.Equality"), S.b("A2bTpl")]
+  +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
+  +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
+  do IO<Unit>:
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
+    +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bTpl.sexp"))
+    g3 : D.A2bG <- tpl.of(al, ral, ds, D.a2b.mod.items(S.b("A2bTpl"), al, ds, g2))
+    return Unit{}
+
 def main() -> IO(Unit):
   do IO<Unit>:
     +bool : List<&2, U32> <- S.read("fixtures/agda2bend/Agda.Builtin.Bool.sexp")
@@ -1131,3 +1163,4 @@ def main() -> IO(Unit):
     trl.laws()
     ftr.laws()
     cs.laws()
+    tpl.laws()
