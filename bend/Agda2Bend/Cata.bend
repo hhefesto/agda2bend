@@ -1109,19 +1109,61 @@ def act.cmb.env(+key: String, env: ActEnv) -> ActEnv:
     case ActEnv{mod, tab, al, +unf}:
       ActEnv{mod, tab, al, act.cmb.mark(act.unf.has.got(Map.has(&2, ActCopy, unf, "cmb:" ++ key)), unf)}
 
-def act.cmb.when(on: Bool, c: ActCopy, +es: A.Ag) -> A.Ag:
-  match on:
-    case True{}:
+def act.cmb.when(on: Bool, eta: Bool, c: ActCopy, +es: A.Ag) -> A.Ag:
+  match on eta:
+    case True{} False{}:
       act.unfold.of(c, es)
-    case False{}:
+    case True{} True{}:
+      act.etu.at(c, es)
+    case False{} _:
       A.AgNone{}
 
 # q applied to es unfolded as a combinator, inside a combinator's body
-# (AgNone elsewhere, for no combinator, or a call not saturated)
+# (AgNone elsewhere, for no combinator, or a call not saturated); in a
+# def's combinator alternative ("cmb!!", act.fun.alt.cmb) a call short of
+# its arguments too, under a lambda for each one it leaves out
 def act.cmb.at(+env: ActEnv, +q: A.AgQ, +es: A.Ag) -> A.Ag:
   match env:
     case ActEnv{mod, tab, al, +unf}:
-      act.cmb.when(act.unf.has.got(Map.has(&2, ActCopy, unf, "cmb!")), act.unf.got(Map.get(ActCopy, ActCopy{0n, A.AgNone{}}, unf, act.cmb.key(q))), es)
+      act.cmb.when(act.unf.has.got(Map.has(&2, ActCopy, unf, "cmb!")), act.unf.has.got(Map.has(&2, ActCopy, unf, "cmb!!")), act.unf.got(Map.get(ActCopy, ActCopy{0n, A.AgNone{}}, unf, act.cmb.key(q))), es)
+
+# the environment of a def's combinator alternative: every combinator's
+# call unfolded ("cmb!"), a short one too ("cmb!!")
+def act.cmb.force(env: ActEnv) -> ActEnv:
+  match env:
+    case ActEnv{mod, tab, al, unf}:
+      ActEnv{mod, tab, al, Map.set(&2, ActCopy, Map.set(&2, ActCopy, unf, "cmb!", ActCopy{0n, A.AgNone{}}), "cmb!!", ActCopy{0n, A.AgNone{}})}
+
+# whether a lambda over a hidden or instance binder is an argument of a
+# combinator's call in t (a def's clauses): `nat-htpy G ·r F`, whose
+# `λ {x} → nat-htpy (G {x})` uses x live where _·r_'s header erases it
+def act.cmb.hlam(t: A.Ag) -> Bool:
+  match t:
+    case A.AgEApp{i, A.AgLam{j, x, d, b}, rest}:
+      Bool.or(act.info.hid(j), act.cmb.hlam(rest))
+    case A.AgEApp{i, a, rest}:
+      act.cmb.hlam(rest)
+    case _:
+      False{}
+
+def act.cmb.any(t: A.Ag, +unf: Map<&2, ActCopy>) -> Bool:
+  match t:
+    case A.AgCl{tel, ps, b, ty, c, rest}:
+      Bool.or(act.cmb.any(b, unf), act.cmb.any(rest, unf))
+    case A.AgLam{i, x, d, b}:
+      act.cmb.any(b, unf)
+    case A.AgVar{i, x, es}:
+      act.cmb.any(es, unf)
+    case A.AgDef{+q, +es}:
+      Bool.or(Bool.and(act.unf.has.got(Map.has(&2, ActCopy, unf, act.cmb.key(q))), act.cmb.hlam(es)), act.cmb.any(es, unf))
+    case A.AgCon{q, o, es}:
+      act.cmb.any(es, unf)
+    case A.AgEApp{i, a, rest}:
+      Bool.or(act.cmb.any(a, unf), act.cmb.any(rest, unf))
+    case A.AgEProj{q, rest}:
+      act.cmb.any(rest, unf)
+    case _:
+      False{}
 
 def act.cmb.pick(u: A.Ag, d: A.Ag) -> A.Ag:
   match u:
@@ -10713,6 +10755,277 @@ def act.fun.alt.on(on: Bool, +cls2: A.Ag, +scr: List<&2, Bool>, +env2: ActEnv, +
     case True{}:
       act.fun.alt.mk(act.nu.body(cls2, scr, act.ps.ents(r), act.names(act.ps.ents(r)), env2, act.uty.go(64n, ar, t, ms, scr, Nil{}, Nil{}, env2), act.ps.ret(r)), nm, ms, cls, r, doc, env)
 
+def act.env.unf(env: ActEnv) -> Map<&2, ActCopy>:
+  match env:
+    case ActEnv{mod, tab, al, unf}:
+      unf
+
+def act.cmb.is(+key: String, +env: ActEnv) -> Bool:
+  act.unf.has.got(Map.has(&2, ActCopy, act.env.unf(env), "cmb:" ++ key))
+
+def act.fun.alt.cmb.gap(gap: Bool, b: T.Bt, +nm: List<&2, U32>, +ms: List<&2, ActM>, +cls: A.Ag, +r: ActPs, doc: List<&2, List<&2, U32>>, +env: ActEnv) -> List<&2, T.BItem>:
+  match gap:
+    case True{}:
+      Nil{}
+    case False{}:
+      act.fun.item(List.append(&2, U32, nm, S.b("__a2b_nu")), ms, cls, b, r, List.append(&2, List<&2, U32>, doc, [S.b("agda2bend: the combinator-unfolded translation (act.fun.alt.cmb), tried when the other did not check")]), env)
+
+# A def's combinator alternative (2026-10-31): its body with every
+# combinator's call unfolded and beta-reduced (act.cmb.force), as a
+# combinator's own body is, as NAME__a2b_nu for the gate, which checks it
+# in the def's place before it drops the def.  A combinator's header reads
+# a hidden binder of a parameter's Pi erased (act.sig.env: _·r_'s `H : {x
+# : A} → g {x} ~ h {x}`, so that `H (f x)` uses x once), and a caller's
+# lambda that uses it live (homotopy-algebra's `nat-htpy G ·r F`,
+# coherently-invertible-maps' inv-coh, "expected : -x_b observed : x_b")
+# checks once the call is unfolded: `nat-htpy (G {x}) (F x)`.  Only for a
+# def whose clauses pass such a lambda to a combinator (act.cmb.any), and
+# none when the body leaves a gap.
+def act.fun.alt.cmb(on: Bool, +cls: A.Ag, +key: String, +ar: Nat, +t: A.Ag, +env: ActEnv, +nm: List<&2, U32>, +ms: List<&2, ActM>, doc: List<&2, List<&2, U32>>, +r: ActPs) -> List<&2, T.BItem>:
+  match on:
+    case False{}:
+      Nil{}
+    case True{}:
+      +b = act.fun.body(A.AgPrNone{}, cls, key, ar, t, act.ps.ents(r), act.cmb.force(env), False{}, r, ms)
+      act.fun.alt.cmb.gap(act.nu.hasgap(b), b, nm, ms, cls, r, doc, env)
+
+# Record parameters split (2026-10-31) ----------------------------------------
+#
+# Bend has no record eta: agda-unimath's `tot-id B p = refl` proves
+# `tot (λ x → id) p ＝ p`, which holds in Agda because p is `(pr1 p , pr2
+# p)`, while Bend's tot matches p and is stuck at a variable ("expected :
+# anon.tot(.., x) observed : x").  A def's record-split alternative takes
+# such a parameter as its record's constructor pattern (`tot-id B (x , y) =
+# refl`): Bend's match puts `pair{x, y}` for p in the goal, where tot
+# reduces.  In a def of one clause, its first top-level variable patterns
+# of a record type (two at most: eq-pair's s and t) become the record's
+# constructor applied to a variable for each field; the clause's telescope,
+# its other patterns and its body are renumbered (a record of no fields, a
+# unit, is its constructor alone).
+
+# a record's constructor and its field count
+type ActEspR is Data:
+  ActEspR{cq: A.AgQ, k: Nat}
+
+# a pattern variable of a record type to split: its index in the clause's
+# telescope, its name and origin, the record's constructor and field count
+type ActEsp is Data:
+  ActEsp{ix: Nat, x: List<&2, U32>, o: A.AgKw, cq: A.AgQ, k: Nat}
+
+# a top-level variable pattern: its index, name and origin
+type ActEspV is Data:
+  ActEspV{ix: Nat, x: List<&2, U32>, o: A.AgKw}
+
+def act.esp.r.of(c: ActCopy, +k: Nat) -> Maybe<&2, ActEspR>:
+  match c:
+    case ActCopy{n, A.AgDef{q, es}}:
+      Some{ActEspR{q, k}}
+    case _:
+      None{}
+
+def act.esp.rq.of(s: ActSym, +env: ActEnv, +q: A.AgQ) -> Maybe<&2, ActEspR>:
+  match s:
+    case ActSym{m, n, A.AkRecord{}, ms, ar, b, fs, c, cp}:
+      act.esp.r.of(act.nu.unf(env, act.nu.rcon.key(act.key(q))), List.length(&2, String, fs))
+    case _:
+      None{}
+
+# the record a TYPE is (a record applied), or None
+def act.esp.rq(ty: A.Ag, +env: ActEnv) -> Maybe<&2, ActEspR>:
+  match ty:
+    case A.AgEl{s, A.AgDef{+q, es}}:
+      act.esp.rq.of(act.sym(env, q), env, q)
+    case _:
+      None{}
+
+def act.esp.vars(ps: A.Ag) -> List<&2, ActEspV>:
+  match ps:
+    case A.AgPArg{i, x, A.AgPVar{y, j, o}, rest}:
+      ActEspV{j, y, o} <> act.esp.vars(rest)
+    case A.AgPArg{i, x, p, rest}:
+      act.esp.vars(rest)
+    case _:
+      Nil{}
+
+# whether variable j (under depth binders) occurs in t
+def act.esp.occ(t: A.Ag, +j: Nat, +depth: Nat) -> Bool:
+  match t:
+    case A.AgVar{+i, x, es}:
+      Bool.or(Nat.is_eq(i, Nat.add(j, depth)), act.esp.occ(es, j, depth))
+    case A.AgLam{i, x, +dep, b}:
+      act.esp.occ(b, j, asb.under(dep, depth))
+    case A.AgPi{i, x, a, +dep, b}:
+      Bool.or(act.esp.occ(a, j, depth), act.esp.occ(b, j, asb.under(dep, depth)))
+    case A.AgDef{q, es}:
+      act.esp.occ(es, j, depth)
+    case A.AgCon{q, o, es}:
+      act.esp.occ(es, j, depth)
+    case A.AgEl{s, a}:
+      act.esp.occ(a, j, depth)
+    case A.AgBeta{f, es}:
+      Bool.or(act.esp.occ(f, j, depth), act.esp.occ(es, j, depth))
+    case A.AgDontCare{a}:
+      act.esp.occ(a, j, depth)
+    case A.AgEApp{i, a, rest}:
+      Bool.or(act.esp.occ(a, j, depth), act.esp.occ(rest, j, depth))
+    case A.AgEProj{q, rest}:
+      act.esp.occ(rest, j, depth)
+    case _:
+      False{}
+
+def act.esp.when(on: Bool, m: Maybe<&2, ActEspR>) -> Maybe<&2, ActEspR>:
+  match on:
+    case True{}:
+      m
+    case False{}:
+      None{}
+
+def act.esp.pick.or(m: Maybe<&2, ActEspR>, +v: ActEspV, other: Maybe<&2, ActEsp>) -> Maybe<&2, ActEsp>:
+  match m v:
+    case Some{ActEspR{q, k}} ActEspV{j, y, o}:
+      Some{ActEsp{j, y, o, q, k}}
+    case None{} v:
+      other
+
+def act.esp.v.ix(v: ActEspV) -> Nat:
+  match v:
+    case ActEspV{j, y, o}:
+      j
+
+# the first top-level variable pattern of a record type that the clause's
+# type mentions (n: the telescope's length; a variable of index j is its
+# entry n-1-j; ty: the clause's right-hand side's TYPE): a goal that needs
+# the record's eta (a def that only reads its fields needs none)
+def act.esp.pick(vs: List<&2, ActEspV>, +tel: A.Ag, +n: Nat, +ty: A.Ag, +env: ActEnv) -> Maybe<&2, ActEsp>:
+  match vs:
+    case +v <> t:
+      act.esp.pick.or(act.esp.when(act.esp.occ(ty, act.esp.v.ix(v), 0n), act.esp.rq(act.tel.nth(tel, Nat.sub(Nat.sub(n, 1n), act.esp.v.ix(v))), env)), v, act.esp.pick(t, tel, n, ty, env))
+    case Nil{}:
+      None{}
+
+# k entries x_f.. for the fields, then rest
+def act.esp.flds(+x: List<&2, U32>, +i: A.AgI, k: Nat, +f: Nat, rest: A.Ag) -> A.Ag:
+  match k:
+    case 0n:
+      rest
+    case 1n+p:
+      A.AgTel{act.nth.name(x, f), i, A.AgNone{}, act.esp.flds(x, i, p, 1n+f, rest)}
+
+# the telescope with its entry p replaced by the k fields'
+def act.esp.tel(tel: A.Ag, p: Nat, +x: List<&2, U32>, +k: Nat) -> A.Ag:
+  match tel p:
+    case A.AgTel{y, +i, ty, rest} 0n:
+      act.esp.flds(x, i, k, 1n, rest)
+    case A.AgTel{y, i, ty, rest} 1n+q:
+      A.AgTel{y, i, ty, act.esp.tel(rest, q, x, k)}
+    case t _:
+      t
+
+# the constructor's arguments: variables top, top-1, .. (k of them)
+def act.esp.cargs(k: Nat, +top: Nat) -> A.Ag:
+  match k:
+    case 0n:
+      A.AgENil{}
+    case 1n+p:
+      A.AgEApp{A.aas.i.vis(), A.AgVar{top, S.b("v"), A.AgENil{}}, act.esp.cargs(p, Nat.sub(top, 1n))}
+
+# the fields' patterns: variables top, top-1, ..
+def act.esp.fpats(k: Nat, +top: Nat, +x: List<&2, U32>, +f: Nat, +o: A.AgKw) -> A.Ag:
+  match k:
+    case 0n:
+      A.AgPEnd{}
+    case 1n+p:
+      A.AgPArg{A.aas.i.vis(), Nil{}, A.AgPVar{act.nth.name(x, f), top, o}, act.esp.fpats(p, Nat.sub(top, 1n), x, 1n+f, o)}
+
+# a variable of the old telescope (index j) in the new one: below ix as it
+# is, ix the constructor applied, above it k-1 further
+def act.esp.v(+j: Nat, +ix: Nat, +k: Nat, +c: A.Ag) -> A.Ag:
+  Bool.pick(A.Ag, Nat.is_lt(j, ix), A.AgVar{j, S.b("v"), A.AgENil{}}, Bool.pick(A.Ag, Nat.is_eq(j, ix), c, A.AgVar{Nat.sub(Nat.add(j, k), 1n), S.b("v"), A.AgENil{}}))
+
+# the substitution for the old telescope's variables, from index j up
+def act.esp.vs(cnt: Nat, +j: Nat, +ix: Nat, +k: Nat, +c: A.Ag) -> List<&2, A.Ag>:
+  match cnt:
+    case 0n:
+      Nil{}
+    case 1n+p:
+      act.esp.v(j, ix, k, c) <> act.esp.vs(p, 1n+j, ix, k, c)
+
+# the patterns renumbered, the variable ix the constructor's pattern
+def act.esp.ps(p: A.Ag, +ix: Nat, +k: Nat, +cq: A.AgQ, +fp: A.Ag, +vs: List<&2, A.Ag>, +n: Nat) -> A.Ag:
+  match p:
+    case A.AgPArg{i, x, q, rest}:
+      A.AgPArg{i, x, act.esp.ps(q, ix, k, cq, fp, vs, n), act.esp.ps(rest, ix, k, cq, fp, vs, n)}
+    case A.AgPVar{y, +j, o}:
+      Bool.pick(A.Ag, Nat.is_eq(j, ix), A.AgPCon{cq, True{}, False{}, fp}, A.AgPVar{y, Bool.pick(Nat, Nat.is_lt(ix, j), Nat.sub(Nat.add(j, k), 1n), j), o})
+    case A.AgPDot{t}:
+      A.AgPDot{asb.subst(t, 0n, vs, n)}
+    case A.AgPCon{q, r, fo, sub}:
+      A.AgPCon{q, r, fo, act.esp.ps(sub, ix, k, cq, fp, vs, n)}
+    case p:
+      p
+
+def act.esp.cl1(e: ActEsp, cl: A.Ag) -> A.Ag:
+  match e cl:
+    case ActEsp{+ix, +x, +o, +cq, +k} A.AgCl{+tel, ps, body, ty, ca, rest}:
+      +n = act.tel.len(tel)
+      +top = Nat.sub(Nat.add(ix, k), 1n)
+      +vs = act.esp.vs(n, 0n, ix, k, A.AgCon{cq, A.AkSystem{}, act.esp.cargs(k, top)})
+      A.AgCl{act.esp.tel(tel, Nat.sub(Nat.sub(n, 1n), ix), x, k), act.esp.ps(ps, ix, k, cq, act.esp.fpats(k, top, x, 1n, o), vs, n), asb.subst(body, 0n, vs, n), asb.subst(ty, 0n, vs, n), ca, rest}
+    case _ cl:
+      cl
+
+def act.esp.once.at(m: Maybe<&2, ActEsp>, cl: A.Ag) -> Maybe<&2, A.Ag>:
+  match m:
+    case Some{e}:
+      Some{act.esp.cl1(e, cl)}
+    case None{}:
+      None{}
+
+# one clause with a record-typed variable pattern split, or None
+def act.esp.once(cl: A.Ag, +env: ActEnv) -> Maybe<&2, A.Ag>:
+  match cl:
+    case A.AgCl{+tel, +ps, body, +ty, ca, A.AgClEnd{}}:
+      act.esp.once.at(act.esp.pick(act.esp.vars(ps), tel, act.tel.len(tel), ty, env), A.AgCl{tel, ps, body, ty, ca, A.AgClEnd{}})
+    case _:
+      None{}
+
+def act.esp.more(m: Maybe<&2, A.Ag>, cl: A.Ag) -> A.Ag:
+  match m:
+    case Some{c}:
+      c
+    case None{}:
+      cl
+
+# the clauses with one or two variables split, or None
+def act.esp.cls(m: Maybe<&2, A.Ag>, +env: ActEnv) -> Maybe<&2, A.Ag>:
+  match m:
+    case Some{+c}:
+      Some{act.esp.more(act.esp.once(c, env), c)}
+    case None{}:
+      None{}
+
+def act.fun.alt.esp.gap(gap: Bool, b: T.Bt, +nm: List<&2, U32>, +ms: List<&2, ActM>, +cls: A.Ag, +r: ActPs, doc: List<&2, List<&2, U32>>, +env: ActEnv) -> List<&2, T.BItem>:
+  match gap:
+    case True{}:
+      Nil{}
+    case False{}:
+      act.fun.item(List.append(&2, U32, nm, S.b("__a2b_nu")), ms, cls, b, r, List.append(&2, List<&2, U32>, doc, [S.b("agda2bend: the record-split translation (act.esp), tried when the other did not check")]), env)
+
+# the record-split alternative (none when no parameter splits, or when it
+# leaves a gap)
+def act.fun.alt.esp(m: Maybe<&2, A.Ag>, +key: String, +ar: Nat, +t: A.Ag, +env: ActEnv, +nm: List<&2, U32>, +ms: List<&2, ActM>, doc: List<&2, List<&2, U32>>, +r: ActPs) -> List<&2, T.BItem>:
+  match m:
+    case Some{+cls2}:
+      +b = act.fun.body(A.AgPrNone{}, cls2, key, ar, t, act.ps.ents(r), act.cmb.env(key, env), False{}, r, ms)
+      act.fun.alt.esp.gap(act.nu.hasgap(b), b, nm, ms, cls2, r, doc, env)
+    case None{}:
+      Nil{}
+
+# act.nu's alternative when it has one, then the combinator one, then the
+# record-split one (the gate tries them in this order: Qfix's tqf.alt.next)
+def act.fun.alt.which(nu: Bool, +cls2: A.Ag, +scr: List<&2, Bool>, +env2: ActEnv, +nm: List<&2, U32>, +ms: List<&2, ActM>, +ar: Nat, +cls: A.Ag, +key: String, +t: A.Ag, +env: ActEnv, +doc: List<&2, List<&2, U32>>, +r: ActPs) -> List<&2, T.BItem>:
+  List.append(&2, T.BItem, act.fun.alt.on(nu, cls2, scr, env2, nm, ms, ar, cls, t, env, doc, r), List.append(&2, T.BItem, act.fun.alt.cmb(Bool.and(Bool.not(act.cmb.is(key, env)), act.cmb.any(cls, act.env.unf(env))), cls, key, ar, t, env, nm, ms, doc, r), act.fun.alt.esp(act.esp.cls(act.esp.once(cls, env), env), key, ar, t, env, nm, ms, doc, r)))
+
 def act.fun.alt(p: A.AgProj, copat: Bool, +nm: List<&2, U32>, +ms: List<&2, ActM>, +ar: Nat, +cls: A.Ag, +key: String, +t: A.Ag, +env: ActEnv, doc: List<&2, List<&2, U32>>, +r: ActPs) -> List<&2, T.BItem>:
   match p copat:
     case A.AgPrOf{Some{q}, o, ix} _:
@@ -10723,7 +11036,7 @@ def act.fun.alt(p: A.AgProj, copat: Bool, +nm: List<&2, U32>, +ms: List<&2, ActM
       +env2 = act.cmb.env(key, env)
       +cls2 = act.rf.of(cls, key, ms, act.ps.ps(r))
       +scr = act.scr(cls2, env2)
-      act.fun.alt.on(Bool.and(Bool.and(act.any(scr), act.nu.wantall(cls2, env2)), Bool.and(Bool.not(act.nu.want(cls2, env2)), Bool.not(act.nu.anybad(cls2, env2)))), cls2, scr, env2, nm, ms, ar, cls, t, env, doc, r)
+      act.fun.alt.which(Bool.and(Bool.and(act.any(scr), act.nu.wantall(cls2, env2)), Bool.and(Bool.not(act.nu.want(cls2, env2)), Bool.not(act.nu.anybad(cls2, env2)))), cls2, scr, env2, nm, ms, ar, cls, key, t, env, doc, r)
 
 def act.fun.with(+nm: List<&2, U32>, +ms: List<&2, ActM>, +ar: Nat, +p: A.AgProj, +cls: A.Ag, +key: String, +t: A.Ag, +env: ActEnv, +doc: List<&2, List<&2, U32>>, +r: ActPs) -> List<&2, T.BItem>:
   List.append(&2, T.BItem, act.fun.item(nm, ms, act.rf.of(cls, key, ms, act.ps.ps(r)), act.fun.body(p, cls, key, ar, t, act.ps.ents(r), act.cmb.env(key, env), act.copat.is(cls), r, ms), r, doc, env), act.fun.alt(p, act.copat.is(cls), nm, ms, ar, cls, key, t, env, doc, r))

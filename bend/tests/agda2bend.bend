@@ -877,6 +877,65 @@ def um.laws() -> IO(Unit):
     g6 : D.A2bG <- um.of(al, ral, ds, D.a2b.mod.items(S.b("A2bUm"), al, ds, g5))
     return Unit{}
 
+# fixtures/agda2bend/src/A2bHid.agda (its export A2bHid.sexp, after
+# Agda.Primitive and Agda.Builtin.Equality): a combinator's header reads a
+# hidden binder of its parameter's Pi erased (agda-unimath's _·r_, `H : {x
+# : A} → g {x} ~ h {x}`), and a def that passes a combinator a lambda over a
+# hidden binder (homotopy-algebra's `nat-htpy G ·r F`, whose lambda uses x
+# live) has the combinator-unfolded translation beside it for the gate,
+# `nat-htpy (G {x}) (F x)`; the gate keeps all 9 items (Bend 2.0.39; 8 of 9
+# at 07330f7, 2026-10-31).
+def hid.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, tr: D.A2bTr) -> IO(D.A2bG):
+  match tr:
+    case D.A2bTr{its, g}:
+      +text = D.a2b.raw.text.of(S.b("A2bHid"), al, ral, List.length(&2, A.AgDecl, ds), its)
+      do IO<D.A2bG>:
+        IO.print(verdict("a lambda over a hidden binder passed to a combinator gives the def a combinator-unfolded alternative", S.infix(text, S.b("(act.fun.alt.cmb), tried when the other did not check\ndef anon.coh_hid__a2b_nu("))))
+        IO.print(verdict("the alternative unfolds the combinator's calls and beta-reduces", S.infix(text, S.b("\n  nat_htpy(l2, l3, B(x), C(x), g(x), g_p(x), G(x), f(x), f_p(x), F(x))\n\n# Agda: A2bHid._.coh-hid-explicit"))))
+        IO.print(verdict("a def that passes a combinator no such lambda has no alternative", Bool.not(S.infix(text, S.b("def anon.coh_hid_explicit__a2b_nu(")))))
+        return g
+
+def hid.laws() -> IO(Unit):
+  +order : List<&2, List<&2, U32>> = [S.b("Agda.Primitive"), S.b("Agda.Builtin.Equality"), S.b("A2bHid")]
+  +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
+  +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
+  do IO<Unit>:
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
+    +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bHid.sexp"))
+    g3 : D.A2bG <- hid.of(al, ral, ds, D.a2b.mod.items(S.b("A2bHid"), al, ds, g2))
+    return Unit{}
+
+# fixtures/agda2bend/src/A2bRec.agda (its export A2bRec.sexp, after
+# Agda.Primitive and Agda.Builtin.Equality): a def whose goal needs a
+# record's eta at a variable (agda-unimath's `tot-id B p = refl`, a unit's
+# `center-unit x = refl`) has the record-split translation beside it for
+# the gate, the variable its record's constructor pattern; one that
+# matches its record already has none; the gate keeps 14 of 16 items
+# (Bend 2.0.39; 12 at 07330f7, 2026-10-31; eq-pair-Σ's and eq-pair''s refl
+# matches on erased equalities are left).
+def rec.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, tr: D.A2bTr) -> IO(D.A2bG):
+  match tr:
+    case D.A2bTr{its, g}:
+      +text = D.a2b.raw.text.of(S.b("A2bRec"), al, ral, List.length(&2, A.AgDecl, ds), its)
+      do IO<D.A2bG>:
+        IO.print(verdict("a record-typed variable the goal mentions is split in the def's record-split alternative", S.infix(text, S.b("(act.esp), tried when the other did not check\ndef tot_id_p__a2b_nu(-l1: Quant, -l2: Quant, -A: Kind(l1), -B: A -> Kind(l2), x: Sigma_<l1, l2, A, B>)"))))
+        IO.print(verdict("the split is the record's constructor pattern, a variable for each field", S.infix(text, S.b("  match x:\n    case pair{p_1, p_2}:\n      {==}\n\n# Agda: A2bRec.preserves-comp-tot"))))
+        IO.print(verdict("a record of no fields splits to its constructor alone", S.infix(text, S.b("def center_unit__a2b_nu(x: unit) -> {star{} == x : unit}:\n  match x:\n    case star{}:\n      {==}"))))
+        IO.print(verdict("a def whose clause matches the record already has no record-split alternative", Bool.not(S.infix(text, S.b("def anon.tot__a2b_nu(")))))
+        return g
+
+def rec.laws() -> IO(Unit):
+  +order : List<&2, List<&2, U32>> = [S.b("Agda.Primitive"), S.b("Agda.Builtin.Equality"), S.b("A2bRec")]
+  +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
+  +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
+  do IO<Unit>:
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
+    +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bRec.sexp"))
+    g3 : D.A2bG <- rec.of(al, ral, ds, D.a2b.mod.items(S.b("A2bRec"), al, ds, g2))
+    return Unit{}
+
 def main() -> IO(Unit):
   do IO<Unit>:
     +bool : List<&2, U32> <- S.read("fixtures/agda2bend/Agda.Builtin.Bool.sexp")
@@ -892,3 +951,5 @@ def main() -> IO(Unit):
     ctx.laws()
     cop.laws()
     um.laws()
+    hid.laws()
+    rec.laws()

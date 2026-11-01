@@ -679,6 +679,10 @@ def tgt.q.of(m: Maybe<&2, T.BItem>, +why: List<&2, U32>) -> Maybe<&2, T.BItem>:
 def tgt.alt.mark() -> List<&2, U32>:
   S.b("agda2bend: the nested-pattern translation (act.nu), tried when the other did not check")
 
+# the combinator-unfolded one (Cata.bend act.fun.alt.cmb, 2026-10-31)
+def tgt.alt.mark.cmb() -> List<&2, U32>:
+  S.b("agda2bend: the combinator-unfolded translation (act.fun.alt.cmb), tried when the other did not check")
+
 def tgt.doc.has(ls: List<&2, List<&2, U32>>, +x: List<&2, U32>) -> Bool:
   match ls:
     case h <> t:
@@ -688,8 +692,8 @@ def tgt.doc.has(ls: List<&2, List<&2, U32>>, +x: List<&2, U32>) -> Bool:
 
 def tgt.is.alt(m: Maybe<&2, T.BItem>) -> Bool:
   match m:
-    case Some{T.BiDef{n, ps, ret, body, doc}}:
-      tgt.doc.has(doc, tgt.alt.mark())
+    case Some{T.BiDef{n, ps, ret, body, +doc}}:
+      Bool.or(tgt.doc.has(doc, tgt.alt.mark()), tgt.doc.has(doc, tgt.alt.mark.cmb()))
     case _:
       False{}
 
@@ -728,8 +732,18 @@ def tgt.alt.try(cur: Bool, +blame: List<&2, U32>, +why: List<&2, U32>, +its: Lis
     case False{}:
       tgt.alt.use(QF.tqf.alt(qe, blame), blame, why, its, ds, qe)
 
+def tgt.alt.mk.of(m: Maybe<&2, T.BItem>) -> List<&2, U32>:
+  match m:
+    case Some{it}:
+      QF.tqf.alt.mk.it(it)
+    case None{}:
+      Nil{}
+
+# the def's next alternative in its place (the first after its own
+# translation, the one after the alternative that failed: Qfix's
+# tqf.alt.next), or the def dropped when none is left
 def tgt.alt.or.fail(+blame: List<&2, U32>, +why: List<&2, U32>, +its: List<&2, T.BItem>, ds: List<&2, TgtDrop>, +qe: QF.TqEnv) -> TgtSt:
-  tgt.alt.try(tgt.is.alt(tgt.find(its, blame)), blame, why, its, ds, qe)
+  tgt.alt.use(QF.tqf.alt.next(qe, blame, tgt.alt.mk.of(tgt.find(its, blame))), blame, why, its, ds, qe)
 
 # a repaired def in its place, and the items that call it read again by
 # Qfix with its new signature (a binder it raised to live or copied changes

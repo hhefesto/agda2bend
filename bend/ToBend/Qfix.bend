@@ -1519,3 +1519,55 @@ def tqf.alt(+e: TqEnv, +n: List<&2, U32>) -> Maybe<&2, T.BItem>:
   match e:
     case TqEnv{sig, here, alts}:
       tqf.alt.find(alts, n)
+
+# A def may have several other translations (act.nu's, the
+# combinator-unfolded one; 2026-10-31), each with its own doc line
+# ("agda2bend: the ..., tried when the other did not check"): the gate
+# tries them in order, the next after the one that failed.
+# the doc line that marks an alternative, or none
+def tqf.alt.mk(doc: List<&2, List<&2, U32>>) -> List<&2, U32>:
+  match doc:
+    case +h <> t:
+      Bool.pick(List<&2, U32>, S.suffix(h, S.b("tried when the other did not check")), h, tqf.alt.mk(t))
+    case Nil{}:
+      Nil{}
+
+def tqf.alt.mk.it(it: T.BItem) -> List<&2, U32>:
+  match it:
+    case T.BiDef{n, ps, ret, body, doc}:
+      tqf.alt.mk(doc)
+    case _:
+      Nil{}
+
+# each alternative with whether it is n's (hit) and whether it is the one
+# marked mk (at)
+type TqAlt is Data:
+  TqAlt{hit: Bool, at: Bool, it: T.BItem}
+
+def tqf.alt.tag(its: List<&2, T.BItem>, +n: List<&2, U32>, +mk: List<&2, U32>) -> List<&2, TqAlt>:
+  match its:
+    case +it <> t:
+      TqAlt{S.eq(tqf.name.of(it), n), S.eq(tqf.alt.mk.it(it), mk), it} <> tqf.alt.tag(t, n, mk)
+    case Nil{}:
+      Nil{}
+
+# n's alternative after the one marked mk (seen: past it already)
+def tqf.alt.after(xs: List<&2, TqAlt>, seen: Bool) -> Maybe<&2, T.BItem>:
+  match xs seen:
+    case TqAlt{True{}, a, it} <> t True{}:
+      Some{it}
+    case TqAlt{False{}, a, it} <> t True{}:
+      tqf.alt.after(t, True{})
+    case TqAlt{True{}, a, it} <> t False{}:
+      tqf.alt.after(t, a)
+    case TqAlt{False{}, a, it} <> t False{}:
+      tqf.alt.after(t, False{})
+    case Nil{} s:
+      None{}
+
+# the alternative to try once the def marked mk (none: the def's own
+# translation) did not check: the first, or the one after it
+def tqf.alt.next(+e: TqEnv, +n: List<&2, U32>, +mk: List<&2, U32>) -> Maybe<&2, T.BItem>:
+  match e:
+    case TqEnv{sig, here, alts}:
+      tqf.alt.after(tqf.alt.tag(alts, n, mk), S.eq(mk, Nil{}))
