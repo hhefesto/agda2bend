@@ -564,7 +564,11 @@ def tqf.endq.mu(m: Maybe<&2, T.Bt>, +e: TqEnv) -> T.Bt:
       tqf.q1()
 
 # the quantity of a type's values: &1 for a function type, &2 for Data, the
-# kind its declaration or its signature gives otherwise
+# kind its declaration or its signature gives otherwise. An equality type
+# takes its carrier's, as Agda's x ＝ y sits at A's level: is-trunc's
+# recursion at {x == y : A} then keeps A's l, the same answer Truncated-Type's
+# family gives once A is a Type (Id-Truncated-Type, 2026-10-31; &2 there
+# made is_trunc(&2, k, E) of one path and is_trunc(&1, k, E) of the other)
 def tqf.kind(fuel: Nat, t: T.Bt, +ctx: List<&2, T.BParam>, +e: TqEnv) -> T.Bt:
   match fuel t:
     case f T.BtVar{+x}:
@@ -577,8 +581,8 @@ def tqf.kind(fuel: Nat, t: T.Bt, +ctx: List<&2, T.BParam>, +e: TqEnv) -> T.Bt:
       tqf.endq.mu(tqf.ty(16n, T.BtApp{g, args}, ctx, e), e)
     case f T.BtPi{m, y, d, a, b}:
       tqf.q1()
-    case f T.BtEq{ty, a, b}:
-      tqf.q2()
+    case 1n+f T.BtEq{ty, a, b}:
+      tqf.kind(f, ty, ctx, e)
     case 1n+f T.BtDead{a}:
       tqf.kind(f, a, ctx, e)
     case 1n+f T.BtTplArg{a}:
