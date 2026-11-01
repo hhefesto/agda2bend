@@ -5531,6 +5531,8 @@ def act.nrf.args.has(a: T.Bt, +x: List<&2, U32>, +i: Nat) -> Bool:
   match a:
     case T.BtArgs{T.BtPv{m, +nm}, rest}:
       Bool.or(S.eq(nm, act.nrf.rn(x, i)), act.nrf.args.has(rest, x, 1n+i))
+    case T.BtArgs{T.BtCon{c, a2}, rest}:
+      Bool.or(act.nrf.args.has(a2, act.at(x, i), 1n), act.nrf.args.has(rest, x, 1n+i))
     case T.BtArgs{h, rest}:
       act.nrf.args.has(rest, x, 1n+i)
     case _:
@@ -5552,6 +5554,8 @@ def act.nrf.args.dots(a: T.Bt, aps: A.Ag, +x: List<&2, U32>, +i: Nat) -> T.Bt:
   match a aps:
     case T.BtArgs{T.BtWild{}, rest} A.AgPArg{ai, ax, A.AgPDot{t}, arest}:
       T.BtArgs{T.BtPv{T.BmLive{}, act.nrf.dn(x, i)}, act.nrf.args.dots(rest, arest, x, 1n+i)}
+    case T.BtArgs{T.BtCon{c, a2}, rest} A.AgPArg{ai, ax, A.AgPCon{q, r, fo, sub}, arest}:
+      T.BtArgs{T.BtCon{c, act.nrf.args.dots(a2, sub, act.at(x, i), 1n)}, act.nrf.args.dots(rest, arest, x, 1n+i)}
     case T.BtArgs{h, rest} A.AgPArg{ai, ax, ap, arest}:
       T.BtArgs{h, act.nrf.args.dots(rest, arest, x, 1n+i)}
     case a _:
@@ -5671,19 +5675,24 @@ def act.nrf.red(t: T.Bt, +ps: T.Bt, +xs: List<&2, T.Bt>) -> T.Bt:
     case t:
       t
 
-def act.nrf.args.eqs(a: T.Bt, +all: T.Bt, +x: List<&2, U32>, +ty: T.Bt, +i: Nat, +ps: T.Bt, +xs: List<&2, T.Bt>) -> List<&2, T.BParam>:
-  match a:
-    case T.BtArgs{T.BtPv{m, +nm}, rest}:
-      List.append(&2, T.BParam, Bool.pick(List<&2, T.BParam>, S.eq(nm, act.nrf.rn(x, i)), [T.BParam{T.BmLive{}, nm, act.nrf.red(act.nrf.fty(ty, i, act.nrf.fld(0n, all)), ps, xs)}], Nil{}), act.nrf.args.eqs(rest, all, x, ty, 1n+i, ps, xs))
-    case T.BtArgs{h, rest}:
-      act.nrf.args.eqs(rest, all, x, ty, 1n+i, ps, xs)
-    case _:
+# (a refl two records deep, `(.(f x) , x , refl)` at Σ B (fiber f): the
+# field's own fields, at the field's type, are read the same way; its type
+# is fiber's Σ by act.uty.fams; 2026-11-01)
+def act.nrf.args.eqs(fuel: Nat, a: T.Bt, +all: T.Bt, +x: List<&2, U32>, +ty: T.Bt, +i: Nat, +ps: T.Bt, +xs: List<&2, T.Bt>) -> List<&2, T.BParam>:
+  match fuel a:
+    case f T.BtArgs{T.BtPv{m, +nm}, rest}:
+      List.append(&2, T.BParam, Bool.pick(List<&2, T.BParam>, S.eq(nm, act.nrf.rn(x, i)), [T.BParam{T.BmLive{}, nm, act.nrf.red(act.nrf.fty(ty, i, act.nrf.fld(0n, all)), ps, xs)}], Nil{}), act.nrf.args.eqs(f, rest, all, x, ty, 1n+i, ps, xs))
+    case 1n++f T.BtArgs{T.BtCon{+c, +a2}, rest}:
+      List.append(&2, T.BParam, act.nrf.args.eqs(f, a2, T.BtCon{c, a2}, act.at(x, i), act.nrf.red(act.nrf.fty(ty, i, act.nrf.fld(0n, all)), ps, xs), 1n, ps, xs), act.nrf.args.eqs(f, rest, all, x, ty, 1n+i, ps, xs))
+    case f T.BtArgs{h, rest}:
+      act.nrf.args.eqs(f, rest, all, x, ty, 1n+i, ps, xs)
+    case _ _:
       Nil{}
 
 def act.nrf.eqs(ps: T.Bt, xs: List<&2, T.Bt>, +all: T.Bt, +axs: List<&2, T.Bt>, +hps: List<&2, T.BParam>) -> List<&2, T.BParam>:
   match ps xs:
     case T.BtArgs{T.BtCon{+c, +a}, rest} +x <> xt:
-      List.append(&2, T.BParam, act.nrf.args.eqs(a, T.BtCon{c, a}, act.var.name(x), act.param.ty(hps, act.var.name(x)), 1n, all, axs), act.nrf.eqs(rest, xt, all, axs, hps))
+      List.append(&2, T.BParam, act.nrf.args.eqs(4n, a, T.BtCon{c, a}, act.var.name(x), act.param.ty(hps, act.var.name(x)), 1n, all, axs), act.nrf.eqs(rest, xt, all, axs, hps))
     case T.BtArgs{p, rest} x <> xt:
       act.nrf.eqs(rest, xt, all, axs, hps)
     case _ _:
@@ -11375,10 +11384,67 @@ def act.uty.open(fuel: Nat, a: A.Ag, +env: ActEnv) -> A.Ag:
     case _ a:
       a
 
+# and the type-valued definitions in its arguments (a field's type, a
+# family's body, a family that is a definition short of its last argument),
+# fuel deep: agda-unimath's Eq-Σ s t opens to Σ (pr1 s ＝ pr1 t) (λ α →
+# dependent-identification B α (pr2 s) (pr2 t)), whose second field is an
+# equation only past dependent-identification (tr B α u ＝ v), so a refl
+# there was no rewrite: is-retraction-pair-eq-Σ's (refl , refl) rewrote
+# the first refl only ("expected : pair{%(…) …} observed : pair{{==},
+# x_2_rfl}"); Σ B (fiber f) and fiber-map-Σ's fields are fibers, Σs past
+# fiber, where act.nrf reads a refl two records deep (2026-11-01)
+def act.uty.fam.u(u: A.Ag, +env: ActEnv) -> A.Ag:
+  match u:
+    case A.AgNone{}:
+      A.AgNone{}
+    case u:
+      act.inline(1024n, u, env)
+
+def act.uty.fam.eta(u: A.Ag) -> A.Ag:
+  match u:
+    case A.AgNone{}:
+      A.AgNone{}
+    case u:
+      A.AgLam{A.aas.i.vis(), S.b("x"), True{}, u}
+
+def act.uty.fam.or(u: A.Ag, v: A.Ag) -> A.Ag:
+  match u:
+    case A.AgNone{}:
+      v
+    case u:
+      u
+
+# a type-valued definition applied, opened; or one short of its last
+# argument (a family: Σ B (fiber f)), opened under a lambda for it; AgNone
+# when neither
+def act.uty.fam.open(+q: A.AgQ, +es: A.Ag, +env: ActEnv) -> A.Ag:
+  act.uty.fam.or(act.uty.fam.u(act.unfold(env, q, es), env), act.uty.fam.eta(act.uty.fam.u(act.unfold(env, q, asb.elims.cat(asb.shift(es, 1n, 0n), A.AgEApp{A.aas.i.vis(), A.AgVar{0n, S.b("x"), A.AgENil{}}, A.AgENil{}})), env)))
+
+def act.uty.fam.is(u: A.Ag) -> Bool:
+  match u:
+    case A.AgNone{}:
+      False{}
+    case _:
+      True{}
+
+def act.uty.fams(fuel: Nat, t: A.Ag, +env: ActEnv) -> A.Ag:
+  match fuel t:
+    case +fu A.AgEl{s, x}:
+      A.AgEl{s, act.uty.fams(fu, x, env)}
+    case +fu A.AgEApp{i, a, rest}:
+      A.AgEApp{i, act.uty.fams(fu, a, env), act.uty.fams(fu, rest, env)}
+    case +fu A.AgLam{i, x, d, b}:
+      A.AgLam{i, x, d, act.uty.fams(fu, b, env)}
+    case 1n++f A.AgDef{+q, +es}:
+      +u = act.uty.fam.open(q, es, env)
+      Bool.pick(A.Ag, act.uty.fam.is(u), act.uty.fams(f, u, env), A.AgDef{q, act.uty.fams(f, es, env)})
+    case _ t:
+      t
+
 def act.uty.ty(sc: Bool, +a: A.Ag, +ctx: List<&2, T.Bt>, +env: ActEnv) -> T.Bt:
   match sc:
     case True{}:
-      act.t(act.inline(100000n, act.uty.open(4n, a, env), env), ctx, env)
+      act.t(act.inline(100000n, act.uty.fams(8n, act.uty.open(4n, a, env), env), env), ctx, env)
     case False{}:
       act.t(a, ctx, env)
 

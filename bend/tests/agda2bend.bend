@@ -1197,6 +1197,37 @@ def tele.laws() -> IO(Unit):
     g4 : D.A2bG <- tele.of(al, ral, ds, D.a2b.mod.items(S.b("A2bTele"), al, ds, g3))
     return Unit{}
 
+# fixtures/agda2bend/src/A2bRfl.agda (its export A2bRfl.sexp, after
+# Agda.Primitive and Agda.Builtin.Equality): refls a split parameter's type
+# reaches only past a type-valued definition (2026-11-01).  Eq-Σ's second
+# field is dependent-identification B α u v (tr B α u ＝ v), and fiber f is
+# Σ's family short of its last argument: each is opened in a split
+# parameter's type, so is-retraction-pair-eq-Σ's second refl of (refl ,
+# refl) is rewritten too (it was left a variable), and
+# is-retraction-map-inv-equiv-total-fiber's refl two records deep, (.(f x)
+# , x , refl), gets its rewrite (it had none).  The gate keeps 41 of 43
+# items (39 at fc51fda; the other two need Σ's eta at a parameter the
+# clause does not split, which Bend lacks).
+def rfl.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, tr: D.A2bTr) -> IO(D.A2bG):
+  match tr:
+    case D.A2bTr{its, g}:
+      +text = D.a2b.raw.text.of(S.b("A2bRfl"), al, ral, List.length(&2, A.AgDecl, ds), its)
+      do IO<D.A2bG>:
+        IO.print(verdict("a refl at a field a type-valued definition's equation types is rewritten", S.infix(text, S.b("a2b_dt2 => x_2_rfl => (%x_2_rfl@x_2_rfl : {comp("))))
+        IO.print(verdict("a refl two records deep is rewritten", S.infix(text, S.b("    case pair{a2b_dt1, pair{x_5, x_2_2_rfl}}:\n      %x_2_2_rfl@x_2_2_rfl : {comp("))))
+        return g
+
+def rfl.laws() -> IO(Unit):
+  +order : List<&2, List<&2, U32>> = [S.b("Agda.Primitive"), S.b("Agda.Builtin.Equality"), S.b("A2bRfl")]
+  +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
+  +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
+  do IO<Unit>:
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
+    +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bRfl.sexp"))
+    g3 : D.A2bG <- rfl.of(al, ral, ds, D.a2b.mod.items(S.b("A2bRfl"), al, ds, g2))
+    return Unit{}
+
 def main() -> IO(Unit):
   do IO<Unit>:
     +bool : List<&2, U32> <- S.read("fixtures/agda2bend/Agda.Builtin.Bool.sexp")
@@ -1223,3 +1254,4 @@ def main() -> IO(Unit):
     tpl.laws()
     inl.laws()
     tele.laws()
+    rfl.laws()
