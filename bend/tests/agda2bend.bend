@@ -1140,6 +1140,63 @@ def tpl.laws() -> IO(Unit):
     g3 : D.A2bG <- tpl.of(al, ral, ds, D.a2b.mod.items(S.b("A2bTpl"), al, ds, g2))
     return Unit{}
 
+# fixtures/agda2bend/src/A2bInl.agda (its export A2bInl.sexp, after
+# Agda.Primitive and Agda.Builtin.Equality): agda-unimath's Σ with `{-#
+# INLINE pair #-}`, so a clause whose value is a pair is one copattern
+# clause per field (two projections deep for ((a , y) , refl)), each with
+# the clause's patterns, a refl among them.  They are that one clause again
+# (2026-11-01), its refl rewritten as any clause's: the copattern reading
+# had the placeholder a2b_rfl and no rewrite ("expected : pair{a, f(a, y)}
+# observed : pair{a, _}").  The gate keeps all 17 items (9 at fc51fda).
+def inl.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, tr: D.A2bTr) -> IO(D.A2bG):
+  match tr:
+    case D.A2bTr{its, g}:
+      +text = D.a2b.raw.text.of(S.b("A2bInl"), al, ral, List.length(&2, A.AgDecl, ds), its)
+      do IO<D.A2bG>:
+        IO.print(verdict("copattern clauses that are one clause's fields are that clause: its refl rewritten", S.infix(text, S.b("    case pair{pair{x_7, y}, x_2_rfl}:\n      %x_2_rfl : anon.fiber(l2, l3, B(Sigma_.pr1(l1, l3, A, C, _))"))))
+        IO.print(verdict("and so are nested copatterns (a pair in a pair)", S.infix(text, S.b("    case pair{a, a2b_dt2} pair{y, x_2_rfl}:\n      %x_2_rfl : anon.fiber((l1 <&> l2), (l1 <&> l3), Sigma_<l1, l2, A, B>, Sigma_<l1, l3, A, C>, eta1 => anon.tot(l1, l2, l3, A, B, C, f, eta1), pair{a, _})\n      pair{pair{a, y}, {==}}"))))
+        return g
+
+def inl.laws() -> IO(Unit):
+  +order : List<&2, List<&2, U32>> = [S.b("Agda.Primitive"), S.b("Agda.Builtin.Equality"), S.b("A2bInl")]
+  +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
+  +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
+  do IO<Unit>:
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
+    +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bInl.sexp"))
+    g3 : D.A2bG <- inl.of(al, ral, ds, D.a2b.mod.items(S.b("A2bInl"), al, ds, g2))
+    return Unit{}
+
+# fixtures/agda2bend/src/A2bTele.agda (its export A2bTele.sexp, after
+# Agda.Primitive, Agda.Builtin.Bool and Agda.Builtin.Nat): agda-unimath's
+# iterated-Π, a type-valued def by cases on a telescope whose level is an
+# index: its sort is Type, and so is the motive of the rewrite at the
+# level's equation (2026-11-01: Kind(_), so the function type it gives
+# was "expected : Kind(l1 <&> l2) observed : Type").  The gate keeps
+# iterated-Π and iterated-implicit-Π (5 of 6 items: instance-telescope²'s
+# levels associate the other way, (l1 <&> l2) <&> l against l1 <&> (l2
+# <&> l), which Bend does not equate).
+def tele.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, tr: D.A2bTr) -> IO(D.A2bG):
+  match tr:
+    case D.A2bTr{its, g}:
+      +text = D.a2b.raw.text.of(S.b("A2bTele"), al, ral, List.length(&2, A.AgDecl, ds), its)
+      do IO<D.A2bG>:
+        IO.print(verdict("a rewrite of a def whose sort became Type has the motive Type", S.infix(text, S.b("      %x_6_eq_sym : Type\n      @x:X -> iterated_Pi(l2, n_2, A(x))"))))
+        return g
+
+def tele.laws() -> IO(Unit):
+  +order : List<&2, List<&2, U32>> = [S.b("Agda.Primitive"), S.b("Agda.Builtin.Bool"), S.b("Agda.Builtin.Nat"), S.b("A2bTele")]
+  +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
+  +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
+  do IO<Unit>:
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g2 : D.A2bG <- abs.mod("Agda.Builtin.Bool", al, g1)
+    g3 : D.A2bG <- abs.mod("Agda.Builtin.Nat", al, g2)
+    +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bTele.sexp"))
+    g4 : D.A2bG <- tele.of(al, ral, ds, D.a2b.mod.items(S.b("A2bTele"), al, ds, g3))
+    return Unit{}
+
 def main() -> IO(Unit):
   do IO<Unit>:
     +bool : List<&2, U32> <- S.read("fixtures/agda2bend/Agda.Builtin.Bool.sexp")
@@ -1164,3 +1221,5 @@ def main() -> IO(Unit):
     ftr.laws()
     cs.laws()
     tpl.laws()
+    inl.laws()
+    tele.laws()

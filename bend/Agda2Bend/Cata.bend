@@ -11985,6 +11985,26 @@ def act.unkind.end(t: T.Bt) -> T.Bt:
     case t:
       t
 
+# the goal's rewrites along a case tree, when its sort became Type: a
+# motive `Kind(_)` (the index unified with the level, as iterated-Π's
+# `cons-telescope` at l1 ⊔ l2) asked the case's body for Kind(l1 <&> l2),
+# which a function type is not ("expected : Kind(l1 <&> l2) observed :
+# Type"; foundation.iterated-dependent-product-types, 28 dependents in
+# export-umni's first modules); at Type the rewrite asks nothing more of it
+# (2026-11-01)
+def act.unkind.rw(t: T.Bt) -> T.Bt:
+  match t:
+    case T.BtMatch{xs, cs}:
+      T.BtMatch{xs, act.unkind.rw(cs)}
+    case T.BtCase{p, b, rest}:
+      T.BtCase{p, act.unkind.rw(b), act.unkind.rw(rest)}
+    case T.BtLet{y, v, b}:
+      T.BtLet{y, v, act.unkind.rw(b)}
+    case T.BtRw{e, p, b}:
+      T.BtRw{e, act.unkind.end(p), act.unkind.rw(b)}
+    case t:
+      t
+
 # a type-valued definition (`_×_`, Rel, `¬_`) keeps its parameters' and body's
 # kinds, so `A × B` is as copyable as Σ A B, and only its own sort is Type
 # (2026-10-21: one with an expression body keeps its sort, and Qfix's
@@ -11996,7 +12016,7 @@ def act.unkind.ret(its: List<&2, T.BItem>) -> List<&2, T.BItem>:
     case T.BiDef{n, ps, ret, T.BtExpr{b}, doc} <> t:
       T.BiDef{n, ps, ret, T.BtExpr{b}, doc} <> act.unkind.ret(t)
     case T.BiDef{n, ps, ret, body, doc} <> t:
-      T.BiDef{n, ps, act.unkind.end(ret), body, doc} <> act.unkind.ret(t)
+      T.BiDef{n, ps, act.unkind.end(ret), act.unkind.rw(body), doc} <> act.unkind.ret(t)
     case it <> t:
       it <> act.unkind.ret(t)
 
@@ -12100,10 +12120,265 @@ def act.tylevel.env(p: A.AgProj, +ty: A.Ag, +env: ActEnv) -> Bool:
     case _ ActEnv{mod, tab, al, +unf}:
       act.ends.sort.u(8n, ty, unf)
 
+# Copatterns that are one clause (2026-11-01).  agda-unimath's `{-# INLINE
+# pair #-}` makes Agda elaborate a clause whose value is a pair as one
+# copattern clause per field, each with the clause's own patterns:
+# `map-inv-compute-fiber-tot (a , .(f a y)) (y , refl) = ((a , y) , refl)`
+# is `pr1 (… (a , ._) (y , refl)) = (a , y)` and `pr2 (…) = refl`.  The
+# copattern translation reads a refl among those patterns as nothing (the
+# placeholder a2b_rfl, no rewrite: "expected : pair{a, f(a, y)} observed :
+# pair{a, _}"; is-retraction-pair-eq, map-compute-fiber-tot,
+# fiber-map-Σ-map-base-fiber and the like, foundation-core's fibers and
+# functoriality modules).  When every clause is a field's (a field of a
+# field's record past a second projection: `((a , y) , refl)` is `pr1 .pr1`,
+# `pr1 .pr2` and `pr2`), each field has its clauses, all have the same
+# patterns before the projection (the same telescope) and a refl among
+# them, they are the one clause they came from: the record's constructor
+# at the fields' values, read as any other clause (act.nrf rewrites its
+# refls).  agda-unimath's export A2bInl: 9 -> 17 of 17.
+def act.mg.peq(a: A.Ag, b: A.Ag) -> Bool:
+  match a b:
+    case A.AgPArg{i, x, p, r} A.AgPArg{j, y, q, s}:
+      Bool.and(act.mg.peq(p, q), act.mg.peq(r, s))
+    case A.AgPEnd{} A.AgPEnd{}:
+      True{}
+    case A.AgPVar{x, n, o} A.AgPVar{y, m, u}:
+      Nat.is_eq(n, m)
+    case A.AgPDot{t} A.AgPDot{u}:
+      True{}
+    case A.AgPCon{q, r, f, ps} A.AgPCon{q2, r2, f2, ps2}:
+      Bool.and(String.eq(act.key(q), act.key(q2)), act.mg.peq(ps, ps2))
+    case _ _:
+      False{}
+
+# the patterns before the projection
+def act.mg.pre(ps: A.Ag) -> A.Ag:
+  match ps:
+    case A.AgPArg{i, x, A.AgPProj{q}, rest}:
+      A.AgPEnd{}
+    case A.AgPArg{i, x, p, rest}:
+      A.AgPArg{i, x, p, act.mg.pre(rest)}
+    case _:
+      A.AgPEnd{}
+
+# whether a pattern has a refl in it
+def act.mg.rfl(p: A.Ag, +env: ActEnv) -> Bool:
+  match p:
+    case A.AgPArg{i, x, q, rest}:
+      Bool.or(act.mg.rfl(q, env), act.mg.rfl(rest, env))
+    case A.AgPCon{+q, r, f, ps}:
+      Bool.or(act.is.refl(act.sym(env, q)), act.mg.rfl(ps, env))
+    case _:
+      False{}
+
+# ps without its first projection, when that is f's
+def act.mg.drop1.at(i: A.AgI, x: List<&2, U32>, p: A.Ag, m: Maybe<&2, A.Ag>) -> Maybe<&2, A.Ag>:
+  match m:
+    case Some{r}:
+      Some{A.AgPArg{i, x, p, r}}
+    case None{}:
+      None{}
+
+def act.mg.drop1(ps: A.Ag, +f: String) -> Maybe<&2, A.Ag>:
+  match ps:
+    case A.AgPArg{i, x, A.AgPProj{q}, rest}:
+      Bool.pick(Maybe<&2, A.Ag>, String.eq(act.key(q), f), Some{rest}, None{})
+    case A.AgPArg{i, x, p, rest}:
+      act.mg.drop1.at(i, x, p, act.mg.drop1(rest, f))
+    case _:
+      None{}
+
+def act.mg.sub.at(m: Maybe<&2, A.Ag>, +tel: A.Ag, body: A.Ag, ty: A.Ag, ca: Bool, rest: A.Ag) -> A.Ag:
+  match m:
+    case Some{ps}:
+      A.AgCl{tel, ps, body, ty, ca, rest}
+    case None{}:
+      rest
+
+# the clauses of field f, its projection taken out
+def act.mg.sub(cls: A.Ag, +f: String) -> A.Ag:
+  match cls:
+    case A.AgCl{+tel, +ps, body, ty, ca, rest}:
+      act.mg.sub.at(act.mg.drop1(ps, f), tel, body, ty, ca, act.mg.sub(rest, f))
+    case _:
+      A.AgClEnd{}
+
+def act.mg.mem(+k: String, fs: List<&2, String>) -> Bool:
+  match fs:
+    case Nil{}:
+      False{}
+    case f <> t:
+      Bool.or(String.eq(k, f), act.mg.mem(k, t))
+
+# every clause's first projection is one of the fields
+def act.mg.allin(cls: A.Ag, +fs: List<&2, String>) -> Bool:
+  match cls:
+    case A.AgCl{tel, +ps, body, ty, ca, rest}:
+      Bool.and(act.mg.mem(act.copat.key(ps), fs), act.mg.allin(rest, fs))
+    case _:
+      True{}
+
+# every clause has the first one's patterns before its projection, one
+def act.mg.uni(cls: A.Ag, +p0: A.Ag, +n0: Nat) -> Bool:
+  match cls:
+    case A.AgCl{+tel, +ps, body, ty, ca, rest}:
+      Bool.and(Bool.and(Nat.is_eq(act.tel.len(tel), n0), Bool.not(String.eq(act.copat.key(ps), ""))), Bool.and(act.mg.peq(act.mg.pre(ps), p0), act.mg.uni(rest, p0, n0)))
+    case _:
+      True{}
+
+def act.mg.con(c: ActCopy) -> Maybe<&2, A.AgQ>:
+  match c:
+    case ActCopy{n, A.AgDef{q, es}}:
+      Some{q}
+    case _:
+      None{}
+
+def act.mg.fields(s: ActSym) -> List<&2, String>:
+  match s:
+    case ActSym{m, n, A.AkRecord{}, ms, ar, b, fs, c, cp}:
+      fs
+    case _:
+      Nil{}
+
+def act.mg.arity(s: ActSym) -> Nat:
+  match s:
+    case ActSym{m, n, k, ms, ar, b, fs, c, cp}:
+      ar
+
+def act.mg.cons(a: Maybe<&2, A.Ag>, b: Maybe<&2, A.Ag>) -> Maybe<&2, A.Ag>:
+  match a b:
+    case Some{x} Some{es}:
+      Some{A.AgEApp{A.aas.i.vis(), x, es}}
+    case _ _:
+      None{}
+
+def act.mg.apply(c: Maybe<&2, A.AgQ>, as: Maybe<&2, A.Ag>, ok: Bool) -> Maybe<&2, A.Ag>:
+  match c as ok:
+    case Some{q} Some{es} True{}:
+      Some{A.AgCon{q, A.AkSystem{}, es}}
+    case _ _ _:
+      None{}
+
+def act.mg.none(m: Maybe<&2, A.Ag>) -> Bool:
+  match m:
+    case Some{x}:
+      False{}
+    case None{}:
+      True{}
+
+# the fields to read: none when the field is not a record value
+def act.mg.fs.if(deep: Bool, fs: List<&2, String>) -> List<&2, String>:
+  match deep:
+    case True{}:
+      fs
+    case False{}:
+      Nil{}
+
+# the record of a field's type (act.copat.nr's), its fields, its
+# parameters' count and its constructor
+def act.mg.rq(+f: String, +ar: Nat, +env: ActEnv) -> Maybe<&2, A.AgQ>:
+  +h = act.cod.q(1n+ar, act.fty.env(env, f))
+  act.copat.recq(4n, h, act.copat.isrec(env, h), env)
+
+def act.mg.rfs(m: Maybe<&2, A.AgQ>, +env: ActEnv) -> List<&2, String>:
+  match m:
+    case Some{r}:
+      act.mg.fields(act.sym(env, r))
+    case None{}:
+      Nil{}
+
+def act.mg.rar(m: Maybe<&2, A.AgQ>, +env: ActEnv) -> Nat:
+  match m:
+    case Some{r}:
+      act.mg.arity(act.sym(env, r))
+    case None{}:
+      0n
+
+def act.mg.rcon(m: Maybe<&2, A.AgQ>, +env: ActEnv) -> Maybe<&2, A.AgQ>:
+  match m:
+    case Some{r}:
+      act.mg.con(act.nu.unf(env, act.nu.rcon.key(act.key(r))))
+    case None{}:
+      None{}
+
+# a field whose type is no record is of the same record (act.copat.nr's
+# default: unimath's pr2 : B pr1)
+def act.mg.qor(m: Maybe<&2, A.AgQ>, +r: A.AgQ) -> A.AgQ:
+  match m:
+    case Some{q}:
+      q
+    case None{}:
+      r
+
+# a field's one clause with no projection left: its body
+def act.mg.leaf(sub: A.Ag) -> Maybe<&2, A.Ag>:
+  match sub:
+    case A.AgCl{tel, +ps, body, ty, ca, A.AgClEnd{}}:
+      Bool.pick(Maybe<&2, A.Ag>, String.eq(act.copat.key(ps), ""), Some{body}, None{})
+    case _:
+      None{}
+
+def act.mg.fv(leaf: Maybe<&2, A.Ag>, nest: Maybe<&2, A.Ag>) -> Maybe<&2, A.Ag>:
+  match leaf:
+    case Some{b}:
+      Some{b}
+    case None{}:
+      nest
+
+# A record's value from the clauses of its fields, as the constructor's
+# arguments: each field's value, its one clause's body, or, when its
+# clauses have a projection left, a record value itself, of the record its
+# type is (act.copat.nr's: Σ in Σ for `((a , y) , refl)`'s `pr1 .pr1`,
+# `pr1 .pr2` and `pr2`)
+def act.mg.vals(fuel: Nat, fs: List<&2, String>, +cls: A.Ag, +ar: Nat, +r: A.AgQ, +env: ActEnv) -> Maybe<&2, A.Ag>:
+  match fuel fs:
+    case 1n+g Nil{}:
+      Some{A.AgENil{}}
+    case 1n++g +f <> ft:
+      +sub = act.mg.sub(cls, f)
+      +r2 = act.mg.qor(act.mg.rq(f, ar, env), r)
+      +fs2 = act.mg.fields(act.sym(env, r2))
+      +lf = act.mg.leaf(sub)
+      +deep = Bool.and(act.mg.none(lf), Bool.and(act.mg.allin(sub, fs2), Bool.not(List.is_empty(&2, String, fs2))))
+      act.mg.cons(act.mg.fv(lf, act.mg.apply(act.mg.rcon(Some{r2}, env), act.mg.vals(g, act.mg.fs.if(deep, fs2), sub, act.mg.arity(act.sym(env, r2)), r2, env), deep)), act.mg.vals(g, ft, cls, ar, r, env))
+    case 0n _:
+      None{}
+
+def act.mg.mk(v: Maybe<&2, A.Ag>, +cls: A.Ag) -> A.Ag:
+  match v cls:
+    case Some{b} A.AgCl{tel, ps, body, ty, ca, rest}:
+      A.AgCl{tel, act.mg.pre(ps), b, A.AgNone{}, ca, A.AgClEnd{}}
+    case _ c:
+      c
+
+def act.mg.rec(rq: Maybe<&2, A.AgQ>, +cls: A.Ag, +env: ActEnv) -> A.Ag:
+  match rq cls:
+    case Some{+r} A.AgCl{+tel, +ps, body, ty, ca, rest}:
+      +fs = act.mg.fields(act.sym(env, r))
+      +ok = Bool.and(Bool.and(act.mg.uni(cls, act.mg.pre(ps), act.tel.len(tel)), act.mg.allin(cls, fs)), Bool.not(List.is_empty(&2, String, fs)))
+      act.mg.mk(act.mg.apply(act.mg.rcon(Some{r}, env), act.mg.vals(8n, act.mg.fs.if(ok, fs), cls, act.mg.arity(act.sym(env, r)), r, env), ok), cls)
+    case _ c:
+      c
+
+def act.mg.first.rfl(cls: A.Ag, +env: ActEnv) -> Bool:
+  match cls:
+    case A.AgCl{tel, ps, body, ty, ca, rest}:
+      act.mg.rfl(act.mg.pre(ps), env)
+    case _:
+      False{}
+
+def act.mg.cls(p: A.AgProj, +cls: A.Ag, +ar: Nat, +t: A.Ag, +env: ActEnv) -> A.Ag:
+  match p:
+    case A.AgPrOf{Some{r}, o, ix}:
+      cls
+    case _:
+      Bool.pick(A.Ag, Bool.and(act.copat.is(cls), act.mg.first.rfl(cls, env)), act.mg.rec(act.copat.recq.or(act.copat.recq(4n, act.cod.qu(8n, ar, t, env), act.copat.isrec(env, act.cod.qu(8n, ar, t, env)), env), cls, env), cls, env), cls)
+
 def act.item.fun(s: ActSym, d: A.AgD, +key: String, +ty: A.Ag, +env: ActEnv, doc: List<&2, List<&2, U32>>) -> List<&2, T.BItem>:
   match s d:
-    case ActSym{m, +n, k, +ms, +ar, b, fs, c, cp} A.AgDFun{+p, r, w, e, te, mu, +cls, tree}:
+    case ActSym{m, +n, k, +ms, +ar, b, fs, c, cp} A.AgDFun{+p, r, w, e, te, mu, +cls0, tree}:
       +t = act.proj.sorts(act.quant.on(), p, act.inline.hdr(100000n, ty, env), env)
+      +cls = act.mg.cls(p, cls0, ar, t, env)
       act.unkind.when(act.quant.on(), p, act.tylevel.env(p, ty, env), act.fun.with(n, ms, ar, p, cls, key, t, env, doc, act.params.s(64n, ar, t, ms, Nil{}, act.sig.with(w, p, env), env)))
     case _ _:
       Nil{}
