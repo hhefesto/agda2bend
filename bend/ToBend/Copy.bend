@@ -1612,7 +1612,7 @@ def tcp.rp.try(it: T.BItem, +e: TcpEnv, +qe: QF.TqEnv) -> Maybe<&2, T.BItem>:
       +ps2 = tcp.rp.ren(ps, x0, x, False{})
       +b2 = tcp.rp.sub(b, x0, T.BtVar{x})
       +bs : Maybe<&2, List<&2, TcpRb>> = tcp.rp.go(64n, [TcpRw{p, T.BtVar{x}, tcp.vty(ps2, x)}], e, qe, Nil{})
-      tcp.rp.some(tcp.rp.ok(bs, b2, x0, ret, qe, n), T.BiDef{n, ps2, ret, tcp.rp.body(bs, b2), doc})
+      tcp.rp.some(tcp.rp.ok(bs, b2, x0, ret, qe, n), T.BiDef{n, ps2, tcp.rp.sub(ret, x0, T.BtVar{x}), tcp.rp.body(bs, b2), doc})
     case _:
       None{}
 
