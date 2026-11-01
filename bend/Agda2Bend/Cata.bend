@@ -13128,19 +13128,27 @@ def act.etu.go(skip: Bool, +n: Nat, +ty: A.Ag, tree: A.Ag, +unf: Map<&2, ActCopy
 # was ill-typed: is-section-pair-eq's comp at x ↦ s ＝ t ("expected : {s ==
 # t …} observed : {pair{Sigma_.pr1(…, s), …} == …}"), which no alternative
 # can check.
-def act.etu.recty.u(c: ActCopy, +tab: Map<&2, ActSym>) -> Bool:
+# (the type's head a record, or a type-valued definition whose leaf is one,
+# fuel deep: agda-unimath's _×_ = product, product A B = Σ A (λ _ → B);
+# one step only missed it there, 2026-11-01)
+def act.etu.cbody(c: ActCopy) -> A.Ag:
   match c:
-    case ActCopy{n, A.AgDef{+q, es}}:
-      act.sym.is.rec(act.sym.got(Map.get(ActSym, act.sym0(), tab, act.key(q))))
-    case _:
+    case ActCopy{n, b}:
+      b
+
+def act.etu.rect(fuel: Nat, t: A.Ag, +unf: Map<&2, ActCopy>, +tab: Map<&2, ActSym>) -> Bool:
+  match fuel t:
+    case 1n+f A.AgEl{s, x}:
+      act.etu.rect(f, x, unf, tab)
+    case 1n+f A.AgLam{i, x, d, b}:
+      act.etu.rect(f, b, unf, tab)
+    case 1n+f A.AgDef{+q, es}:
+      Bool.or(act.sym.is.rec(act.sym.got(Map.get(ActSym, act.sym0(), tab, act.key(q)))), act.etu.rect(f, act.etu.cbody(act.unf.got(Map.get(ActCopy, ActCopy{0n, A.AgNone{}}, unf, act.key(q)))), unf, tab))
+    case _ _:
       False{}
 
 def act.etu.recty(t: A.Ag, +unf: Map<&2, ActCopy>, +tab: Map<&2, ActSym>) -> Bool:
-  match t:
-    case A.AgEl{s, A.AgDef{+q, es}}:
-      Bool.or(act.sym.is.rec(act.sym.got(Map.get(ActSym, act.sym0(), tab, act.key(q)))), act.etu.recty.u(act.unf.got(Map.get(ActCopy, ActCopy{0n, A.AgNone{}}, unf, act.key(q))), tab))
-    case _:
-      False{}
+  act.etu.rect(6n, t, unf, tab)
 
 def act.etu.nth(xs: List<&2, A.Ag>, n: Nat) -> A.Ag:
   match xs n:

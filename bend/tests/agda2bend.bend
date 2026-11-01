@@ -1287,6 +1287,32 @@ def rr.laws() -> IO(Unit):
     g3 : D.A2bG <- rr.of(al, ral, ds, D.a2b.mod.items(S.b("A2bRr"), al, ds, g2))
     return Unit{}
 
+# fixtures/agda2bend/src/A2bPrd.agda (its export A2bPrd.sexp, after
+# Agda.Primitive and Agda.Builtin.Equality): A2bRfl with agda-unimath's
+# product (_×_ = product, product A B = Σ A (λ _ → B)): eq-pair' at A × B
+# ends in an equation between variables of a record type only past two
+# definitions, so it has no eta unfolding there either (2026-11-01: it had,
+# and is-retraction-pair-eq, is-section-pair-eq were ill-typed).  The gate
+# keeps all 44 items (42 at 7adf6f3).
+def prd.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, tr: D.A2bTr) -> IO(D.A2bG):
+  match tr:
+    case D.A2bTr{its, g}:
+      +text = D.a2b.raw.text.of(S.b("A2bPrd"), al, ral, List.length(&2, A.AgDecl, ds), its)
+      do IO<D.A2bG>:
+        IO.print(verdict("eq-pair' at a product written as an alias is not eta-unfolded", S.infix(text, S.b("a => eta1 => anon.eq_pair_p(l1, l2, A, B, s, _, eta1)"))))
+        return g
+
+def prd.laws() -> IO(Unit):
+  +order : List<&2, List<&2, U32>> = [S.b("Agda.Primitive"), S.b("Agda.Builtin.Equality"), S.b("A2bPrd")]
+  +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
+  +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
+  do IO<Unit>:
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
+    +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bPrd.sexp"))
+    g3 : D.A2bG <- prd.of(al, ral, ds, D.a2b.mod.items(S.b("A2bPrd"), al, ds, g2))
+    return Unit{}
+
 def main() -> IO(Unit):
   do IO<Unit>:
     +bool : List<&2, U32> <- S.read("fixtures/agda2bend/Agda.Builtin.Bool.sexp")
@@ -1316,3 +1342,4 @@ def main() -> IO(Unit):
     rfl.laws()
     cdi.laws()
     rr.laws()
+    prd.laws()
