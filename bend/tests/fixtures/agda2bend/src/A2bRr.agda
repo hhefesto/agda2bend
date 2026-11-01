@@ -173,3 +173,20 @@ module _
     {x y z : A} (p : x ＝ y) {q r : y ＝ z} (s : (p ∙ q) ＝ (p ∙ r)) →
     ap (p ∙_) (is-injective-concat p s) ＝ s
   is-section-is-injective-concat refl refl = refl
+
+module _
+  {l : Level} {A : Set l}
+  where
+
+  right-unit : {x y : A} {p : x ＝ y} → p ∙ refl ＝ p
+  right-unit {p = refl} = refl
+
+module _
+  {l1 l2 : Level} {A : Set l1} {B : Set l2} {f : A → B} {b : B}
+  where
+
+  Eq-fiber' : fiber' f b → fiber' f b → Set (l1 ⊔ l2)
+  Eq-fiber' s t = Σ (pr1 s ＝ pr1 t) (λ α → pr2 t ＝ pr2 s ∙ ap f α)
+
+  eq-Eq-fiber-uncurry' : {s t : fiber' f b} → Eq-fiber' s t → s ＝ t
+  eq-Eq-fiber-uncurry' {x , p} (refl , refl) = ap (pair _) (inv' right-unit)

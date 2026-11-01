@@ -1264,7 +1264,10 @@ def cdi.laws() -> IO(Unit):
 # map-inv-fiber-map-Σ's second refl, is-section-map-inv-fiber-map-Σ's (its
 # goal mentions it: J), is-section-is-injective-concat's; and a binder the
 # rewrite's value mentions is renamed (the goal's `λ a → …` under f a).
-# The gate keeps all 39 items (35 at 7adf6f3; 2026-11-01).
+# Not when the other side is a dotted variable, or the variable is inside
+# an argument: eq-Eq-fiber-uncurry''s x_2_rfl : {a2b_dt2 == dot(…,
+# f(x_6_dot), p, ap(f, refl))} keeps its reversed step.  The gate keeps
+# all 42 items (38 at 7adf6f3; 2026-11-01).
 def rr.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, tr: D.A2bTr) -> IO(D.A2bG):
   match tr:
     case D.A2bTr{its, g}:
@@ -1274,6 +1277,7 @@ def rr.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&
         IO.print(verdict("the same when the goal mentions the refl, by J", S.infix(text, S.b("a2b_dt2 => x_2_2_rfl => (%x_2_2_rfl@x_2_2_rfl : {comp("))))
         IO.print(verdict("a refl past refl ∙ q rewrites at q", S.infix(text, S.b("q => r => s => (%s@s : {ap(l, l, {x == z : A}"))))
         IO.print(verdict("a binder the rewrite's value mentions is renamed", S.infix(text, S.b("pair{f(a), _}), a_c => x_13 => "))))
+        IO.print(verdict("a refl whose other side is a dotted variable keeps its reversed step", S.infix(text, S.b("a2b_dt2 => x_2_rfl => (%x_2_rfl_sym@Equal.sym("))))
         return g
 
 def rr.laws() -> IO(Unit):

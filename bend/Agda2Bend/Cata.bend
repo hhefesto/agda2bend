@@ -3599,6 +3599,23 @@ def act.rr.dv(+b: T.Bt, ds: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
       +r = act.rr.dv(b, t)
       Bool.pick(List<&2, List<&2, U32>>, act.mentions(b, [h]), h <> r, r)
 
+# a call's direct arguments that are dotted variables (inv-tr D refl v,
+# refl ∙ q).  Only these: a dotted variable inside an argument (dot(…,
+# f(x_6_dot), p, ap(f, refl)), eq-Eq-fiber-uncurry''s, which does not
+# reduce to it) is no endpoint.
+def act.rr.dargs(a: T.Bt, +ds: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  match a:
+    case T.BtArgs{T.BtVar{+x}, rest}:
+      +r = act.rr.dargs(rest, ds)
+      Bool.pick(List<&2, List<&2, U32>>, act.used(x, ds), x <> r, r)
+    case T.BtArgs{T.BtDead{T.BtVar{+x}}, rest}:
+      +r = act.rr.dargs(rest, ds)
+      Bool.pick(List<&2, List<&2, U32>>, act.used(x, ds), x <> r, r)
+    case T.BtArgs{h, rest}:
+      act.rr.dargs(rest, ds)
+    case _:
+      Nil{}
+
 def act.rr.one(vs: List<&2, List<&2, U32>>, +a: T.Bt, +keep: T.Bt) -> T.Bt:
   match vs:
     case [+v]:
@@ -3615,17 +3632,27 @@ def act.rr.call(t: T.Bt) -> Bool:
     case _:
       False{}
 
-def act.rr.side(isv: Bool, +s: T.Bt, +other: T.Bt, +ds: List<&2, List<&2, U32>>) -> T.Bt:
-  match isv:
+def act.rr.at(s: T.Bt, +other: T.Bt, +ds: List<&2, List<&2, U32>>) -> T.Bt:
+  match s:
+    case T.BtApp{T.BtVar{+f}, +a}:
+      act.rr.one(act.rr.dargs(a, ds), other, T.BtApp{T.BtVar{f}, a})
+    case s:
+      s
+
+def act.rr.side(skip: Bool, +s: T.Bt, +other: T.Bt, +ds: List<&2, List<&2, U32>>) -> T.Bt:
+  match skip:
     case True{}:
       s
     case False{}:
-      Bool.pick(T.Bt, act.rr.call(s), act.rr.one(act.rr.dv(s, ds), other, s), s)
+      act.rr.at(s, other, ds)
 
+# the side read at v, unless it is a variable or the other side is a dotted
+# variable (then the step is the plain one, reversed when need be: x_2_rfl
+# : {a2b_dt2 == dot(…)} in eq-Eq-fiber-uncurry')
 def act.rr.ep(ty: T.Bt, +ds: List<&2, List<&2, U32>>) -> T.Bt:
   match ty:
     case T.BtEq{+t, +a, +b}:
-      +b1 = act.rr.side(act.bt.isvar(b), b, a, ds)
+      +b1 = act.rr.side(Bool.or(act.bt.isvar(b), act.dotted(a, ds)), b, a, ds)
       +a1 = act.rr.side(Bool.or(act.bt.isvar(a), act.dotted(b1, ds)), a, b1, ds)
       T.BtEq{t, a1, b1}
     case ty:
@@ -4013,7 +4040,7 @@ def act.ixp.rdv(ty: T.Bt, +ds: List<&2, List<&2, U32>>) -> Bool:
   match ty:
     case T.BtEq{t, +a, +b}:
       +vs = act.rr.dv(b, ds)
-      Bool.and(act.rr.call(b), Bool.and(Bool.not(List.is_empty(&2, List<&2, U32>, vs)), Bool.not(act.mentions(a, vs))))
+      Bool.and(Bool.and(act.rr.call(b), Bool.not(act.dotted(a, ds))), Bool.and(Bool.not(List.is_empty(&2, List<&2, U32>, vs)), Bool.not(act.mentions(a, vs))))
     case _:
       False{}
 
