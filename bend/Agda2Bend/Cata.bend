@@ -3094,14 +3094,29 @@ def act.step.k(k: Nat, +t: T.Bt, +a: T.Bt, +b: T.Bt, +e: T.Bt, +goal: T.Bt) -> A
   match k:
     case 1n:
       ActStep{1n, T.tba.subst(goal, act.var.name(b), T.BtWild{}), T.tba.subst(T.tba.subst(goal, act.var.name(b), a), act.var.name.or(e), T.BtRefl{}), T.BtWild{}, Nil{}}
+    case 3n:
+      ActStep{3n, T.tba.subst(goal, act.var.name(b), T.BtWild{}), T.tba.subst(T.tba.subst(goal, act.var.name(b), a), act.var.name.or(e), T.BtRefl{}), T.BtWild{}, Nil{}}
     case 2n:
       ActStep{2n, T.tba.subst(goal, act.var.name(a), T.BtWild{}), T.tba.subst(goal, act.var.name(a), b), T.BtApp{T.BtVar{S.b("Equal.sym")}, T.tba.args([T.BtDead{t}, T.BtDead{a}, T.BtDead{b}, e])}, List.append(&2, U32, act.var.name(e), S.b("_sym"))}
     case _:
       ActStep{0n, T.BtWild{}, goal, T.BtWild{}, Nil{}}
 
+# b marked though a is the dotted side (the goal mentions b only): the
+# body, written with b (Agda's survivor), has a for b, as in a reversed
+# step through J (3): agda-unimath's left-unwhisker-concat-coherence-
+# square-identifications, `refl top left right bottom = id` at p : u ＝ x,
+# u dotted, whose id's type says x where J's body has u ("expected : {x
+# == y : A} observed : {u == y : A}"; 2026-10-31)
+def act.step.dir.k(k: Nat, rb: Bool) -> Nat:
+  match k rb:
+    case 1n False{}:
+      3n
+    case k rb:
+      k
+
 def act.step.dir(+rb: Bool, +ra: Bool, +t: T.Bt, +a: T.Bt, +b: T.Bt, +e: T.Bt, +goal: T.Bt, +hps: List<&2, T.BParam>) -> ActStep:
   +en = act.var.name.or(e)
-  act.step.k(act.mark.p(act.mark.b(rb, ra, act.occurs(act.var.name(b), goal), act.occurs(act.var.name(a), goal)), rb, ra, act.ps.ment2(hps, act.var.name(b), en), act.ps.ment2(hps, act.var.name(a), en)), t, a, b, e, goal)
+  act.step.k(act.step.dir.k(act.mark.p(act.mark.b(rb, ra, act.occurs(act.var.name(b), goal), act.occurs(act.var.name(a), goal)), rb, ra, act.ps.ment2(hps, act.var.name(b), en), act.ps.ment2(hps, act.var.name(a), en)), rb), t, a, b, e, goal)
 
 def act.step(ty: T.Bt, +e: T.Bt, +ds: List<&2, List<&2, U32>>, +goal: T.Bt, +hps: List<&2, T.BParam>) -> ActStep:
   match ty:

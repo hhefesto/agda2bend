@@ -936,6 +936,32 @@ def rec.laws() -> IO(Unit):
     g3 : D.A2bG <- rec.of(al, ral, ds, D.a2b.mod.items(S.b("A2bRec"), al, ds, g2))
     return Unit{}
 
+# fixtures/agda2bend/src/A2bUnw.agda (its export A2bUnw.sexp, after
+# Agda.Primitive and Agda.Builtin.Equality): J on p : u ＝ x where Agda
+# dotted u (its survivor x) and the goal mentions x only: the step marks x,
+# and the body, written with x, has u for x (agda-unimath's
+# left-unwhisker-concat-coherence-square-identifications, whose id's type
+# said x: "expected : {x == y : A} observed : {u == y : A}"); the gate keeps
+# all 6 items (Bend 2.0.39; 5 of 6 at 07330f7, 2026-10-31).
+def unw.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, tr: D.A2bTr) -> IO(D.A2bG):
+  match tr:
+    case D.A2bTr{its, g}:
+      +text = D.a2b.raw.text(S.b("A2bUnw"), al, ral, List.length(&2, A.AgDecl, ds), its)
+      do IO<D.A2bG>:
+        IO.print(verdict("a step that marks Agda's survivor has the dotted side for it in the body", S.infix(text, S.b("x_24_b => id(l, anon.coh(l, A, u, y, z, w, dot(l, A, u, u, y, {==}, top), dot(l, A, u, u, z, {==}, left), right, bottom), x_24_b))"))))
+        return g
+
+def unw.laws() -> IO(Unit):
+  +order : List<&2, List<&2, U32>> = [S.b("Agda.Primitive"), S.b("Agda.Builtin.Equality"), S.b("A2bUnw")]
+  +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
+  +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
+  do IO<Unit>:
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
+    +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bUnw.sexp"))
+    g3 : D.A2bG <- unw.of(al, ral, ds, D.a2b.mod.items(S.b("A2bUnw"), al, ds, g2))
+    return Unit{}
+
 def main() -> IO(Unit):
   do IO<Unit>:
     +bool : List<&2, U32> <- S.read("fixtures/agda2bend/Agda.Builtin.Bool.sexp")
@@ -953,3 +979,4 @@ def main() -> IO(Unit):
     um.laws()
     hid.laws()
     rec.laws()
+    unw.laws()
