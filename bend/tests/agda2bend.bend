@@ -1049,6 +1049,34 @@ def trl.laws() -> IO(Unit):
     g3 : D.A2bG <- trl.of(al, ral, ds, D.a2b.mod.items(S.b("A2bTrl"), al, ds, g2))
     return Unit{}
 
+# fixtures/agda2bend/src/A2bFtr.agda (its export A2bFtr.sexp, after
+# Agda.Primitive, Agda.Builtin.Equality and Agda.Builtin.Unit): unit's eta
+# at a copattern field's lambda (agda-unimath's is-contr-unit, `pr2
+# is-contr-unit _ = refl` at tt ＝ x): the refl is rewritten by
+# a2b_unit_qe(x_0) through the clause's type; the gate keeps 11 of 12 items
+# (Bend 2.0.39; 10 at a5c6b6a, 2026-10-31: "expected : Unit{} observed :
+# x_0"; is-contr-unit', the same as a lambda in a term, has no type there).
+def ftr.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, tr: D.A2bTr) -> IO(D.A2bG):
+  match tr:
+    case D.A2bTr{its, g}:
+      +text = D.a2b.raw.text.of(S.b("A2bFtr"), al, ral, List.length(&2, A.AgDecl, ds), its)
+      do IO<D.A2bG>:
+        IO.print(verdict("a refl under a copattern field's lambda over a unit is rewritten by the unit's eta", S.infix(text, S.b("pair{Unit{}, x_0 => (%a2b_unit_qe(x_0) : {Unit{} == _ : Unit}; {==})}"))))
+        IO.print(verdict("a refl under a lambda in a term is left as it was", S.infix(text, S.b("pair{Unit{}, x => {==}}"))))
+        return g
+
+def ftr.laws() -> IO(Unit):
+  +order : List<&2, List<&2, U32>> = [S.b("Agda.Primitive"), S.b("Agda.Builtin.Equality"), S.b("Agda.Builtin.Unit"), S.b("A2bFtr")]
+  +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
+  +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
+  do IO<Unit>:
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
+    g3 : D.A2bG <- abs.mod("Agda.Builtin.Unit", al, g2)
+    +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bFtr.sexp"))
+    g4 : D.A2bG <- ftr.of(al, ral, ds, D.a2b.mod.items(S.b("A2bFtr"), al, ds, g3))
+    return Unit{}
+
 def main() -> IO(Unit):
   do IO<Unit>:
     +bool : List<&2, U32> <- S.read("fixtures/agda2bend/Agda.Builtin.Bool.sexp")
@@ -1070,3 +1098,4 @@ def main() -> IO(Unit):
     eqp.laws()
     eqq.laws()
     trl.laws()
+    ftr.laws()

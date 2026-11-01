@@ -9301,10 +9301,45 @@ def act.falses(xs: List<&2, T.Bt>) -> List<&2, Bool>:
     case h <> t:
       False{} <> act.falses(t)
 
-def act.copat.value(a: ActPat, b: ActPat, +n: Nat, body: A.Ag, +env: ActEnv) -> T.Bt:
+# Unit's eta at a copattern field's lambda (2026-10-31): agda-unimath's
+# is-contr-unit, `pr2 is-contr-unit star = refl` at star ＝ x, x the
+# field's lambda variable (34 dependents in corpus-um5; is-prop-unit under
+# positive-ℤ, ℚ, ℝ).  Bend has no record eta, matches no lambda's binder
+# ("can't be matched in this position"), and a rewrite needs its motive:
+# the clause's type, Agda's, is that motive.  A refl body under the field's
+# lambdas is rewritten, for each such variable x of unit type the type
+# mentions, by a2b_unit_qe(x) : {Unit{} == x : Unit} (a helper the module
+# gets, Agda2Bend.bend): `(x_0 => %a2b_unit_qe(x_0) : {Unit{} == _ :
+# Unit}; {==})`.  Only a refl: another body's type mentions x itself.
+def act.ueta.wrap(hit: Bool, +x: List<&2, U32>, +goal: T.Bt, inner: T.Bt) -> T.Bt:
+  match hit:
+    case True{}:
+      T.BtRw{act.bt.app("a2b_unit_qe", [T.BtVar{x}]), T.tba.subst(goal, x, T.BtWild{}), T.BtExpr{inner}}
+    case False{}:
+      inner
+
+def act.ueta.go(cs: List<&2, ActBind>, +us: List<&2, Nat>, +goal: T.Bt, b: T.Bt) -> T.Bt:
+  match cs:
+    case Nil{}:
+      b
+    case ActBind{+pos, T.BtVar{+x}} <> t:
+      +hit = Bool.and(act.unit.mem(pos, us), act.mentions(goal, [x]))
+      act.ueta.wrap(hit, x, goal, act.ueta.go(t, us, Bool.pick(T.Bt, hit, T.tba.subst(goal, x, T.BtCon{S.b("Unit"), T.BtANil{}}), goal), b))
+    case c <> t:
+      act.ueta.go(t, us, goal, b)
+
+def act.ueta(cs: List<&2, ActBind>, +us: List<&2, Nat>, b: T.Bt, ty: A.Ag, +ctx: List<&2, T.Bt>, +env: ActEnv) -> T.Bt:
+  match b:
+    case T.BtRefl{}:
+      act.ueta.go(cs, us, act.t(act.inline(100000n, ty, env), ctx, env), T.BtRefl{})
+    case b:
+      b
+
+def act.copat.value(a: ActPat, b: ActPat, +n: Nat, body: A.Ag, ty: A.Ag, +us: List<&2, Nat>, +env: ActEnv) -> T.Bt:
   match a b:
-    case ActPat{p, bs, x} ActPat{q, cs, y}:
-      act.lams(q, act.t(act.inline(100000n, body, env), act.ctx.of(n, List.append(&2, ActBind, bs, cs)), env))
+    case ActPat{p, bs, x} ActPat{q, +cs, y}:
+      +ctx = act.ctx.of(n, List.append(&2, ActBind, bs, cs))
+      act.lams(q, act.ueta(cs, us, act.t(act.inline(100000n, body, env), ctx, env), ty, ctx, env))
 
 # Copattern clauses that match their parameters (`pr1 (is-equiv-comp g h
 # (sh , rh) (sg , rg)) = …`): the parameters with a constructor pattern
@@ -9326,10 +9361,10 @@ def act.copat.scr(ps: A.Ag, ents: List<&2, T.Bt>, +env: ActEnv) -> List<&2, Bool
     case _ _:
       Nil{}
 
-def act.copat.of(+tel: A.Ag, +ps: A.Ag, body: A.Ag, +ents: List<&2, T.Bt>, +env: ActEnv) -> T.Bt:
+def act.copat.of(+tel: A.Ag, +ps: A.Ag, body: A.Ag, ty: A.Ag, +ents: List<&2, T.Bt>, +env: ActEnv) -> T.Bt:
   +n = act.tel.len(tel)
   +hints = act.tel.hints(tel)
-  act.copat.value(act.top(ps, act.copat.scr(ps, ents, env), ents, n, hints, act.names(ents), env), act.pat(act.copat.extra(ps), n, hints, act.names(ents), env), n, body, env)
+  act.copat.value(act.top(ps, act.copat.scr(ps, ents, env), ents, n, hints, act.names(ents), env), act.pat(act.copat.extra(ps), n, hints, act.names(ents), env), n, body, ty, act.unit.pos(tel, 0n), env)
 
 def act.pat.p(a: ActPat) -> T.Bt:
   match a:
@@ -9397,7 +9432,7 @@ def act.copat.hit.cl(cls: A.Ag, +key: String) -> Bool:
 def act.copat.find(cls: A.Ag, +key: String, +ents: List<&2, T.Bt>, +env: ActEnv, hit: Bool) -> T.Bt:
   match cls hit:
     case A.AgCl{tel, ps, body, ty, ca, rest} True{}:
-      act.copat.of(tel, ps, body, ents, env)
+      act.copat.of(tel, ps, body, ty, ents, env)
     case A.AgCl{tel, ps, body, ty, ca, +rest} False{}:
       act.copat.find(rest, key, ents, env, act.copat.hit.cl(rest, key))
     case _ _:
@@ -10289,10 +10324,10 @@ def act.copat.scr.all(cls: A.Ag, +ents: List<&2, T.Bt>, +env: ActEnv) -> List<&2
       Nil{}
 
 # a group's value: a plain clause's own, else the record its clauses build
-def act.copat.gval(plain: Bool, +tel: A.Ag, +ps: A.Ag, body: A.Ag, +grp: A.Ag, +cref: List<&2, U32>, +fs: List<&2, String>, +ar: Nat, +ents: List<&2, T.Bt>, +env: ActEnv, +dk: String) -> T.Bt:
+def act.copat.gval(plain: Bool, +tel: A.Ag, +ps: A.Ag, body: A.Ag, ty: A.Ag, +grp: A.Ag, +cref: List<&2, U32>, +fs: List<&2, String>, +ar: Nat, +ents: List<&2, T.Bt>, +env: ActEnv, +dk: String) -> T.Bt:
   match plain:
     case True{}:
-      act.copat.of(tel, ps, body, ents, env)
+      act.copat.of(tel, ps, body, ty, ents, env)
     case False{}:
       act.copat.recval(cref, fs, ar, grp, ents, env, dk)
 
@@ -10301,7 +10336,7 @@ def act.copat.gcase(g: List<&2, A.Ag>, +scr: List<&2, Bool>, +cref: List<&2, U32
   match g:
     case A.AgCl{+tel, +ps, +body, +ty, +ca, +r} <> +t:
       +sp = act.pat.p(act.top(ps, scr, ents, act.tel.len(tel), act.tel.hints(tel), act.names(ents), env))
-      T.BtCase{sp, T.BtExpr{act.copat.substs(act.scr.vars(scr, ents), sp, act.copat.gval(String.eq(act.copat.key(ps), ""), tel, ps, body, act.copat.chain(A.AgCl{tel, ps, body, ty, ca, r} <> t), cref, fs, ar, ents, env, dk))}, rest}
+      T.BtCase{sp, T.BtExpr{act.copat.substs(act.scr.vars(scr, ents), sp, act.copat.gval(String.eq(act.copat.key(ps), ""), tel, ps, body, ty, act.copat.chain(A.AgCl{tel, ps, body, ty, ca, r} <> t), cref, fs, ar, ents, env, dk))}, rest}
     case _:
       rest
 

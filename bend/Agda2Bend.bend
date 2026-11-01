@@ -804,8 +804,16 @@ def a2b.cast.item() -> T.BItem:
   +f : T.Bt = T.BtVar{S.b("F")}
   T.BiDef{S.b("a2b_cast"), [T.BParam{T.BmErased{}, S.b("T"), T.BtType{}}, T.BParam{T.BmErased{}, S.b("F"), T.BtPi{T.BmLive{}, S.b("_"), False{}, ty, T.BtType{}}}, T.BParam{T.BmErased{}, S.b("a"), ty}, T.BParam{T.BmErased{}, S.b("b"), ty}, T.BParam{T.BmLive{}, S.b("e"), T.BtEq{ty, T.BtVar{S.b("a")}, T.BtVar{S.b("b")}}}, T.BParam{T.BmLive{}, S.b("x"), T.BtApp{f, T.tba.args([T.BtVar{S.b("a")}])}}], T.BtApp{f, T.tba.args([T.BtVar{S.b("b")}])}, T.BtRw{T.BtVar{S.b("e")}, T.BtApp{f, T.tba.args([T.BtWild{}])}, T.BtExpr{T.BtVar{S.b("x")}}}, [S.b("agda2bend: a value of F(a) as one of F(b), for the fields of a dotted constructor field at another pattern's variable")]}
 
+# a2b_unit_qe: a unit's eta, {Unit{} == x : Unit} by a match (Cata.bend
+# act.ueta: a refl under a copattern field's lambda over a unit)
+def a2b.unit.item() -> T.BItem:
+  +x : T.Bt = T.BtVar{S.b("x")}
+  +u : T.Bt = T.BtVar{S.b("Unit")}
+  T.BiDef{S.b("a2b_unit_qe"), [T.BParam{T.BmLive{}, S.b("x"), u}], T.BtEq{u, T.BtCon{S.b("Unit"), T.BtANil{}}, x}, T.BtMatch{T.tba.args([x]), T.BtCase{T.tba.args([T.BtCon{S.b("Unit"), T.BtANil{}}]), T.BtExpr{T.BtRefl{}}, T.BtCEnd{}}}, [S.b("agda2bend: a unit's eta, for a refl under a copattern field's lambda over a unit")]}
+
 def a2b.helpers.of(+ns: List<&2, List<&2, U32>>, +its: List<&2, T.BItem>) -> List<&2, T.BItem>:
-  +its2 = Bool.pick(List<&2, T.BItem>, a2b.uses(ns, S.b("a2b_pred")), a2b.pred.item() <> its, its)
+  +its1 = Bool.pick(List<&2, T.BItem>, a2b.uses(ns, S.b("a2b_unit_qe")), a2b.unit.item() <> its, its)
+  +its2 = Bool.pick(List<&2, T.BItem>, a2b.uses(ns, S.b("a2b_pred")), a2b.pred.item() <> its1, its1)
   Bool.pick(List<&2, T.BItem>, a2b.uses(ns, S.b("a2b_cast")), a2b.cast.item() <> its2, its2)
 
 def a2b.helpers(+its: List<&2, T.BItem>) -> List<&2, T.BItem>:
