@@ -993,6 +993,36 @@ def eqp.laws() -> IO(Unit):
     g3 : D.A2bG <- eqp.of(al, ral, ds, D.a2b.mod.items(S.b("A2bEqp"), al, ds, g2))
     return Unit{}
 
+# fixtures/agda2bend/src/A2bEqq.agda (its export A2bEqq.sexp, after
+# Agda.Primitive and Agda.Builtin.Equality): copattern definitions whose
+# later field's type mentions an earlier field of the def itself (agda-
+# unimath's map-equiv-fiber, `pr2 (… (x , p)) = inv p` at y ＝ f (pr1 (…
+# (x , p))); is-equiv-id's refl-htpy at `id ∘ pr1 (pr1 is-equiv-id)`): the
+# def's own projected call is the clause of that path's body, and the
+# record value's match is the clause naming the most variables (the first
+# leaves p a wildcard); the gate keeps 17 of 18 items (Bend 2.0.39; 15 at
+# 91919a4, 2026-10-31; the refl at depth two of
+# is-retraction-map-inv-equiv-total-fiber is left).
+def eqq.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, tr: D.A2bTr) -> IO(D.A2bG):
+  match tr:
+    case D.A2bTr{its, g}:
+      +text = D.a2b.raw.text.of(S.b("A2bEqq"), al, ral, List.length(&2, A.AgDecl, ds), its)
+      do IO<D.A2bG>:
+        IO.print(verdict("a copattern def's own projected call at its patterns is that field's clause", S.infix(text, S.b("    case comma{x_6, p}:\n      comma{x_6, inv(l2, B, f(x_6), y, p)}"))))
+        IO.print(verdict("a nested copattern def's own projections are its clauses", S.infix(text, S.b("eta1 => refl_htpy(l, l, A, x => A, eta1 => comp(l, l, l, A, A, A, eta1 => id(l, A, eta1), eta1 => id(l, A, eta1), eta1), eta1)}, comma{"))))
+        return g
+
+def eqq.laws() -> IO(Unit):
+  +order : List<&2, List<&2, U32>> = [S.b("Agda.Primitive"), S.b("Agda.Builtin.Equality"), S.b("A2bEqq")]
+  +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
+  +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
+  do IO<Unit>:
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
+    +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bEqq.sexp"))
+    g3 : D.A2bG <- eqq.of(al, ral, ds, D.a2b.mod.items(S.b("A2bEqq"), al, ds, g2))
+    return Unit{}
+
 def main() -> IO(Unit):
   do IO<Unit>:
     +bool : List<&2, U32> <- S.read("fixtures/agda2bend/Agda.Builtin.Bool.sexp")
@@ -1012,3 +1042,4 @@ def main() -> IO(Unit):
     rec.laws()
     unw.laws()
     eqp.laws()
+    eqq.laws()

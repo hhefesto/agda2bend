@@ -1146,6 +1146,22 @@ def act.cmb.hlam(t: A.Ag) -> Bool:
     case _:
       False{}
 
+# whether a definition's call is a visible argument of a combinator's call:
+# agda-unimath's `is-coherently-invertible-is-equiv =
+# is-coherently-invertible-is-invertible ∘ is-invertible-is-equiv`, whose
+# eta-expansions pass their lambdas' variable to the callees' template
+# parameters ("a template argument mentions a local variable": 124
+# dependents in the first 97 modules of export-umni); the composition
+# unfolded, each call takes the point itself (2026-10-31)
+def act.cmb.dap(t: A.Ag) -> Bool:
+  match t:
+    case A.AgEApp{+i, A.AgDef{q, es}, rest}:
+      Bool.or(Bool.not(act.info.hid(i)), act.cmb.dap(rest))
+    case A.AgEApp{i, a, rest}:
+      act.cmb.dap(rest)
+    case _:
+      False{}
+
 def act.cmb.any(t: A.Ag, +unf: Map<&2, ActCopy>) -> Bool:
   match t:
     case A.AgCl{tel, ps, b, ty, c, rest}:
@@ -1155,7 +1171,7 @@ def act.cmb.any(t: A.Ag, +unf: Map<&2, ActCopy>) -> Bool:
     case A.AgVar{i, x, es}:
       act.cmb.any(es, unf)
     case A.AgDef{+q, +es}:
-      Bool.or(Bool.and(act.unf.has.got(Map.has(&2, ActCopy, unf, act.cmb.key(q))), act.cmb.hlam(es)), act.cmb.any(es, unf))
+      Bool.or(Bool.and(act.unf.has.got(Map.has(&2, ActCopy, unf, act.cmb.key(q))), Bool.or(act.cmb.hlam(es), act.cmb.dap(es))), act.cmb.any(es, unf))
     case A.AgCon{q, o, es}:
       act.cmb.any(es, unf)
     case A.AgEApp{i, a, rest}:
@@ -9327,13 +9343,48 @@ def act.copat.wrap.go(any: Bool, xs: List<&2, T.Bt>, sp: T.Bt, inner: T.Bt) -> T
     case False{}:
       T.BtExpr{inner}
 
-def act.copat.wrap(cls: A.Ag, +ents: List<&2, T.Bt>, +env: ActEnv, inner: T.Bt) -> T.Bt:
+# the named (not wildcard) pattern variables of a clause's patterns
+def act.copat.nv(p: A.Ag) -> Nat:
+  match p:
+    case A.AgPArg{i, x, q, rest}:
+      Nat.add(act.copat.nv(q), act.copat.nv(rest))
+    case A.AgPVar{x, k, o}:
+      Bool.pick(Nat, A.aas.kw.eq(o, A.AkWild{}), 0n, 1n)
+    case A.AgPCon{q, r, fo, ps}:
+      act.copat.nv(ps)
+    case _:
+      0n
+
+def act.copat.best.at(hit: Bool, cl: A.Ag, best: A.Ag) -> A.Ag:
+  match hit:
+    case True{}:
+      cl
+    case False{}:
+      best
+
+# the clause whose match the record value sits in: the one naming the most
+# pattern variables (agda-unimath's map-equiv-fiber: `pr1 (… (x , _)) = x`
+# leaves the second field a wildcard, which `pr2 (… (x , p)) = inv p`
+# reads as p: "expected : a defined name observed : p"; 2026-10-31)
+def act.copat.best(cls: A.Ag, best: A.Ag, +k: Nat) -> A.Ag:
+  match cls:
+    case A.AgCl{+tel, +ps, body, ty, ca, rest}:
+      +m = act.copat.nv(ps)
+      +hit = Nat.is_lt(k, m)
+      act.copat.best(rest, act.copat.best.at(hit, A.AgCl{tel, ps, body, ty, ca, A.AgClEnd{}}, best), Bool.pick(Nat, hit, m, k))
+    case _:
+      best
+
+def act.copat.wrap.cl(cls: A.Ag, +ents: List<&2, T.Bt>, +env: ActEnv, inner: T.Bt) -> T.Bt:
   match cls:
     case A.AgCl{+tel, +ps, body, ty, ca, rest}:
       +scr = act.copat.scr(ps, ents, env)
       act.copat.wrap.go(act.any(scr), act.scr.vars(scr, ents), act.pat.p(act.top(ps, scr, ents, act.tel.len(tel), act.tel.hints(tel), act.names(ents), env)), inner)
     case _:
       T.BtExpr{inner}
+
+def act.copat.wrap(+cls0: A.Ag, +ents: List<&2, T.Bt>, +env: ActEnv, inner: T.Bt) -> T.Bt:
+  act.copat.wrap.cl(act.copat.best(cls0, cls0, 0n), ents, env, inner)
 
 def act.copat.hit.cl(cls: A.Ag, +key: String) -> Bool:
   match cls:
@@ -10352,10 +10403,177 @@ def act.copat.recq.or(q: Maybe<&2, A.AgQ>, +cls: A.Ag, +env: ActEnv) -> Maybe<&2
     case None{}:
       act.copat.prec(cls, env)
 
+
+# Self-references of a copattern definition (2026-10-31) ----------------------
+#
+# A later field's type may mention an earlier field of the definition
+# itself (a Σ's second component): agda-unimath's `pr2 (map-equiv-fiber (x
+# , p)) = inv p` is at y ＝ f (pr1 (map-equiv-fiber (x , p))), and Agda's
+# elaboration puts that projection of the def's own call in inv's implicit
+# arguments; is-equiv-id's refl-htpy, at `id ∘ pr1 (pr1 is-equiv-id)`.
+# Bend checks the def before it can unfold it ("expected : {f(pr1(map_
+# equiv_fiber(.., (x_6, p)))) == y} observed : {f(x_6) == y}").  A field
+# path of the def's own call at the clause's own patterns (a projection-like
+# call, or projection eliminations) is the body of the clause for that path,
+# when that clause's telescope is as long as this one's.
+
+# a clause's projection path (its projections' keys, innermost first)
+def act.slf.path(ps: A.Ag) -> List<&2, String>:
+  match ps:
+    case A.AgPArg{i, x, A.AgPProj{+q}, rest}:
+      act.key(q) <> act.slf.path(rest)
+    case A.AgPArg{i, x, p, rest}:
+      act.slf.path(rest)
+    case _:
+      Nil{}
+
+def act.slf.seq(a: List<&2, String>, b: List<&2, String>) -> Bool:
+  match a b:
+    case +x <> at +y <> bt:
+      Bool.and(String.eq(x, y), act.slf.seq(at, bt))
+    case Nil{} Nil{}:
+      True{}
+    case _ _:
+      False{}
+
+def act.slf.inp(+k: String, ks: List<&2, String>) -> Bool:
+  match ks:
+    case +h <> t:
+      Bool.or(String.eq(h, k), act.slf.inp(k, t))
+    case Nil{}:
+      False{}
+
+# whether a call's eliminations es are the clause's patterns ps as terms
+# (es under depth binders more), up to the projections
+def act.slf.pes(ps: A.Ag, es: A.Ag, +depth: Nat) -> Bool:
+  match ps es:
+    case A.AgPArg{i, x, A.AgPProj{q}, rest} es:
+      True{}
+    case A.AgPArg{i, x, A.AgPVar{v, +k, o}, rest} A.AgEApp{j, A.AgVar{+m, y, A.AgENil{}}, erest}:
+      Bool.and(Nat.is_eq(Nat.add(k, depth), m), act.slf.pes(rest, erest, depth))
+    case A.AgPArg{i, x, A.AgPDot{t}, rest} A.AgEApp{j, a, erest}:
+      act.slf.pes(rest, erest, depth)
+    case A.AgPArg{i, x, A.AgPCon{+q, r, fo, sub}, rest} A.AgEApp{j, A.AgCon{+q2, o, ces}, erest}:
+      Bool.and(Bool.and(String.eq(act.key(q), act.key(q2)), act.slf.pes(sub, ces, depth)), act.slf.pes(rest, erest, depth))
+    case A.AgPEnd{} es:
+      True{}
+    case _ _:
+      False{}
+
+# the projections' keys in an elimination spine
+def act.slf.eps(es: A.Ag) -> List<&2, String>:
+  match es:
+    case A.AgEApp{i, a, rest}:
+      act.slf.eps(rest)
+    case A.AgEProj{+q, rest}:
+      act.key(q) <> act.slf.eps(rest)
+    case _:
+      Nil{}
+
+# a spine's last application argument
+def act.slf.last(es: A.Ag) -> A.Ag:
+  match es:
+    case A.AgEApp{i, a, A.AgENil{}}:
+      a
+    case A.AgEApp{i, a, rest}:
+      act.slf.last(rest)
+    case _:
+      A.AgNone{}
+
+def act.slf.snoc(m: Maybe<&2, List<&2, String>>, +k: String) -> Maybe<&2, List<&2, String>>:
+  match m:
+    case Some{p}:
+      Some{List.append(&2, String, p, [k])}
+    case None{}:
+      None{}
+
+def act.slf.chain.pick(self: Bool, pj: Bool, ok: Bool, eps: List<&2, String>, +k: String, inner: Maybe<&2, List<&2, String>>) -> Maybe<&2, List<&2, String>>:
+  match self pj ok:
+    case True{} _ True{}:
+      Some{eps}
+    case False{} True{} _:
+      act.slf.snoc(inner, k)
+    case _ _ _:
+      None{}
+
+# t's field path when it is the def's own call (sk) at the clause's
+# patterns, projected (pks: the clauses' projections), else None
+def act.slf.chain(fuel: Nat, t: A.Ag, +depth: Nat, +sk: String, +ps: A.Ag, +pks: List<&2, String>) -> Maybe<&2, List<&2, String>>:
+  match fuel t:
+    case 1n+f A.AgDef{+q, +es}:
+      +k = act.key(q)
+      act.slf.chain.pick(String.eq(k, sk), act.slf.inp(k, pks), act.slf.pes(ps, es, depth), act.slf.eps(es), k, act.slf.chain(f, act.slf.last(es), depth, sk, ps, pks))
+    case _ _:
+      None{}
+
+def act.slf.find(cls: A.Ag, +path: List<&2, String>, +n: Nat) -> Maybe<&2, A.Ag>:
+  match cls:
+    case A.AgCl{+tel, +ps, +body, ty, ca, rest}:
+      Bool.pick(Maybe<&2, A.Ag>, Bool.and(Bool.and(Nat.is_eq(act.tel.len(tel), n), Bool.not(List.is_empty(&2, String, path))), act.slf.seq(act.slf.path(ps), path)), Some{body}, act.slf.find(rest, path, n))
+    case _:
+      None{}
+
+def act.slf.at(m: Maybe<&2, List<&2, String>>, +cls: A.Ag, +n: Nat) -> Maybe<&2, A.Ag>:
+  match m:
+    case Some{p}:
+      act.slf.find(cls, p, n)
+    case None{}:
+      None{}
+
+def act.slf.or(m: Maybe<&2, A.Ag>, +depth: Nat, other: A.Ag) -> A.Ag:
+  match m:
+    case Some{b}:
+      asb.shift(b, depth, 0n)
+    case None{}:
+      other
+
+def act.slf.term(t: A.Ag, +depth: Nat, +sk: String, +ps: A.Ag, +pks: List<&2, String>, +cls: A.Ag, +n: Nat) -> A.Ag:
+  match t:
+    case A.AgDef{+q, +es}:
+      act.slf.or(act.slf.at(act.slf.chain(16n, A.AgDef{q, es}, depth, sk, ps, pks), cls, n), depth, A.AgDef{q, act.slf.term(es, depth, sk, ps, pks, cls, n)})
+    case A.AgVar{i, x, es}:
+      A.AgVar{i, x, act.slf.term(es, depth, sk, ps, pks, cls, n)}
+    case A.AgCon{q, o, es}:
+      A.AgCon{q, o, act.slf.term(es, depth, sk, ps, pks, cls, n)}
+    case A.AgLam{i, x, +dep, b}:
+      A.AgLam{i, x, dep, act.slf.term(b, asb.under(dep, depth), sk, ps, pks, cls, n)}
+    case A.AgPi{i, x, a, +dep, b}:
+      A.AgPi{i, x, act.slf.term(a, depth, sk, ps, pks, cls, n), dep, act.slf.term(b, asb.under(dep, depth), sk, ps, pks, cls, n)}
+    case A.AgEl{s, a}:
+      A.AgEl{s, act.slf.term(a, depth, sk, ps, pks, cls, n)}
+    case A.AgDontCare{a}:
+      A.AgDontCare{act.slf.term(a, depth, sk, ps, pks, cls, n)}
+    case A.AgBeta{f, es}:
+      A.AgBeta{act.slf.term(f, depth, sk, ps, pks, cls, n), act.slf.term(es, depth, sk, ps, pks, cls, n)}
+    case A.AgEApp{i, a, rest}:
+      A.AgEApp{i, act.slf.term(a, depth, sk, ps, pks, cls, n), act.slf.term(rest, depth, sk, ps, pks, cls, n)}
+    case A.AgEProj{q, rest}:
+      A.AgEProj{q, act.slf.term(rest, depth, sk, ps, pks, cls, n)}
+    case t:
+      t
+
+def act.slf.cls(cl: A.Ag, +sk: String, +pks: List<&2, String>, +all: A.Ag) -> A.Ag:
+  match cl:
+    case A.AgCl{+tel, +ps, body, ty, ca, rest}:
+      +n = act.tel.len(tel)
+      A.AgCl{tel, ps, act.slf.term(body, 0n, sk, ps, pks, all, n), act.slf.term(ty, 0n, sk, ps, pks, all, n), ca, act.slf.cls(rest, sk, pks, all)}
+    case c:
+      c
+
+def act.slf.pks(cls: A.Ag) -> List<&2, String>:
+  match cls:
+    case A.AgCl{tel, +ps, body, ty, ca, rest}:
+      List.append(&2, String, act.slf.path(ps), act.slf.pks(rest))
+    case _:
+      Nil{}
+
+def act.slf.fix(+sk: String, +cls: A.Ag) -> A.Ag:
+  act.slf.cls(cls, sk, act.slf.pks(cls), cls)
+
 def act.copat.body(q: Maybe<&2, A.AgQ>, +env: ActEnv, +cls: A.Ag, +ents: List<&2, T.Bt>, +dk: String) -> T.Bt:
   match q:
     case Some{r}:
-      act.copat.rec(act.sym(env, r), env, cls, ents, dk)
+      act.copat.rec(act.sym(env, r), env, act.slf.fix(dk, cls), ents, dk)
     case None{}:
       T.BtExpr{act.todo("copattern clauses whose type is not a record")}
 
