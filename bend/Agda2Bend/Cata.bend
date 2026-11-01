@@ -13058,11 +13058,74 @@ def act.etu.go(skip: Bool, +n: Nat, +ty: A.Ag, tree: A.Ag, +unf: Map<&2, ActCopy
     case False{}:
       act.etu.tree(64n, tree, act.etu.init(n), act.etu.doms(ty, 0n, n, Nil{}), n, False{}, unf, tab)
 
+# A function whose type ends in an equation between variables of a record
+# type (agda-unimath's eq-pair' : Eq-product s t → s ＝ t, s t : A × B) has
+# no eta unfolding (2026-11-01): Agda typed its leaf, ap-binary pair p q,
+# at s ＝ t by Σ's eta, so the leaf is at pair (pr1 s) (pr2 s) ＝ pair (pr1
+# t) (pr2 t) in Bend, and a header that unfolded the call (act.inline.hdr)
+# was ill-typed: is-section-pair-eq's comp at x ↦ s ＝ t ("expected : {s ==
+# t …} observed : {pair{Sigma_.pr1(…, s), …} == …}"), which no alternative
+# can check.
+def act.etu.recty.u(c: ActCopy, +tab: Map<&2, ActSym>) -> Bool:
+  match c:
+    case ActCopy{n, A.AgDef{+q, es}}:
+      act.sym.is.rec(act.sym.got(Map.get(ActSym, act.sym0(), tab, act.key(q))))
+    case _:
+      False{}
+
+def act.etu.recty(t: A.Ag, +unf: Map<&2, ActCopy>, +tab: Map<&2, ActSym>) -> Bool:
+  match t:
+    case A.AgEl{s, A.AgDef{+q, es}}:
+      Bool.or(act.sym.is.rec(act.sym.got(Map.get(ActSym, act.sym0(), tab, act.key(q)))), act.etu.recty.u(act.unf.got(Map.get(ActCopy, ActCopy{0n, A.AgNone{}}, unf, act.key(q))), tab))
+    case _:
+      False{}
+
+def act.etu.nth(xs: List<&2, A.Ag>, n: Nat) -> A.Ag:
+  match xs n:
+    case x <> t 0n:
+      x
+    case x <> t 1n+k:
+      act.etu.nth(t, k)
+    case Nil{} _:
+      A.AgNone{}
+
+def act.etu.recvar(a: A.Ag, +doms: List<&2, A.Ag>, +unf: Map<&2, ActCopy>, +tab: Map<&2, ActSym>) -> Bool:
+  match a:
+    case A.AgVar{+i, x, A.AgENil{}}:
+      act.etu.recty(act.etu.nth(doms, i), unf, tab)
+    case _:
+      False{}
+
+def act.etu.recargs(es: A.Ag, +doms: List<&2, A.Ag>, +unf: Map<&2, ActCopy>, +tab: Map<&2, ActSym>) -> Bool:
+  match es:
+    case A.AgEApp{i, a, rest}:
+      Bool.or(act.etu.recvar(a, doms, unf, tab), act.etu.recargs(rest, doms, unf, tab))
+    case _:
+      False{}
+
+def act.etu.iseq(s: ActSym) -> Bool:
+  match s:
+    case ActSym{m, n, k, ms, ar, AbEq{}, fs, c, cp}:
+      True{}
+    case _:
+      False{}
+
+def act.etu.unsafe(t: A.Ag, +doms: List<&2, A.Ag>, +unf: Map<&2, ActCopy>, +tab: Map<&2, ActSym>) -> Bool:
+  match t:
+    case A.AgEl{s, x}:
+      act.etu.unsafe(x, doms, unf, tab)
+    case A.AgPi{i, x, +a, d, b}:
+      act.etu.unsafe(b, a <> doms, unf, tab)
+    case A.AgDef{+q, +es}:
+      Bool.and(act.etu.iseq(act.sym.got(Map.get(ActSym, act.sym0(), tab, act.key(q)))), act.etu.recargs(es, doms, unf, tab))
+    case _:
+      False{}
+
 # a function's eta unfolding (not a projection, a copy or a type-valued one)
 def act.etu.of(d: A.AgDecl, +unf: Map<&2, ActCopy>, +tab: Map<&2, ActSym>) -> Maybe<&2, ActCopy>:
   match d:
     case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, +fl, lang, +ty, A.AgDFun{A.AgPrNone{}, r, w, e, t, mu, cls, tree}}:
-      act.etu.go(Bool.or(act.flag(A.AkCopy{}, fl), act.ends.sort(ty)), act.cls.arity(cls), ty, tree, unf, tab)
+      act.etu.go(Bool.or(Bool.or(act.flag(A.AkCopy{}, fl), act.ends.sort(ty)), act.etu.unsafe(ty, Nil{}, unf, tab)), act.cls.arity(cls), ty, tree, unf, tab)
     case _:
       None{}
 

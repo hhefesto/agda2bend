@@ -1205,9 +1205,11 @@ def tele.laws() -> IO(Unit):
 # parameter's type, so is-retraction-pair-eq-Σ's second refl of (refl ,
 # refl) is rewritten too (it was left a variable), and
 # is-retraction-map-inv-equiv-total-fiber's refl two records deep, (.(f x)
-# , x , refl), gets its rewrite (it had none).  The gate keeps 41 of 43
-# items (39 at fc51fda; the other two need Σ's eta at a parameter the
-# clause does not split, which Bend lacks).
+# , x , refl), gets its rewrite (it had none).  eq-pair' (Eq-product s t →
+# s ＝ t at s t : A × B) has no eta unfolding, so is-section-pair-eq's
+# header calls it (its leaf is at a pair equation, by Σ's eta in Agda); the
+# record-split alternatives check then.  The gate keeps all 43 items (39 at
+# fc51fda, 41 at 93c51f9).
 def rfl.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, tr: D.A2bTr) -> IO(D.A2bG):
   match tr:
     case D.A2bTr{its, g}:
@@ -1215,6 +1217,7 @@ def rfl.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<
       do IO<D.A2bG>:
         IO.print(verdict("a refl at a field a type-valued definition's equation types is rewritten", S.infix(text, S.b("a2b_dt2 => x_2_rfl => (%x_2_rfl@x_2_rfl : {comp("))))
         IO.print(verdict("a refl two records deep is rewritten", S.infix(text, S.b("    case pair{a2b_dt1, pair{x_5, x_2_2_rfl}}:\n      %x_2_2_rfl@x_2_2_rfl : {comp("))))
+        IO.print(verdict("a function whose type ends in an equation of record variables is not eta-unfolded in a header", S.infix(text, S.b("a => eta1 => anon.eq_pair_p(l1, l2, A, B, s, t, eta1)"))))
         return g
 
 def rfl.laws() -> IO(Unit):
