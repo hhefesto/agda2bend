@@ -12067,6 +12067,99 @@ def act.esp.once.at(m: Maybe<&2, ActEsp>, cl: A.Ag) -> Maybe<&2, A.Ag>:
     case None{}:
       None{}
 
+# Σ's eta at a homotopy (2026-11-01).  A def of one clause that takes
+# fewer patterns than its type's visible Pis (agda-unimath's
+# compute-map-Σ-id = refl-htpy : map-Σ B id (λ _ → id) ~ id, and
+# preserves-comp-map-Σ) holds in Agda by the record's eta at the Pi's
+# variable: map-Σ … x is (pr1 x , pr2 x).  Bend's map_Sigma matches x and
+# is stuck there ("expected : {anon.map_Sigma(…, x) == x …}").  For the
+# record-split alternative, the clause first takes the type's next visible
+# Pis (its type's head type-valued definitions opened, _~_ here) as
+# variable patterns (named as the lift names them, x_b), its body applied
+# to them: then act.esp.pick may split one, so Bend's match puts pair{x, y}
+# for it in the goal.
+def act.esp.pshift(p: A.Ag) -> A.Ag:
+  match p:
+    case A.AgPArg{i, x, q, rest}:
+      A.AgPArg{i, x, act.esp.pshift(q), act.esp.pshift(rest)}
+    case A.AgPVar{y, j, o}:
+      A.AgPVar{y, 1n+j, o}
+    case A.AgPDot{t}:
+      A.AgPDot{asb.shift(t, 1n, 0n)}
+    case A.AgPCon{q, r, fo, sub}:
+      A.AgPCon{q, r, fo, act.esp.pshift(sub)}
+    case p:
+      p
+
+def act.esp.papp.put(i: A.AgI, x: List<&2, U32>, q: A.Ag, m: Maybe<&2, A.Ag>) -> Maybe<&2, A.Ag>:
+  match m:
+    case Some{r}:
+      Some{A.AgPArg{i, x, q, r}}
+    case None{}:
+      None{}
+
+# the patterns with one more at the end (only a spine of arguments: a
+# copattern's projection stays last, so none then)
+def act.esp.papp(ps: A.Ag, +nw: A.Ag) -> Maybe<&2, A.Ag>:
+  match ps:
+    case A.AgPArg{i, x, q, rest}:
+      act.esp.papp.put(i, x, q, act.esp.papp(rest, nw))
+    case A.AgPEnd{}:
+      Some{nw}
+    case _:
+      None{}
+
+def act.esp.tapp(tel: A.Ag, +x: List<&2, U32>, +i: A.AgI, +a: A.Ag) -> A.Ag:
+  match tel:
+    case A.AgTel{y, j, ty, rest}:
+      A.AgTel{y, j, ty, act.esp.tapp(rest, x, i, a)}
+    case t:
+      A.AgTel{x, i, a, t}
+
+def act.esp.isvis(i: A.AgI) -> Bool:
+  match i:
+    case A.AgI{A.AkVisible{}, r, w}:
+      True{}
+    case _:
+      False{}
+
+def act.esp.hasbody(b: A.Ag) -> Bool:
+  match b:
+    case A.AgNone{}:
+      False{}
+    case _:
+      True{}
+
+def act.esp.eta.cl(m: Maybe<&2, A.Ag>, +tel: A.Ag, +x: List<&2, U32>, +i: A.AgI, +a: A.Ag, body: A.Ag, ty: A.Ag, ca: Bool) -> Maybe<&2, A.Ag>:
+  match m:
+    case Some{ps2}:
+      Some{A.AgCl{act.esp.tapp(tel, x, i, a), ps2, asb.push(asb.shift(body, 1n, 0n), A.AgEApp{i, A.AgVar{0n, x, A.AgENil{}}, A.AgENil{}}), ty, ca, A.AgClEnd{}}}
+    case None{}:
+      None{}
+
+def act.esp.eta.at(ty: A.Ag, +tel: A.Ag, +ps: A.Ag, +body: A.Ag, ca: Bool) -> Maybe<&2, A.Ag>:
+  match ty:
+    case A.AgEl{s, A.AgPi{+i, +x0, +a, +d, +b}}:
+      +x = List.append(&2, U32, Bool.pick(List<&2, U32>, List.is_empty(&2, U32, x0), S.b("x"), x0), S.b("_b"))
+      Bool.pick(Maybe<&2, A.Ag>, Bool.and(act.esp.isvis(i), act.esp.hasbody(body)), act.esp.eta.cl(act.esp.papp(act.esp.pshift(ps), A.AgPArg{i, x, A.AgPVar{x, 0n, A.AkVar{}}, A.AgPEnd{}}), tel, x, i, a, body, Bool.pick(A.Ag, d, b, asb.shift(b, 1n, 0n)), ca), None{})
+    case _:
+      None{}
+
+def act.esp.eta.or(m: Maybe<&2, A.Ag>, cl: A.Ag) -> A.Ag:
+  match m:
+    case Some{c}:
+      c
+    case None{}:
+      cl
+
+# the clause eta-expanded at its type's next visible Pi, or as it is
+def act.esp.eta(cl: A.Ag, +env: ActEnv) -> A.Ag:
+  match cl:
+    case A.AgCl{+tel, +ps, +body, +ty, +ca, A.AgClEnd{}}:
+      act.esp.eta.or(act.esp.eta.at(act.uty.open(4n, ty, env), tel, ps, body, ca), A.AgCl{tel, ps, body, ty, ca, A.AgClEnd{}})
+    case cl:
+      cl
+
 # one clause with a record-typed variable pattern split, or None
 def act.esp.once(cl: A.Ag, +env: ActEnv) -> Maybe<&2, A.Ag>:
   match cl:
@@ -12110,7 +12203,7 @@ def act.fun.alt.esp(m: Maybe<&2, A.Ag>, +key: String, +ar: Nat, +t: A.Ag, +env: 
 # act.nu's alternative when it has one, then the combinator one, then the
 # record-split one (the gate tries them in this order: Qfix's tqf.alt.next)
 def act.fun.alt.which(nu: Bool, +cls2: A.Ag, +scr: List<&2, Bool>, +env2: ActEnv, +nm: List<&2, U32>, +ms: List<&2, ActM>, +ar: Nat, +cls: A.Ag, +key: String, +t: A.Ag, +env: ActEnv, +doc: List<&2, List<&2, U32>>, +r: ActPs) -> List<&2, T.BItem>:
-  List.append(&2, T.BItem, act.fun.alt.on(nu, cls2, scr, env2, nm, ms, ar, cls, t, env, doc, r), List.append(&2, T.BItem, act.fun.alt.cmb(Bool.and(Bool.not(act.cmb.is(key, env)), act.cmb.any(cls, act.env.unf(env))), cls, key, ar, t, env, nm, ms, doc, r), act.fun.alt.esp(act.esp.cls(act.esp.once(cls, env), env), key, ar, t, env, nm, ms, doc, r)))
+  List.append(&2, T.BItem, act.fun.alt.on(nu, cls2, scr, env2, nm, ms, ar, cls, t, env, doc, r), List.append(&2, T.BItem, act.fun.alt.cmb(Bool.and(Bool.not(act.cmb.is(key, env)), act.cmb.any(cls, act.env.unf(env))), cls, key, ar, t, env, nm, ms, doc, r), act.fun.alt.esp(act.esp.cls(act.esp.once(act.esp.eta(cls, env), env), env), key, ar, t, env, nm, ms, doc, r)))
 
 def act.fun.alt(p: A.AgProj, copat: Bool, +nm: List<&2, U32>, +ms: List<&2, ActM>, +ar: Nat, +cls: A.Ag, +key: String, +t: A.Ag, +env: ActEnv, doc: List<&2, List<&2, U32>>, +r: ActPs) -> List<&2, T.BItem>:
   match p copat:

@@ -979,7 +979,7 @@ def eqp.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<
       do IO<D.A2bG>:
         IO.print(verdict("a variable whose type unfolds to a record (A × B) is split by the record-split alternative", S.infix(text, S.b("  match s t x:\n    case pair{n1_4, n2_5} pair{n1_6, n2_7} pair{p, q}:"))))
         IO.print(verdict("a dotted term's field is bound at a refl inside a pattern", S.infix(text, S.b("case pair{a2b_dt1, a2b_dt2} pair{x_1_rfl, x_2_rfl}:"))))
-        IO.print(verdict("a top-level refl at a split record's dotted field is J at the survivor, the other record's field generalized", S.infix(text, S.b("{(%alpha@alpha : @n2:B(_) -> @x_b:{tr(l1, l2, A, B, a2b_dt1, _, alpha, pr2) == n2 : B(_)} -> {pair{a2b_dt1, pr2} == pair{_, n2} : Sigma_<l1, l2, A, B>}; n2 => x_b => anon.eq_pair_eq_fiber(l1, l2, A, B, a2b_dt1, tr(l1, l2, A, B, a2b_dt1, a2b_dt1, {==}, pr2), n2, x_b))"))))
+        IO.print(verdict("a top-level refl at a split record's dotted field is J at the survivor, the other record's field generalized", S.infix(text, S.b("{(%alpha@alpha : @n2:B(_) -> @x:{tr(l1, l2, A, B, a2b_dt1, _, alpha, pr2) == n2 : B(_)} -> {pair{a2b_dt1, pr2} == pair{_, n2} : Sigma_<l1, l2, A, B>}; n2 => x => anon.eq_pair_eq_fiber(l1, l2, A, B, a2b_dt1, tr(l1, l2, A, B, a2b_dt1, a2b_dt1, {==}, pr2), n2, x))"))))
         return g
 
 def eqp.laws() -> IO(Unit):
@@ -1317,6 +1317,31 @@ def prd.laws() -> IO(Unit):
     g3 : D.A2bG <- prd.of(al, ral, ds, D.a2b.mod.items(S.b("A2bPrd"), al, ds, g2))
     return Unit{}
 
+# fixtures/agda2bend/src/A2bEta.agda (its export A2bEta.sexp, after
+# Agda.Primitive and Agda.Builtin.Equality): agda-unimath's
+# compute-map-Σ-id = refl-htpy and preserves-comp-map-Σ = refl-htpy hold by
+# Σ's eta at the homotopy's variable; the record-split alternative takes the
+# type's next visible Pi as a variable pattern first and splits it.  The
+# gate keeps all 32 items (30 at 7adf6f3; 2026-11-01).
+def eta.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, tr: D.A2bTr) -> IO(D.A2bG):
+  match tr:
+    case D.A2bTr{its, g}:
+      +text = D.a2b.raw.text.of(S.b("A2bEta"), al, ral, List.length(&2, A.AgDecl, ds), its)
+      do IO<D.A2bG>:
+        IO.print(verdict("a homotopy by refl-htpy at a record gets a record-split alternative at the Pi's variable", S.infix(text, S.b("def anon.compute_map_Sigma_id__a2b_nu3("))))
+        return g
+
+def eta.laws() -> IO(Unit):
+  +order : List<&2, List<&2, U32>> = [S.b("Agda.Primitive"), S.b("Agda.Builtin.Equality"), S.b("A2bEta")]
+  +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
+  +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
+  do IO<Unit>:
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
+    +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bEta.sexp"))
+    g3 : D.A2bG <- eta.of(al, ral, ds, D.a2b.mod.items(S.b("A2bEta"), al, ds, g2))
+    return Unit{}
+
 def main() -> IO(Unit):
   do IO<Unit>:
     +bool : List<&2, U32> <- S.read("fixtures/agda2bend/Agda.Builtin.Bool.sexp")
@@ -1347,3 +1372,4 @@ def main() -> IO(Unit):
     cdi.laws()
     rr.laws()
     prd.laws()
+    eta.laws()
