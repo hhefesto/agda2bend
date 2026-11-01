@@ -6327,6 +6327,40 @@ def act.trf.hps(on: Bool, +hs: List<&2, T.BParam>, +uhps: List<&2, T.BParam>, +p
     case False{}:
       hs
 
+# A top-level refl's parameter at its type opened (2026-11-01): Agda's
+# dependent-identification B p x' y' is tr B p x' ＝ y', an equation only
+# past the definition, so concat-dependent-identification's second refl
+# (refl q refl q' = q') had no rewrite after the first ("expected : {(%q :
+# B(_); x_p) == z_p : B(z)} observed : {(%q : B(_); y_p) == …}").  The
+# header keeps Agda's type; the rewrites read the opened one (uhps: the
+# refl positions are opened as the split ones are, act.rfl.pos) when it
+# is an equation.
+def act.rfl.in(+x: List<&2, U32>, rs: List<&2, T.Bt>) -> Bool:
+  match rs:
+    case Nil{}:
+      False{}
+    case r <> t:
+      Bool.or(S.eq(act.var.name(r), x), act.rfl.in(x, t))
+
+def act.rfl.pick(u: T.Bt, +ty: T.Bt) -> T.Bt:
+  match u:
+    case T.BtEq{t, a, b}:
+      T.BtEq{t, a, b}
+    case _:
+      ty
+
+def act.rfl.hps(hs: List<&2, T.BParam>, +uhps: List<&2, T.BParam>, +rs: List<&2, T.Bt>) -> List<&2, T.BParam>:
+  match hs:
+    case Nil{}:
+      Nil{}
+    case T.BParam{m, +x, +ty} <> t:
+      T.BParam{m, x, Bool.pick(T.Bt, act.rfl.in(x, rs), act.rfl.pick(act.param.ty(uhps, x), ty), ty)} <> act.rfl.hps(t, uhps, rs)
+
+def act.rw.rs(rw: ActRw) -> List<&2, T.Bt>:
+  match rw:
+    case ActRw{rs, ds}:
+      rs
+
 # a case: its patterns, and its body after the rewrites its refl patterns
 # need (an absurd or cubical clause is left out)
 def act.case.of(a: ActPat, +n: Nat, body: A.Ag, +env: ActEnv, rest: T.Bt, +rw: ActRw, abs: Maybe<&2, ActAbs>, +dots: List<&2, ActDot>, +svars: List<&2, T.Bt>, +hps: List<&2, T.BParam>, +ret: T.Bt, +tel: A.Ag, +uhps: List<&2, T.BParam>, +aps: List<&2, A.Ag>) -> T.Bt:
@@ -6356,7 +6390,7 @@ def act.case.of(a: ActPat, +n: Nat, body: A.Ag, +env: ActEnv, rest: T.Bt, +rw: A
       +cvn = act.sd.cvnames(cvs)
       +qf = act.sd.prn(act.ds.undot(q0, List.append(&2, List<&2, U32>, List.append(&2, List<&2, U32>, List.append(&2, List<&2, U32>, act.ds.names(ds), act.sd.names(sd)), dn), con), bs), cvn)
       +sdh = act.sq.pick(sd, act.sd.uniq(Bool.pick(List<&2, ActSd>, nr2, Nil{}, act.sd.tops(p, svars, svars, qf, bs, uhps, p, svars, act.dt.all(bs, act.ctx.of(n, bs), env))), bs))
-      T.BtCase{qf, act.case.body(eqs, act.nrf.rw(rw, List.append(&2, List<&2, U32>, dn, act.cq.dv.of(cq))), g, act.trf.hps(nr2, act.ps.minus(hps, act.cq.ct.names(cts)), uhps, qw, svars), act.names(svars), act.ds.wrap(ds, g, act.sq.emit(act.sq.plan(sdh, cvs, cvn), sdh, act.abs.tr(abs, body, ctx, env, g, p, qf, svars, hps)))), rest}
+      T.BtCase{qf, act.case.body(eqs, act.nrf.rw(rw, List.append(&2, List<&2, U32>, dn, act.cq.dv.of(cq))), g, act.trf.hps(nr2, act.rfl.hps(act.ps.minus(hps, act.cq.ct.names(cts)), uhps, act.rw.rs(rw)), uhps, qw, svars), act.names(svars), act.ds.wrap(ds, g, act.sq.emit(act.sq.plan(sdh, cvs, cvn), sdh, act.abs.tr(abs, body, ctx, env, g, p, qf, svars, hps)))), rest}
 
 # Unit's eta (2026-10-31).  A pattern variable of the builtin unit type is
 # the pattern Unit{}, and the body reads it as Unit{}: Agda's eta makes
@@ -6499,6 +6533,30 @@ def act.scr(cls: A.Ag, +env: ActEnv) -> List<&2, Bool>:
   match cls:
     case A.AgCl{tel, ps, body, ty, ca, rest}:
       act.or.lists(act.split.pos(ps, env), act.scr(rest, env))
+    case _:
+      Nil{}
+
+# the parameters any clause has a refl pattern at (act.rfl.hps)
+def act.rfl.one(p: A.Ag, +env: ActEnv) -> Bool:
+  match p:
+    case A.AgPCon{+q, r, fo, ps}:
+      act.is.refl(act.sym(env, q))
+    case _:
+      False{}
+
+def act.rfl.ps(ps: A.Ag, +env: ActEnv) -> List<&2, Bool>:
+  match ps:
+    case A.AgPArg{i, x, A.AgPProj{q}, rest}:
+      Nil{}
+    case A.AgPArg{i, x, p, rest}:
+      act.rfl.one(p, env) <> act.rfl.ps(rest, env)
+    case _:
+      Nil{}
+
+def act.rfl.pos(cls: A.Ag, +env: ActEnv) -> List<&2, Bool>:
+  match cls:
+    case A.AgCl{tel, ps, body, ty, ca, rest}:
+      act.or.lists(act.rfl.ps(ps, env), act.rfl.pos(rest, env))
     case _:
       Nil{}
 
@@ -11646,7 +11704,7 @@ def act.fun.body(p: A.AgProj, +cls: A.Ag, +key: String, +ar: Nat, +t: A.Ag, +ent
     case _ False{}:
       +clsn = act.cln.norm(cls)
       +cls2 = act.rf.of(clsn, key, ms, act.ps.ps(r))
-      act.lift.app(List.drop(&2, T.BParam, act.ps.ps(r), act.kept.n(act.cls.arity(clsn), ms)), act.body(cls2, ents, env, act.ps.ps(r), act.ps.ret(r), act.uty.go(64n, ar, t, ms, act.scr(cls2, env), Nil{}, Nil{}, env)))
+      act.lift.app(List.drop(&2, T.BParam, act.ps.ps(r), act.kept.n(act.cls.arity(clsn), ms)), act.body(cls2, ents, env, act.ps.ps(r), act.ps.ret(r), act.uty.go(64n, ar, t, ms, act.or.lists(act.scr(cls2, env), act.rfl.pos(cls2, env)), Nil{}, Nil{}, env)))
 
 def act.fun.item(+nm: List<&2, U32>, +ms: List<&2, ActM>, +cls: A.Ag, body: T.Bt, r: ActPs, doc: List<&2, List<&2, U32>>, +env: ActEnv) -> List<&2, T.BItem>:
   match r:

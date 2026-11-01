@@ -1228,6 +1228,32 @@ def rfl.laws() -> IO(Unit):
     g3 : D.A2bG <- rfl.of(al, ral, ds, D.a2b.mod.items(S.b("A2bRfl"), al, ds, g2))
     return Unit{}
 
+# fixtures/agda2bend/src/A2bCdi.agda (its export A2bCdi.sexp, after
+# Agda.Primitive and Agda.Builtin.Equality): agda-unimath's
+# concat-dependent-identification refl q refl q' = q', its second refl at
+# dependent-identification B p x' y' (tr B p x' ＝ y'): its rewrite reads
+# that type opened (2026-11-01: none before, "expected : {(%q : B(_); x_p)
+# == z_p : B(z)} observed : {(%q : B(_); y_p) == …}").  The gate keeps all
+# 6 items (4 at 4a40e50).
+def cdi.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, tr: D.A2bTr) -> IO(D.A2bG):
+  match tr:
+    case D.A2bTr{its, g}:
+      +text = D.a2b.raw.text.of(S.b("A2bCdi"), al, ral, List.length(&2, A.AgDecl, ds), its)
+      do IO<D.A2bG>:
+        IO.print(verdict("a top-level refl at a type-valued definition's equation is rewritten", S.infix(text, S.b("x_24 => x_25 => {(%x_24 : @x_25:dependent_identification(l1, l2, A, B, x, z, q, _, z_p)"))))
+        return g
+
+def cdi.laws() -> IO(Unit):
+  +order : List<&2, List<&2, U32>> = [S.b("Agda.Primitive"), S.b("Agda.Builtin.Equality"), S.b("A2bCdi")]
+  +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
+  +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
+  do IO<Unit>:
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
+    +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bCdi.sexp"))
+    g3 : D.A2bG <- cdi.of(al, ral, ds, D.a2b.mod.items(S.b("A2bCdi"), al, ds, g2))
+    return Unit{}
+
 def main() -> IO(Unit):
   do IO<Unit>:
     +bool : List<&2, U32> <- S.read("fixtures/agda2bend/Agda.Builtin.Bool.sexp")
@@ -1255,3 +1281,4 @@ def main() -> IO(Unit):
     inl.laws()
     tele.laws()
     rfl.laws()
+    cdi.laws()
