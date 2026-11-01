@@ -9677,6 +9677,22 @@ def act.cop.post(ps: A.Ag) -> A.Ag:
 # whether the patterns before the first projection are variables (or dots:
 # unimath's `pr2 (is-prop-is-contr H x .x) refl = …`, its helper's clause
 # keeps the dot, and the refl after it is the helper's rewrite)
+# A record constructor's pattern of variables (or of such patterns) there
+# too (2026-10-31): agda-unimath's `pr2 (is-contr-Σ' (pair a H) is-contr-B)
+# (pair x y) = …` (150 dependents in the vb50d394 unimath run, "a copattern
+# clause that matches after its projection"): D splits it (act.copat.scr),
+# and passes it to the helper rebuilt from its variables (act.cop.topes).
+def act.cop.topr(ps: A.Ag) -> Bool:
+  match ps:
+    case A.AgPArg{i, x, A.AgPVar{v, n, o}, rest}:
+      act.cop.topr(rest)
+    case A.AgPArg{i, x, A.AgPCon{q, True{}, fo, sub}, rest}:
+      Bool.and(act.cop.topr(sub), act.cop.topr(rest))
+    case A.AgPEnd{}:
+      True{}
+    case _:
+      False{}
+
 def act.cop.topv(ps: A.Ag) -> Bool:
   match ps:
     case A.AgPArg{i, x, A.AgPProj{q}, rest}:
@@ -9685,6 +9701,8 @@ def act.cop.topv(ps: A.Ag) -> Bool:
       act.cop.topv(rest)
     case A.AgPArg{i, x, A.AgPDot{t}, rest}:
       act.cop.topv(rest)
+    case A.AgPArg{i, x, A.AgPCon{q, True{}, fo, sub}, rest}:
+      Bool.and(act.cop.topr(sub), act.cop.topv(rest))
     case _:
       False{}
 
@@ -9741,6 +9759,8 @@ def act.cop.topes(ps: A.Ag) -> A.Ag:
   match ps:
     case A.AgPArg{i, x, A.AgPVar{v, n, o}, rest}:
       A.AgEApp{i, A.AgVar{n, v, A.AgENil{}}, act.cop.topes(rest)}
+    case A.AgPArg{i, x, A.AgPCon{q, r, fo, sub}, rest}:
+      A.AgEApp{i, A.AgCon{q, A.AkSystem{}, act.cop.topes(sub)}, act.cop.topes(rest)}
     case _:
       A.AgENil{}
 
@@ -10069,10 +10089,33 @@ def act.cop.noproj(ps: A.Ag) -> A.Ag:
     case p:
       p
 
+# the patterns without the path's projections (the first run of them): a
+# projection after a later pattern stays, so the helper is a copattern
+# definition that matches first (2026-10-31: agda-unimath's `pr1
+# (retraction-tot r) (x , z) = (x , map-retraction …)`, whose pair Agda
+# makes copattern clauses `… (x , z) .pr1 = x`; with every projection taken
+# out, the helper had two clauses at (x , z), the second unreachable, and
+# returned x at Σ A B: "expected : Σ A B observed : A")
+def act.cop.droprun1(ps: A.Ag) -> A.Ag:
+  match ps:
+    case A.AgPArg{i, x, A.AgPProj{q}, rest}:
+      act.cop.droprun1(rest)
+    case p:
+      p
+
+def act.cop.droprun(ps: A.Ag) -> A.Ag:
+  match ps:
+    case A.AgPArg{i, x, A.AgPProj{q}, rest}:
+      act.cop.droprun1(rest)
+    case A.AgPArg{i, x, p, rest}:
+      A.AgPArg{i, x, p, act.cop.droprun(rest)}
+    case p:
+      p
+
 def act.cop.hcl1(hit: Bool, tel: A.Ag, +ps: A.Ag, body: A.Ag, ty: A.Ag, ca: Bool, rest: A.Ag) -> A.Ag:
   match hit:
     case True{}:
-      A.AgCl{tel, act.cop.noproj(ps), body, ty, ca, rest}
+      A.AgCl{tel, act.cop.droprun(ps), body, ty, ca, rest}
     case False{}:
       rest
 
@@ -10105,10 +10148,322 @@ def act.cop.hs.ps(ps: List<&2, List<&2, A.AgQ>>, +d: A.AgDecl, +q: A.AgQ, +ty: A
       +p = act.cop.pstr(ks)
       List.append(&2, A.AgDecl, act.cop.hs.one(act.cop.needs(cls, p), ks, p, d, q, ty, cls, unf, tab), act.cop.hs.ps(rest, d, q, ty, cls, unf, tab))
 
+# Self-references in the helpers (2026-10-31): a helper's type is its
+# field's type at D's own value, and its clauses use D's other fields:
+# agda-unimath's `pr2 (is-contr-Σ H a K) (pair x y) = eq-pair-Σ …` is at
+# pr1 (is-contr-Σ H a K) ＝ (x , y), whose pr1 is two clauses of its own
+# (pr1 (pr1 …) = a, pr2 (pr1 …) = center K).  The helper comes before D
+# (D calls it), so Bend read D's template call there before D was declared
+# ("expected : a term observed : '~'"; is-contr-Σ and what uses it).  In
+# the helpers, a first-level field k of D's own call (k (D es), as a
+# projection elimination or a projection-like call) is that field's helper
+# at es, D/cop/k: the helper the path already has, else a field helper of
+# its own (D's clauses for k, the projection k taken out and the later ones
+# kept, so a nested field is a copattern definition), made for each such
+# field of a D that has helpers.
+type ActSr is Data:
+  SrSelf{}
+  SrProj{}
+  SrPlain{}
+
+def act.cop.sr.inp(+k: String, ks: List<&2, String>) -> Bool:
+  match ks:
+    case +h <> t:
+      Bool.or(String.eq(h, k), act.cop.sr.inp(k, t))
+    case Nil{}:
+      False{}
+
+# a spine's first projection; its elims before that one; after it
+def act.cop.sr.pk(es: A.Ag) -> Maybe<&2, A.AgQ>:
+  match es:
+    case A.AgEApp{i, a, rest}:
+      act.cop.sr.pk(rest)
+    case A.AgEProj{q, rest}:
+      Some{q}
+    case _:
+      None{}
+
+def act.cop.sr.pre(es: A.Ag) -> A.Ag:
+  match es:
+    case A.AgEApp{i, a, rest}:
+      A.AgEApp{i, a, act.cop.sr.pre(rest)}
+    case _:
+      A.AgENil{}
+
+def act.cop.sr.post(es: A.Ag) -> A.Ag:
+  match es:
+    case A.AgEApp{i, a, rest}:
+      act.cop.sr.post(rest)
+    case A.AgEProj{q, rest}:
+      rest
+    case _:
+      A.AgENil{}
+
+def act.cop.sr.pkin(m: Maybe<&2, A.AgQ>, +fks: List<&2, String>) -> Bool:
+  match m:
+    case Some{q}:
+      act.cop.sr.inp(act.key(q), fks)
+    case None{}:
+      False{}
+
+def act.cop.sr.isnone(m: Maybe<&2, A.AgQ>) -> Bool:
+  match m:
+    case Some{q}:
+      False{}
+    case None{}:
+      True{}
+
+# a spine's last argument when it ends with one
+def act.cop.sr.last(es: A.Ag) -> A.Ag:
+  match es:
+    case A.AgEApp{i, a, A.AgENil{}}:
+      a
+    case A.AgEApp{i, a, rest}:
+      act.cop.sr.last(rest)
+    case _:
+      A.AgNone{}
+
+# whether t is D's own call without a projection
+def act.cop.sr.lastd(t: A.Ag, +dk: String) -> Bool:
+  match t:
+    case A.AgDef{q, es}:
+      Bool.and(String.eq(act.key(q), dk), act.cop.sr.isnone(act.cop.sr.pk(es)))
+    case _:
+      False{}
+
+# D's call's arguments, the last argument of a projection-like call
+def act.cop.sr.dargs(t: A.Ag) -> A.Ag:
+  match t:
+    case A.AgDef{q, es}:
+      es
+    case _:
+      A.AgENil{}
+
+def act.cop.sr.hq(+dk: String, +k: A.AgQ) -> A.AgQ:
+  act.cop.hq(dk ++ "/cop/" ++ act.key(k))
+
+def act.cop.sr.hqm(m: Maybe<&2, A.AgQ>, +dk: String) -> A.AgQ:
+  match m:
+    case Some{+k}:
+      act.cop.sr.hq(dk, k)
+    case None{}:
+      act.cop.hq(dk)
+
+def act.cop.sr.kind(+q: A.AgQ, +es: A.Ag, +dk: String, +fks: List<&2, String>) -> ActSr:
+  Bool.pick(ActSr, Bool.and(String.eq(act.key(q), dk), act.cop.sr.pkin(act.cop.sr.pk(es), fks)), SrSelf{}, Bool.pick(ActSr, Bool.and(act.cop.sr.inp(act.key(q), fks), act.cop.sr.lastd(act.cop.sr.last(es), dk)), SrProj{}, SrPlain{}))
+
+def act.cop.sr.head(m: ActSr, +q: A.AgQ, +es: A.Ag, +dk: String) -> A.Ag:
+  match m:
+    case SrSelf{}:
+      asb.push(A.AgDef{act.cop.sr.hqm(act.cop.sr.pk(es), dk), act.cop.sr.pre(es)}, act.cop.sr.post(es))
+    case SrProj{}:
+      A.AgDef{act.cop.sr.hq(dk, q), act.cop.sr.dargs(act.cop.sr.last(es))}
+    case _:
+      A.AgDef{q, es}
+
+def act.cop.sr(t: A.Ag, +dk: String, +fks: List<&2, String>) -> A.Ag:
+  match t:
+    case A.AgDef{+q, es}:
+      +es2 = act.cop.sr(es, dk, fks)
+      act.cop.sr.head(act.cop.sr.kind(q, es2, dk, fks), q, es2, dk)
+    case A.AgVar{i, x, es}:
+      A.AgVar{i, x, act.cop.sr(es, dk, fks)}
+    case A.AgCon{q, o, es}:
+      A.AgCon{q, o, act.cop.sr(es, dk, fks)}
+    case A.AgLam{i, x, dep, b}:
+      A.AgLam{i, x, dep, act.cop.sr(b, dk, fks)}
+    case A.AgPi{i, x, a, dep, b}:
+      A.AgPi{i, x, act.cop.sr(a, dk, fks), dep, act.cop.sr(b, dk, fks)}
+    case A.AgEl{s, a}:
+      A.AgEl{s, act.cop.sr(a, dk, fks)}
+    case A.AgDontCare{a}:
+      A.AgDontCare{act.cop.sr(a, dk, fks)}
+    case A.AgBeta{f, es}:
+      A.AgBeta{act.cop.sr(f, dk, fks), act.cop.sr(es, dk, fks)}
+    case A.AgEApp{i, a, rest}:
+      A.AgEApp{i, act.cop.sr(a, dk, fks), act.cop.sr(rest, dk, fks)}
+    case A.AgEProj{q, rest}:
+      A.AgEProj{q, act.cop.sr(rest, dk, fks)}
+    case t:
+      t
+
+def act.cop.sr.cls(cls: A.Ag, +dk: String, +fks: List<&2, String>) -> A.Ag:
+  match cls:
+    case A.AgCl{tel, ps, body, ty, ca, rest}:
+      A.AgCl{tel, ps, act.cop.sr(body, dk, fks), act.cop.sr(ty, dk, fks), ca, act.cop.sr.cls(rest, dk, fks)}
+    case c:
+      c
+
+def act.cop.sr.d(h: A.AgDecl, +dk: String, +fks: List<&2, String>) -> A.AgDecl:
+  match h:
+    case A.AgDecl{q, qn, md, f, l, l0, l1, kd, mm, fl, lang, hty, A.AgDFun{pr, rs, wi, e, t, mu, cls, tree}}:
+      A.AgDecl{q, qn, md, f, l, l0, l1, kd, mm, fl, lang, act.cop.sr(hty, dk, fks), A.AgDFun{pr, rs, wi, e, t, mu, act.cop.sr.cls(cls, dk, fks), tree}}
+    case h:
+      h
+
+def act.cop.sr.ds(hs: List<&2, A.AgDecl>, +dk: String, +fks: List<&2, String>) -> List<&2, A.AgDecl>:
+  match hs:
+    case Nil{}:
+      Nil{}
+    case h <> t:
+      act.cop.sr.d(h, dk, fks) <> act.cop.sr.ds(t, dk, fks)
+
+# D's first-level fields (the first projection of each clause's path, once)
+def act.cop.fk.in(+k: String, qs: List<&2, A.AgQ>) -> Bool:
+  match qs:
+    case q <> t:
+      Bool.or(String.eq(act.key(q), k), act.cop.fk.in(k, t))
+    case Nil{}:
+      False{}
+
+def act.cop.fk.put(ks: List<&2, A.AgQ>, +acc: List<&2, A.AgQ>) -> List<&2, A.AgQ>:
+  match ks:
+    case +k <> t:
+      Bool.pick(List<&2, A.AgQ>, act.cop.fk.in(act.key(k), acc), acc, List.append(&2, A.AgQ, acc, [k]))
+    case Nil{}:
+      acc
+
+def act.cop.fks(cls: A.Ag, +acc: List<&2, A.AgQ>) -> List<&2, A.AgQ>:
+  match cls:
+    case A.AgCl{tel, ps, body, ty, ca, rest}:
+      act.cop.fks(rest, act.cop.fk.put(act.cop.path(ps), acc))
+    case _:
+      acc
+
+def act.cop.fk.keys(ks: List<&2, A.AgQ>) -> List<&2, String>:
+  match ks:
+    case Nil{}:
+      Nil{}
+    case k <> t:
+      act.key(k) <> act.cop.fk.keys(t)
+
+# whether a clause's first projection is k
+def act.cop.fk.is(ks: List<&2, A.AgQ>, +k: String) -> Bool:
+  match ks:
+    case q <> t:
+      String.eq(act.key(q), k)
+    case Nil{}:
+      False{}
+
+# the patterns without their first projection
+def act.cop.drop1(ps: A.Ag) -> A.Ag:
+  match ps:
+    case A.AgPArg{i, x, A.AgPProj{q}, rest}:
+      rest
+    case A.AgPArg{i, x, p, rest}:
+      A.AgPArg{i, x, p, act.cop.drop1(rest)}
+    case p:
+      p
+
+def act.cop.fcl1(hit: Bool, tel: A.Ag, +ps: A.Ag, body: A.Ag, ty: A.Ag, ca: Bool, rest: A.Ag) -> A.Ag:
+  match hit:
+    case True{}:
+      A.AgCl{tel, act.cop.drop1(ps), body, ty, ca, rest}
+    case False{}:
+      rest
+
+def act.cop.fcls(cls: A.Ag, +k: String) -> A.Ag:
+  match cls:
+    case A.AgCl{tel, +ps, body, ty, ca, rest}:
+      act.cop.fcl1(act.cop.fk.is(act.cop.path(ps), k), tel, ps, body, ty, ca, act.cop.fcls(rest, k))
+    case c:
+      c
+
+# the patterns before the projection in D's first clause for field k
+def act.cop.ntop.pre(cls: A.Ag, +k: String) -> Nat:
+  match cls:
+    case A.AgCl{tel, +ps, body, ty, ca, rest}:
+      Bool.pick(Nat, act.cop.fk.is(act.cop.path(ps), k), act.cop.ntop(ps), act.cop.ntop.pre(rest, k))
+    case _:
+      0n
+
+def act.cop.fh1(m: Maybe<&2, A.Ag>, d: A.AgDecl, +k: A.AgQ) -> List<&2, A.AgDecl>:
+  match m d:
+    case Some{hty} A.AgDecl{+q, +qn, md, f, l, l0, l1, kd, mm, fl, lang, ty, A.AgDFun{pr, rs, wi, e, t, mu, +cls, +tree}}:
+      [A.AgDecl{A.AgQ{List.append(&2, U32, act.cop.hname([k], act.qs(q)), S.b("__a2b_f")), S.b(act.key(q) ++ "/cop" ++ act.cop.pstr([k])), S.b("0")}, act.cop.hname([k], qn), md, f, l, l0, l1, kd, mm, Nil{}, lang, hty, A.AgDFun{A.AgPrNone{}, rs, None{}, False{}, t, mu, act.cop.fcls(cls, act.key(k)), act.cop.subtree([k], tree)}}]
+    case _ _:
+      Nil{}
+
+def act.cop.fhs(ks: List<&2, A.AgQ>, +d: A.AgDecl, +q: A.AgQ, +ty: A.Ag, +cls: A.Ag, +unf: Map<&2, ActCopy>, +tab: Map<&2, ActSym>) -> List<&2, A.AgDecl>:
+  match ks:
+    case Nil{}:
+      Nil{}
+    case +k <> rest:
+      List.append(&2, A.AgDecl, Bool.pick(List<&2, A.AgDecl>, act.cop.needs(cls, act.cop.pstr([k])), Nil{}, act.cop.fh1(act.cop.hty(act.cop.ntop.pre(cls, act.key(k)), ty, q, A.AgENil{}, [k], unf, tab), d, k)), act.cop.fhs(rest, d, q, ty, cls, unf, tab))
+
+# whether a term calls the name of key k
+def act.cop.men(t: A.Ag, +k: String) -> Bool:
+  match t:
+    case A.AgDef{q, es}:
+      Bool.or(String.eq(act.key(q), k), act.cop.men(es, k))
+    case A.AgVar{i, x, es}:
+      act.cop.men(es, k)
+    case A.AgCon{q, o, es}:
+      act.cop.men(es, k)
+    case A.AgLam{i, x, dep, b}:
+      act.cop.men(b, k)
+    case A.AgPi{i, x, a, dep, b}:
+      Bool.or(act.cop.men(a, k), act.cop.men(b, k))
+    case A.AgEl{s, a}:
+      act.cop.men(a, k)
+    case A.AgDontCare{a}:
+      act.cop.men(a, k)
+    case A.AgBeta{f, es}:
+      Bool.or(act.cop.men(f, k), act.cop.men(es, k))
+    case A.AgEApp{i, a, rest}:
+      Bool.or(act.cop.men(a, k), act.cop.men(rest, k))
+    case A.AgEProj{q, rest}:
+      act.cop.men(rest, k)
+    case A.AgCl{tel, ps, body, ty, ca, rest}:
+      Bool.or(Bool.or(act.cop.men(body, k), act.cop.men(ty, k)), act.cop.men(rest, k))
+    case _:
+      False{}
+
+def act.cop.men.d(h: A.AgDecl, +k: String) -> Bool:
+  match h:
+    case A.AgDecl{q, qn, md, f, l, l0, l1, kd, mm, fl, lang, hty, A.AgDFun{pr, rs, wi, e, t, mu, cls, tree}}:
+      Bool.or(act.cop.men(hty, k), act.cop.men(cls, k))
+    case _:
+      False{}
+
+def act.cop.men.ds(hs: List<&2, A.AgDecl>, +k: String) -> Bool:
+  match hs:
+    case +h <> t:
+      Bool.or(act.cop.men.d(h, k), act.cop.men.ds(t, k))
+    case Nil{}:
+      False{}
+
+def act.cop.dkey(h: A.AgDecl) -> String:
+  match h:
+    case A.AgDecl{q, qn, md, f, l, l0, l1, kd, mm, fl, lang, hty, b}:
+      act.key(q)
+
+# the field helpers some helper calls (fh: the field helpers, hs: all)
+def act.cop.fh.keep(fh: List<&2, A.AgDecl>, +hs: List<&2, A.AgDecl>) -> List<&2, A.AgDecl>:
+  match fh:
+    case Nil{}:
+      Nil{}
+    case +h <> t:
+      +r = act.cop.fh.keep(t, hs)
+      Bool.pick(List<&2, A.AgDecl>, act.cop.men.ds(hs, act.cop.dkey(h)), h <> r, r)
+
+def act.cop.sr.keep(+fh: List<&2, A.AgDecl>, +hs: List<&2, A.AgDecl>) -> List<&2, A.AgDecl>:
+  List.append(&2, A.AgDecl, act.cop.fh.keep(fh, List.append(&2, A.AgDecl, fh, hs)), hs)
+
+def act.cop.sr.all(hs: List<&2, A.AgDecl>, +d: A.AgDecl, +q: A.AgQ, +ty: A.Ag, +cls: A.Ag, +unf: Map<&2, ActCopy>, +tab: Map<&2, ActSym>) -> List<&2, A.AgDecl>:
+  match hs:
+    case Nil{}:
+      Nil{}
+    case hs:
+      +fks = act.cop.fks(cls, Nil{})
+      +dk = act.key(q)
+      +ks = act.cop.fk.keys(fks)
+      act.cop.sr.keep(act.cop.sr.ds(act.cop.fhs(fks, d, q, ty, cls, unf, tab), dk, ks), act.cop.sr.ds(hs, dk, ks))
+
 def act.cop.hs.d(+d: A.AgDecl, +unf: Map<&2, ActCopy>, +tab: Map<&2, ActSym>) -> List<&2, A.AgDecl>:
   match d:
     case A.AgDecl{+q, qn, md, f, l, l0, l1, k, m, fl, lang, +ty, A.AgDFun{A.AgPrNone{}, rs, w, e, t, mu, +cls, tree}}:
-      act.cop.hs.ps(act.cop.paths(cls, Nil{}), d, q, ty, cls, unf, tab)
+      act.cop.sr.all(act.cop.hs.ps(act.cop.paths(cls, Nil{}), d, q, ty, cls, unf, tab), d, q, ty, cls, unf, tab)
     case _:
       Nil{}
 

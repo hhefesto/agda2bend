@@ -1604,6 +1604,18 @@ def tcp.rp.some(ok: Bool, it: T.BItem) -> Maybe<&2, T.BItem>:
     case False{}:
       None{}
 
+# A copattern field's own helper (Cata.bend act.cop.fh1, named
+# NAME_a2b_f once named) is always read as projections where it can be: the other
+# helpers' types say it at D's parameters, a variable there when the
+# helper reads its record parameter as projections (is-contr-Σ' at (pair a
+# H), 2026-10-31), and only projections reduce at a variable.
+def tcp.rp.fld(m: Maybe<&2, List<&2, TcpRb>>, +n: List<&2, U32>) -> Bool:
+  match m:
+    case Some{bs}:
+      S.suffix(n, S.b("_a2b_f"))
+    case None{}:
+      False{}
+
 # the def read as projections, or None
 def tcp.rp.try(it: T.BItem, +e: TcpEnv, +qe: QF.TqEnv) -> Maybe<&2, T.BItem>:
   match it:
@@ -1612,7 +1624,7 @@ def tcp.rp.try(it: T.BItem, +e: TcpEnv, +qe: QF.TqEnv) -> Maybe<&2, T.BItem>:
       +ps2 = tcp.rp.ren(ps, x0, x, False{})
       +b2 = tcp.rp.sub(b, x0, T.BtVar{x})
       +bs : Maybe<&2, List<&2, TcpRb>> = tcp.rp.go(64n, [TcpRw{p, T.BtVar{x}, tcp.vty(ps2, x)}], e, qe, Nil{})
-      tcp.rp.some(tcp.rp.ok(bs, b2, x0, ret, qe, n), T.BiDef{n, ps2, tcp.rp.sub(ret, x0, T.BtVar{x}), tcp.rp.body(bs, b2), doc})
+      tcp.rp.some(Bool.or(tcp.rp.fld(bs, n), tcp.rp.ok(bs, b2, x0, ret, qe, n)), T.BiDef{n, ps2, tcp.rp.sub(ret, x0, T.BtVar{x}), tcp.rp.body(bs, b2), doc})
     case _:
       None{}
 

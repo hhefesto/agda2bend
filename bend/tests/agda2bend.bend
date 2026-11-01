@@ -1077,6 +1077,37 @@ def ftr.laws() -> IO(Unit):
     g4 : D.A2bG <- ftr.of(al, ral, ds, D.a2b.mod.items(S.b("A2bFtr"), al, ds, g3))
     return Unit{}
 
+# fixtures/agda2bend/src/A2bCs.agda (its export A2bCs.sexp, after
+# Agda.Primitive and Agda.Builtin.Equality): copattern helpers (2026-10-31).
+# is-contr-Σ's pr2 helper is at pr1 (is-contr-Σ H a K) ＝ t, a field of two
+# clauses of its own: the helper said D before D was declared ("expected :
+# a term observed : '~'"); it says pr1's own helper now.  is-contr-Σ' splits
+# (pair a H) before its projection: it gets helpers too ("a copattern
+# clause that matches after its projection" before), the field's read as
+# projections.  retraction-tot's pr1 helper keeps the projections after its
+# (x , z): a pair, not two clauses at (x , z).  The gate keeps all 26 items
+# (Bend 2.0.39; 19 of 22 at a5c6b6a).
+def cs.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, tr: D.A2bTr) -> IO(D.A2bG):
+  match tr:
+    case D.A2bTr{its, g}:
+      +text = D.a2b.raw.text.of(S.b("A2bCs"), al, ral, List.length(&2, A.AgDecl, ds), its)
+      do IO<D.A2bG>:
+        IO.print(verdict("a copattern helper's type says the def's other field by that field's own helper", S.infix(text, S.b("-> {anon.is_contr_Sigma.pr1_a2b_f(l1, l2, A, B, x, a, x_12) == x_14 : Sigma_<l1, l2, A, B>}:"))))
+        IO.print(verdict("a record pattern before the projection gets the field a helper", S.infix(text, S.b("def anon.is_contr_Sigma_p.pr2("))))
+        IO.print(verdict("a helper keeps the projections after its patterns: a record value", S.infix(text, S.b("    case pair{x_8, z}:\n      pair{x_8, Sigma_.pr1("))))
+        return g
+
+def cs.laws() -> IO(Unit):
+  +order : List<&2, List<&2, U32>> = [S.b("Agda.Primitive"), S.b("Agda.Builtin.Equality"), S.b("A2bCs")]
+  +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
+  +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
+  do IO<Unit>:
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
+    +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bCs.sexp"))
+    g3 : D.A2bG <- cs.of(al, ral, ds, D.a2b.mod.items(S.b("A2bCs"), al, ds, g2))
+    return Unit{}
+
 def main() -> IO(Unit):
   do IO<Unit>:
     +bool : List<&2, U32> <- S.read("fixtures/agda2bend/Agda.Builtin.Bool.sexp")
@@ -1099,3 +1130,4 @@ def main() -> IO(Unit):
     eqq.laws()
     trl.laws()
     ftr.laws()
+    cs.laws()
