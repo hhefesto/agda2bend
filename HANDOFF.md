@@ -2,6 +2,12 @@
 
 Working notes, so the work can continue from another machine or agent. Newest first. Times are UTC-6. agda2bend was split out of ana (github:hhefesto/ana) on 2026-10-22. ana's HANDOFF.md, before that date, has the rest of the history.
 
+## a2b-stdlib2 stuck in Winl on Setoids.LCCC; CPU split back to halves (2026-11-02, 14:10-14:40)
+
+- **a2b-stdlib2 (export4 -> corpus2v, bin/agda2bend-O0-gb1), not restarted (the user: "don't re start it"):** 723 of 1657 modules emitted; the last line is Setoids.Complete at 11-01 15:37:48.  Since then it is on `Categories.Category.Instance.Properties.Setoids.LCCC` (24.5 MB sexp, 139 defs; the sexp's atime is 15:37:48, no raw/ file yet): one core at 100%, memory flat (no new page faults in 30 s).  The slowest module before it took 5.3 h (Categories.Category.Cocartesian; StrictCats 4 h).  `perf record -e cpu-clock:u -p PID` (perf_event_paranoid 2 allows :u; ptrace_scope 1 blocks gdb): ctr_take/rfc_bump (runtime) 57%, then Sys.eq, tba.refs, tba.binds, twl.calls, twl.mem: ToBend/Winl.bend's mutual with-function pass (10-29).  twl.pairs looks up every reference occurrence of W's body (duplicates, local names) with twl.def.of, and Bool.pick/Bool.and/twl.first evaluate both sides, so twl.spine runs for each one: twl.any.in(refs c, binds W) is |refs|x|binds| with Sys.eq per pair, once per occurrence: about cubic in a big body.  Fix (not done): the distinct module-def refs of W once, W's refs/binds once, match instead of Bool.pick on the guards.  ana-a2bm9 and ana-mixgo6ff wait on its "stdlib: exit" line in ev-nu/requeue.log.
+- **olimpo's CPUs:** the user removed (11-02) the 10-31 "all 16 until telomare starts again" exception; ~/.local/bin/cpu-split now always pins the a2b/ana/codex units to 0-3,8-11.
+- **Stopped (the user, 11-02):** ana-act5-night/close timers (transient, gone; were `night.sh run` at 22:30 and `night.sh close` at 08:35 in ana/run/v5/act5) and codex-bend-gen2/codex-hs2bend (disabled).
+
 ## Refls at calls that reduce at refl, capture-free substitution, the product alias, Σ's eta at a homotopy (2026-11-01 04:05 - 07:00)
 
 - **Pushed to master (the user, 10-31: push to master, no PR): ef57c80, 2ea6e0c, badfd0d, c111898.**
@@ -80,7 +86,7 @@ Working notes, so the work can continue from another machine or agent. Newest fi
 - **Measured (dg18 = 07330f7):** /tmp/bx/cs18 (commuting-squares-of-identifications, homotopy-algebra, coherently-invertible-maps and their imports) against corpus-um4 (ea692c8) on the 22 modules both have: 344 -> 386 checked, 0 lost; commuting-squares-of-identifications 26 -> 46 of 51 (5 left: the unit laws of pasting, stuck rewrites in the expected side).  Fixtures (/tmp/claude-1000/a2b/fxab.sh): A2bWh 4 -> 5, A2bProp 13 -> 15, the other 15 the same.  tests 91 ok.  Id-Truncated-Type itself: a2b-ab9c (07330f7) on its cone, unseen yet.
 - **Running:** a2b-umemit5 (ev-um/umemit5.sh, 18:46): agda-unimath fresh on bin/agda2bend-O0-v07330f7 into run/a2b/corpus-um5; umemit4 (ea692c8) stopped after 44 modules (run/a2b/corpus-um4 kept).
 - **Open, 101 dependents (coherently-invertible-maps' inv-coh 84, homotopy-algebra):** "expected : -x_b observed : x_b": a def's parameter types keep hidden binders erased (act.sig.env, 28d9368: `f {x} (g x)` then need not copy x), but unimath's `{g h : {x : A} (y : B x) → C x y}` (right-whisker-comp, ·r) gets a lambda that uses x live (`f x`).  Needs a choice per parameter from its uses, not a rule.
-- **olimpo's CPUs (the user, 10-31: "agda2bend and ana can use all 16 units until telomare work starts again"):** ~/.local/bin/cpu-split gives the a2b/ana/codex units 0-15 while telomare.slice is empty, the old split back once it is not.
+- **olimpo's CPUs (the user, 10-30: half for telomare, the rest for agda2bend; the 10-31 "all 16 until telomare starts again" exception was removed by the user on 11-02):** ~/.local/bin/cpu-split pins telomare.slice to 4-7,12-15 and the a2b/ana/codex units to 0-3,8-11, always.
 
 ## agda-unimath: the 10-31 fixes, a fresh run on ea692c8, and Agda's --auto-inline (2026-10-31, 13:30-17:45)
 
