@@ -375,7 +375,7 @@ def tsx.ready(s: TsxSt) -> Maybe<&2, Sx> & TsxSt:
 def tsx.feed(s: TsxSt, m: Maybe<&2, List<&2, U32>>) -> TsxSt & Bool:
   match m:
     case Some{line}:
-      (tsx.scan(List.append(&2, U32, line, 10 <> Nil{}), s), False{})
+      (tsx.step(tsx.scan(line, s), 10), False{})
     case None{}:
       (tsx.flush(s), True{})
 

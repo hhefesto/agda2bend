@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# bendc FILE --check-only: the check through tools/checkd's daemon ($A2B_CHECKD: its dir,
+# with port and pid), or by $A2B_BEND itself when the daemon is down. A check that takes
+# past $A2B_CHECKD_SECS (880) kills the daemon, which holds nothing that can't be read
+# again; its supervisor starts another.
+f=$(realpath "$1")
+if exec 3<>"/dev/tcp/127.0.0.1/$(cat "$A2B_CHECKD/port")" 2>/dev/null; then
+  printf '%s\n' "$f" >&3
+  if IFS=' ' read -r -t "${A2B_CHECKD_SECS:-880}" tag rc <&3 && [ "$tag" = RC ]; then
+    cat <&3
+    exit "$rc"
+  fi
+  kill -9 "$(cat "$A2B_CHECKD/pid")" 2>/dev/null
+  echo "Error: the check took more than ${A2B_CHECKD_SECS:-880} s"
+  exit 124
+fi
+exec "$A2B_BEND" "$@"

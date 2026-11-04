@@ -460,7 +460,13 @@ def env.nat(name: String, +d: Nat) -> IO(Nat):
 # Files ---------------------------------------------------------------------
 
 def chunk() -> U32:
-  1048576
+  65536
+
+# how much to read next with x read so far of a field: a module's header is a
+# small read of a file (a chunk per file was the most of an emit's start, 110 s on
+# agda-unimath), and a long field grows by doubling (its copies add up to twice it)
+def chunk.for(+x: List<&2, U32>) -> U32:
+  U32.from_nat(Nat.add(List.length(&2, U32, x), 65536n))
 
 # A whole file read chunk by chunk: the handle, the bytes so far (newest
 # chunk first, reversed) and whether to read on.
@@ -630,17 +636,25 @@ def Rd.close(r: Rd) -> IO(Unit):
       File.close(f)
 
 # the bytes up to the first sep, the bytes after it, and whether there was one
-def cut.go(+xs: List<&2, U32>, +sep: U32, at: Bool) -> Ns.Field:
-  match xs at:
-    case h <> +t False{}:
-      Ns.Field.put(h, cut.go(t, sep, head.is(t, sep)))
-    case h <> t True{}:
-      Ns.Field{Nil{}, t, True{}}
-    case Nil{} _:
-      Ns.Field{Nil{}, Nil{}, False{}}
+# (a loop over the list as it is, not a shared one: the reader spends its time here)
+def cut.fin(hit: Bool, acc: List<&2, U32>, +rest: List<&2, U32>) -> Ns.Field:
+  match hit acc:
+    case True{} h <> t:
+      Ns.Field{List.reverse(&2, U32, t), rest, True{}}
+    case _ acc:
+      Ns.Field{List.reverse(&2, U32, acc), Nil{}, False{}}
+
+def cut.go(xs: List<&2, U32>, +sep: U32, acc: List<&2, U32>, hit: Bool) -> Ns.Field:
+  match xs hit:
+    case t True{}:
+      cut.fin(True{}, acc, t)
+    case Nil{} False{}:
+      cut.fin(False{}, acc, Nil{})
+    case +h <> t False{}:
+      cut.go(t, sep, h <> acc, U32.is_eq(h, sep))
 
 def cut(+xs: List<&2, U32>, +sep: U32) -> Ns.Field:
-  cut.go(xs, sep, head.is(xs, sep))
+  cut.go(xs, sep, Nil{}, False{})
 
 # One attempt: the reader, whether to read on, and the field if one ended.
 type Rq is Type:
@@ -670,9 +684,9 @@ def Rd.cut(f: File, +sep: U32, eof: Bool, fl: Ns.Field) -> IO(Rq):
       IO.pure(Rq, Rq{f, sep, Nil{}, True{}, False{}, None{}})
     case True{} Ns.Field{x, rest, False{}}:
       Rd.last(f, sep, U32.is_eq(sep, 10), x)
-    case False{} Ns.Field{x, rest, False{}}:
+    case False{} Ns.Field{+x, rest, False{}}:
       do IO<Rq>:
-        r : File & Result<&1, &1, U32 & String, List<&2, U32>> <- File.read_bytes(f, chunk())
+        r : File & Result<&1, &1, U32 & String, List<&2, U32>> <- File.read_bytes(f, chunk.for(x))
         Rd.filled(sep, x, r)
 
 def Rd.try(q: Rq) -> IO(Rq):
@@ -761,7 +775,7 @@ def Rd.more(f: File, +sep: U32, +cap: Nat, +x: List<&2, U32>, over: Bool) -> IO(
       Rd.skip(f, sep, cap, x)
     case False{}:
       do IO<Rq>:
-        r : File & Result<&1, &1, U32 & String, List<&2, U32>> <- File.read_bytes(f, chunk())
+        r : File & Result<&1, &1, U32 & String, List<&2, U32>> <- File.read_bytes(f, chunk.for(x))
         Rd.filled(sep, x, r)
 
 def Rd.cut.cap(f: File, +sep: U32, +cap: Nat, eof: Bool, fl: Ns.Field) -> IO(Rq):
