@@ -358,6 +358,11 @@ def tba.minus(xs: List<&2, List<&2, U32>>, +bound: Map<&2, Bool>) -> List<&2, Li
 def tba.item.refs(+it: BItem) -> List<&2, List<&2, U32>>:
   tba.minus(tba.item.fold(~tba.refs, it, Nil{}), tba.set(tba.item.names(it, tba.item.fold(~tba.binds, it, Nil{})), Map.new(&2, Bool)))
 
+# whether an item uses n from outside itself, as tba.item.refs would say, without
+# building that list (the gate asks this of every item after every repair)
+def tba.item.uses(+it: BItem, +n: List<&2, U32>) -> Bool:
+  Bool.and(S.mem(n, tba.item.fold(~tba.refs, it, Nil{})), Bool.not(S.mem(n, tba.item.names(it, tba.item.fold(~tba.binds, it, Nil{})))))
+
 # names, each once, in order
 def tba.nub.put(has: Bool, +r: List<&2, U32>, rest: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
   match has:

@@ -249,13 +249,25 @@ def tgt.drop.names(ds: List<&2, TgtDrop>) -> List<&2, List<&2, U32>>:
 type TgtDep is Data:
   TgtDep{st: TgtSt, changed: Bool}
 
-# the first of names that is among dead (empty when none is)
-def tgt.first.mem(ns: List<&2, List<&2, U32>>, +dead: List<&2, List<&2, U32>>) -> List<&2, U32>:
-  match ns:
-    case Nil{}:
+# the first of names that is among dead (empty when none is), stopping there
+def tgt.first.hit(hit: Bool, +n: List<&2, U32>) -> Maybe<&2, List<&2, U32>>:
+  match hit:
+    case True{}:
+      Some{n}
+    case False{}:
+      None{}
+
+def tgt.first.go(ns: List<&2, List<&2, U32>>, +dead: Map<&2, Bool>, m: Maybe<&2, List<&2, U32>>) -> List<&2, U32>:
+  match ns m:
+    case _ Some{x}:
+      x
+    case Nil{} None{}:
       Nil{}
-    case +n <> t:
-      Bool.pick(List<&2, U32>, tgt.mem(n, dead), n, tgt.first.mem(t, dead))
+    case +n <> t None{}:
+      tgt.first.go(t, dead, tgt.first.hit(T.tba.has.got(Map.has(&2, Bool, dead, S.str(n))), n))
+
+def tgt.first.mem(+ns: List<&2, List<&2, U32>>, +dead: Map<&2, Bool>) -> List<&2, U32>:
+  tgt.first.go(ns, dead, None{})
 
 def tgt.dep.put(none: Bool, +used: List<&2, U32>, +it: T.BItem, r: TgtDep) -> TgtDep:
   match none r:
@@ -269,7 +281,7 @@ def tgt.dep.one(+used: List<&2, U32>, +it: T.BItem, r: TgtDep) -> TgtDep:
 
 # one round: each kept item that uses a dropped name is dropped too, its
 # reason naming the name (why is the fallback no longer used)
-def tgt.dep.round(its: List<&2, T.BItem>, +dead: List<&2, List<&2, U32>>, +why: List<&2, U32>, ds: List<&2, TgtDrop>) -> TgtDep:
+def tgt.dep.round(its: List<&2, T.BItem>, +dead: Map<&2, Bool>, +why: List<&2, U32>, ds: List<&2, TgtDrop>) -> TgtDep:
   match its:
     case Nil{}:
       TgtDep{TgtSt{Nil{}, ds}, False{}}
@@ -279,7 +291,7 @@ def tgt.dep.round(its: List<&2, T.BItem>, +dead: List<&2, List<&2, U32>>, +why: 
 def tgt.deps.go(fuel: Nat, +why: List<&2, U32>, r: TgtDep) -> TgtSt:
   match fuel r:
     case 1n+p TgtDep{TgtSt{its, +ds}, True{}}:
-      tgt.deps.go(p, why, tgt.dep.round(its, tgt.drop.names(ds), why, ds))
+      tgt.deps.go(p, why, tgt.dep.round(its, T.tba.set(tgt.drop.names(ds), Map.new(&2, Bool)), why, ds))
     case _ TgtDep{st, c}:
       st
 
@@ -700,13 +712,30 @@ def tgt.requal.put(uses: Bool, it: T.BItem, t: List<&2, T.BItem>, +qe: QF.TqEnv)
     case False{}:
       it <> t
 
-# the items that call n read again by Qfix (its signature changed)
-def tgt.requal(its: List<&2, T.BItem>, +n: List<&2, U32>, +qe: QF.TqEnv) -> List<&2, T.BItem>:
+# the items that call n read again by Qfix (its signature changed), on every
+# core: the module cut in two, 2^3 times.  (A parallel call's arguments are bound
+# before it: see Agda2Bend.bend a2b.par.weights.)
+def tgt.requal.seq(its: List<&2, T.BItem>, +n: List<&2, U32>, +qe: QF.TqEnv) -> List<&2, T.BItem>:
   match its:
     case +it <> t:
-      tgt.requal.put(tgt.mem(n, tgt.refs(it)), it, tgt.requal(t, n, qe), qe)
+      tgt.requal.put(T.tba.item.uses(it, n), it, tgt.requal.seq(t, n, qe), qe)
     case Nil{}:
       Nil{}
+
+def tgt.requal.go(+depth: Nat, +its: List<&2, T.BItem>, +len: Nat, +n: List<&2, U32>, +qe: QF.TqEnv) -> List<&2, T.BItem>:
+  match depth:
+    case 0n:
+      tgt.requal.seq(its, n, qe)
+    case 1n+k:
+      +half = Nat.div(len, 2n)
+      +l = List.take(&2, T.BItem, its, half)
+      +r = List.drop(&2, T.BItem, its, half)
+      +rl = Nat.sub(len, half)
+      a b = tgt.requal.go(k, l, half, n, qe) tgt.requal.go(k, r, rl, n, qe)
+      List.append(&2, T.BItem, a, b)
+
+def tgt.requal(+its: List<&2, T.BItem>, +n: List<&2, U32>, +qe: QF.TqEnv) -> List<&2, T.BItem>:
+  tgt.requal.go(3n, its, List.length(&2, T.BItem, its), n, qe)
 
 # the alternative in the def's place, read by Qfix with its own signature,
 # and the items that call it read again with that signature
