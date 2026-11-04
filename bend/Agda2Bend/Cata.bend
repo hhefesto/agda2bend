@@ -661,11 +661,7 @@ def act.names(ctx: List<&2, T.Bt>) -> List<&2, List<&2, U32>>:
       act.names(t)
 
 def act.used(+x: List<&2, U32>, ns: List<&2, List<&2, U32>>) -> Bool:
-  match ns:
-    case Nil{}:
-      False{}
-    case h <> t:
-      Bool.or(S.eq(h, x), act.used(x, t))
+  S.mem(x, ns)
 
 def act.hint.of(+b: List<&2, U32>) -> List<&2, U32>:
   Bool.pick(List<&2, U32>, S.eq(b, S.b("anon")), S.b("x"), b)
@@ -1690,11 +1686,7 @@ def act.ax.ty.name(+n: List<&2, U32>) -> List<&2, U32>:
   List.append(&2, U32, S.b("a2b_axty_"), act.ax.dot(n))
 
 def act.ax.mem(+x: List<&2, U32>, xs: List<&2, List<&2, U32>>) -> Bool:
-  match xs:
-    case Nil{}:
-      False{}
-    case +h <> t:
-      Bool.or(S.eq(h, x), act.ax.mem(x, t))
+  S.mem(x, xs)
 
 def act.ax.app(f: T.Bt, xs: List<&2, T.Bt>) -> T.Bt:
   match xs:
@@ -11192,11 +11184,7 @@ def act.bp.names(ps: List<&2, T.BParam>) -> List<&2, List<&2, U32>>:
       x <> act.bp.names(t)
 
 def act.mem.name(+n: List<&2, U32>, xs: List<&2, List<&2, U32>>) -> Bool:
-  match xs:
-    case Nil{}:
-      False{}
-    case h <> t:
-      Bool.or(S.eq(h, n), act.mem.name(n, t))
+  S.mem(n, xs)
 
 # a body (match, cases, rewrites, lets, expressions) with the variable n
 # renamed n2, a case or let binding n shadowing it
@@ -12981,6 +12969,29 @@ def act.sym.copied(s: ActSym) -> Bool:
   match s:
     case ActSym{m, n, k, ms, ar, b, fs, c, cp}:
       act.copy.is(cp)
+
+# whether act.items answers an item for a declaration of this symbol (emit
+# asks, before translating one: Agda2Bend.bend a2b.dep)
+def act.items.make(s: ActSym, k: A.AgKw, cp: Bool, nc: Bool) -> Bool:
+  match s k cp nc:
+    case s _ True{} _:
+      False{}
+    case s _ False{} True{}:
+      False{}
+    case ActSym{m, n, k2, ms, ar, AbNone{}, fs, c, cop} A.AkFunction{} False{} False{}:
+      True{}
+    case ActSym{m, n, k2, ms, ar, AbNone{}, fs, c, cop} A.AkRecord{} False{} False{}:
+      True{}
+    case ActSym{m, n, k2, ms, ar, AbNone{}, fs, c, cop} A.AkData{} False{} False{}:
+      True{}
+    case _ _ _ _:
+      False{}
+
+def act.items.makes(d: A.AgDecl, +tab: Map<&2, ActSym>) -> Bool:
+  match d:
+    case A.AgDecl{+q, qn, md, f, l, l0, l1, k, m, +fl, lang, ty, dd}:
+      +s = act.sym.got(Map.get(ActSym, act.sym0(), tab, act.key(q)))
+      act.items.make(s, k, Bool.or(act.flag(A.AkCopy{}, fl), act.sym.copied(s)), act.flag(A.AkNoCompilation{}, fl))
 
 def act.items(d: A.AgDecl, +env: ActEnv, +decls: Map<&2, A.AgDecl>) -> List<&2, T.BItem>:
   match d:

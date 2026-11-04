@@ -206,11 +206,7 @@ def twl.add(t: T.Bt, +w: List<&2, U32>, +rx: T.Bt, +ns: List<&2, List<&2, U32>>,
       t
 
 def twl.mem(+x: List<&2, U32>, xs: List<&2, List<&2, U32>>) -> Bool:
-  match xs:
-    case Nil{}:
-      False{}
-    case h <> t:
-      Bool.or(S.eq(x, h), twl.mem(x, t))
+  S.mem(x, xs)
 
 def twl.any.in(xs: List<&2, List<&2, U32>>, +ys: List<&2, List<&2, U32>>) -> Bool:
   match xs:
@@ -289,12 +285,27 @@ def twl.first(a: Maybe<&2, TwlPair>, b: Maybe<&2, TwlPair>) -> Maybe<&2, TwlPair
     case None{}:
       b
 
-def twl.pair.in(+w: TwlDef, rs: List<&2, List<&2, U32>>, +its: List<&2, T.BItem>) -> Maybe<&2, TwlPair>:
+# the module's defs by name, the first of a name (twl.def.of walked the module
+# per name a body mentions, and bodies mention thousands)
+def twl.defs(its: List<&2, T.BItem>) -> Map<&2, Maybe<&2, TwlDef>>:
+  match its:
+    case Nil{}:
+      Map.new(&2, Maybe<&2, TwlDef>)
+    case T.BiDef{+m, +ps, +ret, +body, doc} <> t:
+      Map.set(&2, Maybe<&2, TwlDef>, twl.defs(t), S.str(m), Some{TwlDef{m, ps, ret, body}})
+    case i <> t:
+      twl.defs(t)
+
+def twl.defs.got(r: Map<&2, Maybe<&2, TwlDef>> & Maybe<&2, TwlDef>) -> Maybe<&2, TwlDef>:
+  (m, d) = r
+  d
+
+def twl.pair.in(+w: TwlDef, rs: List<&2, List<&2, U32>>, +defs: Map<&2, Maybe<&2, TwlDef>>) -> Maybe<&2, TwlPair>:
   match rs:
     case Nil{}:
       None{}
     case +r <> t:
-      twl.first(twl.pair.of(w, twl.def.of(its, r)), twl.pair.in(w, t, its))
+      twl.first(twl.pair.of(w, twl.defs.got(Map.get(Maybe<&2, TwlDef>, None{}, defs, S.str(r)))), twl.pair.in(w, t, defs))
 
 def twl.pairs.put(m: Maybe<&2, TwlPair>, rest: List<&2, TwlPair>) -> List<&2, TwlPair>:
   match m:
@@ -303,14 +314,14 @@ def twl.pairs.put(m: Maybe<&2, TwlPair>, rest: List<&2, TwlPair>) -> List<&2, Tw
     case None{}:
       rest
 
-def twl.pairs(xs: List<&2, T.BItem>, +its: List<&2, T.BItem>) -> List<&2, TwlPair>:
+def twl.pairs(xs: List<&2, T.BItem>, +defs: Map<&2, Maybe<&2, TwlDef>>) -> List<&2, TwlPair>:
   match xs:
     case Nil{}:
       Nil{}
     case T.BiDef{+n, +ps, +ret, +body, doc} <> t:
-      twl.pairs.put(twl.pair.in(TwlDef{n, ps, ret, body}, T.tba.refs(body, Nil{}), its), twl.pairs(t, its))
+      twl.pairs.put(twl.pair.in(TwlDef{n, ps, ret, body}, T.tba.nub(T.tba.refs(body, Nil{})), defs), twl.pairs(t, defs))
     case i <> t:
-      twl.pairs(t, its)
+      twl.pairs(t, defs)
 
 # one pair's rewrite over the module's items: W gets w_rec (its type P's
 # return type at P's call's arguments) and reads it for P's calls; every
@@ -366,4 +377,4 @@ def twl.apply(prs: List<&2, TwlPair>, its: List<&2, T.BItem>) -> List<&2, T.BIte
 
 # the module's items with their mutual with-functions' cycles broken
 def twl.items(+its: List<&2, T.BItem>) -> List<&2, T.BItem>:
-  twl.apply(twl.pairs(its, its), its)
+  twl.apply(twl.pairs(its, twl.defs(its)), its)

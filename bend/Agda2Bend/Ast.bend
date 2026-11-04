@@ -1792,6 +1792,108 @@ def aas.d.raws(d: AgD) -> Nat:
     case _:
       0n
 
+# The names a tree mentions, as a fold: emit's check of what a definition
+# uses before translating it (Agda2Bend.bend a2b.dep).
+def aas.qs(a: Ag, acc: List<&2, AgQ>) -> List<&2, AgQ>:
+  match a:
+    case AgVar{i, x, es}:
+      aas.qs(es, acc)
+    case AgLam{i, x, d, b}:
+      aas.qs(b, acc)
+    case AgLit{l}:
+      aas.qs(l, acc)
+    case AgDef{q, es}:
+      q <> aas.qs(es, acc)
+    case AgCon{q, o, es}:
+      q <> aas.qs(es, acc)
+    case AgPi{i, x, s, d, b}:
+      aas.qs(s, aas.qs(b, acc))
+    case AgSort{s}:
+      aas.qs(s, acc)
+    case AgLevel{l}:
+      aas.qs(l, acc)
+    case AgMeta{es}:
+      aas.qs(es, acc)
+    case AgDontCare{t}:
+      aas.qs(t, acc)
+    case AgDummy{s, es}:
+      aas.qs(es, acc)
+    case AgStored{t}:
+      aas.qs(t, acc)
+    case AgEl{s, t}:
+      aas.qs(s, aas.qs(t, acc))
+    case AgEApp{i, t, rest}:
+      aas.qs(t, aas.qs(rest, acc))
+    case AgEProj{q, rest}:
+      q <> aas.qs(rest, acc)
+    case AgERaw{x, rest}:
+      aas.qs(rest, acc)
+    case AgSSet{l}:
+      aas.qs(l, acc)
+    case AgSProp{l}:
+      aas.qs(l, acc)
+    case AgSSSet{l}:
+      aas.qs(l, acc)
+    case AgSFun{a, b}:
+      aas.qs(a, aas.qs(b, acc))
+    case AgSPi{i, x, t, a, b}:
+      aas.qs(t, aas.qs(a, aas.qs(b, acc)))
+    case AgSUnivOf{s}:
+      aas.qs(s, acc)
+    case AgSDef{q, es}:
+      q <> aas.qs(es, acc)
+    case AgLMax{n, ps}:
+      aas.qs(ps, acc)
+    case AgLPlus{k, t, rest}:
+      aas.qs(t, aas.qs(rest, acc))
+    case AgLQName{q}:
+      q <> acc
+    case AgTel{x, i, ty, rest}:
+      aas.qs(ty, aas.qs(rest, acc))
+    case AgCl{tel, ps, body, ty, ca, rest}:
+      aas.qs(tel, aas.qs(ps, aas.qs(body, aas.qs(ty, aas.qs(rest, acc)))))
+    case AgPArg{i, x, p, rest}:
+      aas.qs(p, aas.qs(rest, acc))
+    case AgPDot{t}:
+      aas.qs(t, acc)
+    case AgPCon{q, r, f, ps}:
+      q <> aas.qs(ps, acc)
+    case AgPLit{l}:
+      aas.qs(l, acc)
+    case AgPProj{q}:
+      q <> acc
+    case AgCase{i, n, b}:
+      aas.qs(b, acc)
+    case AgDone{xs, t}:
+      aas.qs(t, acc)
+    case AgBranches{cp, cs, eta, lits, ca}:
+      aas.qs(cs, aas.qs(eta, aas.qs(lits, aas.qs(ca, acc))))
+    case AgBr{q, n, t, rest}:
+      q <> aas.qs(t, aas.qs(rest, acc))
+    case AgLBr{l, t, rest}:
+      aas.qs(l, aas.qs(t, aas.qs(rest, acc)))
+    case _:
+      acc
+
+def aas.d.qs(d: AgD) -> List<&2, AgQ>:
+  match d:
+    case AgDFun{p, r, w, e, t, mu, cls, tree}:
+      aas.qs(cls, aas.qs(tree, Nil{}))
+    case AgDRec{p, c, nm, ind, fs, tel, eta, pm, cl}:
+      aas.qs(tel, Nil{})
+    case AgDData{p, ix, cs, s, cl}:
+      aas.qs(s, Nil{})
+    case AgDPrim{nm, cls, tree}:
+      aas.qs(cls, aas.qs(tree, Nil{}))
+    case _:
+      Nil{}
+
+# the names a definition's type and details mention
+def aas.decl.qs(d: AgDecl) -> List<&2, AgQ>:
+  match d:
+    case AgDecl{q, nm, mo, f, l, l0, l1, k, m, fl, lang, ty, dd}:
+      aas.qs(ty, aas.d.qs(dd))
+
 # the AgRaw nodes of a definition's type and details
 def aas.decl.raws(d: AgDecl) -> Nat:
   match d:

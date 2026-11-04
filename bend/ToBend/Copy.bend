@@ -119,11 +119,7 @@ def tcp.names.x(+y: List<&2, U32>, +x: List<&2, U32>) -> Bool:
   Bool.or(S.eq(x, y), Bool.and(S.head.is(y, 40), tcp.tok.in(y, x, True{})))
 
 def tcp.mem(+x: List<&2, U32>, xs: List<&2, List<&2, U32>>) -> Bool:
-  match xs:
-    case Nil{}:
-      False{}
-    case h <> t:
-      Bool.or(S.eq(h, x), tcp.mem(x, t))
+  S.mem(x, xs)
 
 # (a quantity minimum among xs names each quantity inside it)
 def tcp.mem.q(+x: List<&2, U32>, xs: List<&2, List<&2, U32>>) -> Bool:

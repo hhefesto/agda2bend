@@ -658,7 +658,7 @@ def gold.laws() -> IO(Unit):
   +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
   +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
   do IO<Unit>:
-    r1 : D.A2bG & Bool <- gold.one("Agda.Primitive", al, ral, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    r1 : D.A2bG & Bool <- gold.one("Agda.Primitive", al, ral, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
     g1 : D.A2bG <- gold.next("Agda.Primitive", al, ral, r1)
     r2 : D.A2bG & Bool <- gold.one("Level", al, ral, g1)
     g2 : D.A2bG <- gold.next("Level", al, ral, r2)
@@ -698,7 +698,7 @@ def gold.fix.laws() -> IO(Unit):
   +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
   +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
   do IO<Unit>:
-    r1 : D.A2bG & Bool <- gold.one("Agda.Primitive", al, ral, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    r1 : D.A2bG & Bool <- gold.one("Agda.Primitive", al, ral, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
     g1 : D.A2bG <- gold.next("Agda.Primitive", al, ral, r1)
     r2 : D.A2bG & Bool <- gold.one("Agda.Builtin.Bool", al, ral, g1)
     g2 : D.A2bG <- gold.next("Agda.Builtin.Bool", al, ral, r2)
@@ -737,7 +737,7 @@ def abs.laws() -> IO(Unit):
   +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
   +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
   do IO<Unit>:
-    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
     g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
     +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bAbs.sexp"))
     g3 : D.A2bG <- abs.of(al, ral, ds, D.a2b.mod.items(S.b("A2bAbs"), al, ds, g2))
@@ -767,7 +767,7 @@ def inj.laws() -> IO(Unit):
   +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
   +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
   do IO<Unit>:
-    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
     g2 : D.A2bG <- abs.mod("Agda.Builtin.Bool", al, g1)
     g3 : D.A2bG <- abs.mod("Agda.Builtin.Nat", al, g2)
     g4 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g3)
@@ -797,7 +797,7 @@ def ctx.laws() -> IO(Unit):
   +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
   +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
   do IO<Unit>:
-    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
     g2 : D.A2bG <- abs.mod("Agda.Builtin.Bool", al, g1)
     g3 : D.A2bG <- abs.mod("Agda.Builtin.Nat", al, g2)
     g4 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g3)
@@ -835,7 +835,7 @@ def cop.laws() -> IO(Unit):
   +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
   +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
   do IO<Unit>:
-    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
     g2 : D.A2bG <- abs.mod("Agda.Builtin.Bool", al, g1)
     g3 : D.A2bG <- abs.mod("Agda.Builtin.Nat", al, g2)
     g4 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g3)
@@ -868,7 +868,7 @@ def um.laws() -> IO(Unit):
   +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
   +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
   do IO<Unit>:
-    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
     g2 : D.A2bG <- abs.mod("Agda.Builtin.Bool", al, g1)
     g3 : D.A2bG <- abs.mod("Agda.Builtin.Nat", al, g2)
     g4 : D.A2bG <- abs.mod("Agda.Builtin.Unit", al, g3)
@@ -900,7 +900,7 @@ def hid.laws() -> IO(Unit):
   +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
   +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
   do IO<Unit>:
-    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
     g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
     +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bHid.sexp"))
     g3 : D.A2bG <- hid.of(al, ral, ds, D.a2b.mod.items(S.b("A2bHid"), al, ds, g2))
@@ -930,7 +930,7 @@ def rec.laws() -> IO(Unit):
   +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
   +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
   do IO<Unit>:
-    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
     g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
     +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bRec.sexp"))
     g3 : D.A2bG <- rec.of(al, ral, ds, D.a2b.mod.items(S.b("A2bRec"), al, ds, g2))
@@ -956,7 +956,7 @@ def unw.laws() -> IO(Unit):
   +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
   +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
   do IO<Unit>:
-    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
     g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
     +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bUnw.sexp"))
     g3 : D.A2bG <- unw.of(al, ral, ds, D.a2b.mod.items(S.b("A2bUnw"), al, ds, g2))
@@ -987,7 +987,7 @@ def eqp.laws() -> IO(Unit):
   +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
   +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
   do IO<Unit>:
-    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
     g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
     +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bEqp.sexp"))
     g3 : D.A2bG <- eqp.of(al, ral, ds, D.a2b.mod.items(S.b("A2bEqp"), al, ds, g2))
@@ -1017,7 +1017,7 @@ def eqq.laws() -> IO(Unit):
   +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
   +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
   do IO<Unit>:
-    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
     g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
     +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bEqq.sexp"))
     g3 : D.A2bG <- eqq.of(al, ral, ds, D.a2b.mod.items(S.b("A2bEqq"), al, ds, g2))
@@ -1043,7 +1043,7 @@ def trl.laws() -> IO(Unit):
   +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
   +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
   do IO<Unit>:
-    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
     g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
     +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bTrl.sexp"))
     g3 : D.A2bG <- trl.of(al, ral, ds, D.a2b.mod.items(S.b("A2bTrl"), al, ds, g2))
@@ -1070,7 +1070,7 @@ def ftr.laws() -> IO(Unit):
   +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
   +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
   do IO<Unit>:
-    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
     g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
     g3 : D.A2bG <- abs.mod("Agda.Builtin.Unit", al, g2)
     +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bFtr.sexp"))
@@ -1102,7 +1102,7 @@ def cs.laws() -> IO(Unit):
   +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
   +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
   do IO<Unit>:
-    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
     g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
     +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bCs.sexp"))
     g3 : D.A2bG <- cs.of(al, ral, ds, D.a2b.mod.items(S.b("A2bCs"), al, ds, g2))
@@ -1123,18 +1123,18 @@ def tpl.pre(p: List<&2, T.BItem> & List<&2, T.BItem>, +al: Map<&2, List<&2, U32>
 
 def tpl.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, tr: D.A2bTr) -> IO(D.A2bG):
   match tr:
-    case D.A2bTr{its, D.A2bG{tab, unf, kept, pj, +qs}}:
+    case D.A2bTr{its, D.A2bG{tab, unf, kept, pj, +qs, gone}}:
       +text = tpl.pre(D.a2b.alts.split(its), al, ral, List.length(&2, A.AgDecl, ds), qs)
       do IO<D.A2bG>:
         IO.print(verdict("a def the static checks drop has its alternative in its place before any check", S.infix(text, S.b("tried when the other did not check\ndef anon.re2(~l1: Quant, ~l2: Quant, ~A: Kind(l1), ~B: Kind(l2), ~f: A -> B, ~x: anon.is_inv(l1, l2, A, B, f)) -> anon.is_inv(l1, l2, A, B, f):\n  anon.re(~l1, ~l2, ~A, ~B, ~f, ~anon.re(~l1, ~l2, ~A, ~B, ~f, ~x))"))))
-        return D.A2bG{tab, unf, kept, pj, qs}
+        return D.A2bG{tab, unf, kept, pj, qs, gone}
 
 def tpl.laws() -> IO(Unit):
   +order : List<&2, List<&2, U32>> = [S.b("Agda.Primitive"), S.b("Agda.Builtin.Equality"), S.b("A2bTpl")]
   +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
   +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
   do IO<Unit>:
-    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
     g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
     +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bTpl.sexp"))
     g3 : D.A2bG <- tpl.of(al, ral, ds, D.a2b.mod.items(S.b("A2bTpl"), al, ds, g2))
@@ -1162,7 +1162,7 @@ def inl.laws() -> IO(Unit):
   +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
   +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
   do IO<Unit>:
-    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
     g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
     +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bInl.sexp"))
     g3 : D.A2bG <- inl.of(al, ral, ds, D.a2b.mod.items(S.b("A2bInl"), al, ds, g2))
@@ -1190,7 +1190,7 @@ def tele.laws() -> IO(Unit):
   +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
   +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
   do IO<Unit>:
-    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
     g2 : D.A2bG <- abs.mod("Agda.Builtin.Bool", al, g1)
     g3 : D.A2bG <- abs.mod("Agda.Builtin.Nat", al, g2)
     +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bTele.sexp"))
@@ -1225,7 +1225,7 @@ def rfl.laws() -> IO(Unit):
   +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
   +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
   do IO<Unit>:
-    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
     g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
     +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bRfl.sexp"))
     g3 : D.A2bG <- rfl.of(al, ral, ds, D.a2b.mod.items(S.b("A2bRfl"), al, ds, g2))
@@ -1251,7 +1251,7 @@ def cdi.laws() -> IO(Unit):
   +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
   +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
   do IO<Unit>:
-    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
     g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
     +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bCdi.sexp"))
     g3 : D.A2bG <- cdi.of(al, ral, ds, D.a2b.mod.items(S.b("A2bCdi"), al, ds, g2))
@@ -1285,7 +1285,7 @@ def rr.laws() -> IO(Unit):
   +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
   +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
   do IO<Unit>:
-    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
     g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
     +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bRr.sexp"))
     g3 : D.A2bG <- rr.of(al, ral, ds, D.a2b.mod.items(S.b("A2bRr"), al, ds, g2))
@@ -1311,7 +1311,7 @@ def prd.laws() -> IO(Unit):
   +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
   +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
   do IO<Unit>:
-    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
     g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
     +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bPrd.sexp"))
     g3 : D.A2bG <- prd.of(al, ral, ds, D.a2b.mod.items(S.b("A2bPrd"), al, ds, g2))
@@ -1336,11 +1336,45 @@ def eta.laws() -> IO(Unit):
   +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
   +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
   do IO<Unit>:
-    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig)})
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
     g2 : D.A2bG <- abs.mod("Agda.Builtin.Equality", al, g1)
     +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bEta.sexp"))
     g3 : D.A2bG <- eta.of(al, ral, ds, D.a2b.mod.items(S.b("A2bEta"), al, ds, g2))
     return Unit{}
+
+# Speed (2026-11-04) ---------------------------------------------------------
+
+def spd.names(xs: List<&2, List<&2, U32>>) -> List<&2, U32>:
+  S.join(xs, 44)
+
+def spd.is.some(m: Maybe<&2, A.AgQ>) -> Bool:
+  match m:
+    case Some{q}:
+      True{}
+    case None{}:
+      False{}
+
+def spd.q(+n: String, +k: String) -> A.AgQ:
+  A.AgQ{S.b(n), S.b("1"), S.b(k)}
+
+# the loops that stop early give the old answers, and a definition that
+# mentions a name with no item is passed over, unless the name unfolds
+def spd.laws() -> IO(Unit):
+  +f = spd.q("M.f", "2")
+  +g = spd.q("M.g", "3")
+  +gone : Map<&2, Bool> = Map.set(&2, Bool, Map.new(&2, Bool), "M.f", True{})
+  +unf : Map<&2, C.ActCopy> = Map.set(&2, C.ActCopy, Map.new(&2, C.ActCopy), C.act.key(f), C.ActCopy{0n, A.AgNone{}})
+  +t : A.Ag = A.AgDef{g, A.AgEApp{A.AgI{A.AkVisible{}, A.AkRelevant{}, A.AkW{}}, A.AgCon{f, A.AkWord{}, A.AgENil{}}, A.AgEProj{g, A.AgENil{}}}}
+  do IO<Unit>:
+    IO.print(verdict("eq: equal, a prefix either way, a difference", Bool.and(S.eq(S.b("abc"), S.b("abc")), Bool.not(Bool.or(S.eq(S.b("ab"), S.b("abc")), Bool.or(S.eq(S.b("abc"), S.b("ab")), S.eq(S.b("abd"), S.b("abc"))))))))
+    IO.print(verdict("prefix: of itself, of the empty, longer, a difference", Bool.and(Bool.and(S.prefix(S.b("abc"), S.b("abc")), S.prefix(S.b("abc"), Nil{})), Bool.not(Bool.or(S.prefix(S.b("ab"), S.b("abc")), S.prefix(S.b("abd"), S.b("abc")))))))
+    IO.print(verdict("mem: first, last, none", Bool.and(Bool.and(S.mem(S.b("a"), [S.b("a"), S.b("b")]), S.mem(S.b("b"), [S.b("a"), S.b("b")])), Bool.not(S.mem(S.b("c"), [S.b("a"), S.b("b")])))))
+    IO.print(verdict("nub: each once, in order", S.eq(spd.names(T.tba.nub([S.b("b"), S.b("a"), S.b("b"), S.b("c"), S.b("a")])), S.b("b,a,c"))))
+    IO.print(verdict("aas.qs: a def, a constructor, a projection", Nat.is_eq(List.length(&2, A.AgQ, A.aas.qs(t, Nil{})), 3n)))
+    IO.print(verdict("a mention of a name with no item is found", spd.is.some(D.a2b.dep.find([g, f], gone, Map.new(&2, C.ActCopy), None{}))))
+    IO.print(verdict("one with an unfolding is not", Bool.not(spd.is.some(D.a2b.dep.find([g, f], gone, unf, None{})))))
+    IO.print(verdict("nor are the others", Bool.not(spd.is.some(D.a2b.dep.find([g], gone, Map.new(&2, C.ActCopy), None{})))))
+    IO.print(verdict("subst under a binder the value mentions renames it", S.eq(P.tpr.t(T.tba.subst(T.BtLam{T.BmLive{}, S.b("y"), T.BtApp{T.BtVar{S.b("x")}, T.BtVar{S.b("y")}}}, S.b("x"), T.BtVar{S.b("y")}), P.TpLoose{}, 0n, Nil{}), P.tpr.t(T.BtLam{T.BmLive{}, S.b("y_c"), T.BtApp{T.BtVar{S.b("y")}, T.BtVar{S.b("y_c")}}}, P.TpLoose{}, 0n, Nil{}))))
 
 def main() -> IO(Unit):
   do IO<Unit>:
@@ -1373,3 +1407,4 @@ def main() -> IO(Unit):
     rr.laws()
     prd.laws()
     eta.laws()
+    spd.laws()

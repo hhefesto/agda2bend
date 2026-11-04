@@ -61,11 +61,7 @@ def tgt.refs(it: T.BItem) -> List<&2, List<&2, U32>>:
   T.tba.item.refs(it)
 
 def tgt.mem(+x: List<&2, U32>, xs: List<&2, List<&2, U32>>) -> Bool:
-  match xs:
-    case Nil{}:
-      False{}
-    case h <> t:
-      Bool.or(S.eq(h, x), tgt.mem(x, t))
+  S.mem(x, xs)
 
 def tgt.any.mem(xs: List<&2, List<&2, U32>>, +ys: List<&2, List<&2, U32>>) -> Bool:
   match xs:

@@ -152,13 +152,32 @@ def ax.is.ty(+x: List<&2, U32>) -> Bool:
 def ax.of.ty(+x: List<&2, U32>) -> List<&2, U32>:
   List.append(&2, U32, S.b("a2b_ax_"), List.drop(&2, U32, x, 9n))
 
-# the cell of a name as this module prints it
+# the cell of a name as this module prints it (matches, not Bool.pick: a pick
+# builds all four keys, and this runs for every name of every def)
+def ax.key.of(isax: Bool, isty: Bool, here: Bool, +v: AxV, +n: List<&2, U32>) -> String:
+  match isax isty here:
+    case True{} _ _:
+      "axd:" ++ S.str(n)
+    case False{} True{} _:
+      "axd:" ++ S.str(ax.of.ty(n))
+    case False{} False{} True{}:
+      "axd:" ++ S.str(List.append(&2, U32, ax.q(v), ax.base(n)))
+    case False{} False{} False{}:
+      "axd:" ++ S.str(n)
+
 def ax.key(+v: AxV, +n: List<&2, U32>) -> String:
-  Bool.pick(String, ax.is(n), "axd:" ++ S.str(n), Bool.pick(String, ax.is.ty(n), "axd:" ++ S.str(ax.of.ty(n)), Bool.pick(String, ax.local(v, n), "axd:" ++ S.str(List.append(&2, U32, ax.q(v), ax.base(n))), "axd:" ++ S.str(n))))
+  ax.key.of(ax.is(n), ax.is.ty(n), ax.local(v, n), v, n)
 
 # what a name in a def's text brings: a postulate itself and what its type needs
+def ax.of.pick(isax: Bool, +xs: List<&2, List<&2, U32>>, +x: List<&2, U32>, +unf: Map<&2, C.ActCopy>) -> List<&2, List<&2, U32>>:
+  match isax:
+    case True{}:
+      ax.ins(x, ax.idx(unf, x), xs, unf)
+    case False{}:
+      xs
+
 def ax.of(+v: AxV, +unf: Map<&2, C.ActCopy>, +x: List<&2, U32>) -> List<&2, List<&2, U32>>:
-  Bool.pick(List<&2, List<&2, U32>>, ax.is(x), ax.ins(x, ax.idx(unf, x), ax.get(unf, ax.key(v, x)), unf), ax.get(unf, ax.key(v, x)))
+  ax.of.pick(ax.is(x), ax.get(unf, ax.key(v, x)), x, unf)
 
 def ax.of.all(rs: List<&2, List<&2, U32>>, +v: AxV, +unf: Map<&2, C.ActCopy>) -> List<&2, List<&2, U32>>:
   match rs:
@@ -183,26 +202,37 @@ def ax.raise(+k: String, +rs: List<&2, List<&2, U32>>, +v: AxV, p: AxP) -> AxP:
       +new = ax.union(ax.of.all(rs, v, unf), old, unf)
       Bool.pick(AxP, Nat.is_eq(ax.len(new), ax.len(old)), AxP{unf, ch}, AxP{ax.put(k, new, unf), True{}})
 
+# each def's cell and the names of its text, each once: read once, not per pass
 def ax.refs(+it: T.BItem) -> List<&2, List<&2, U32>>:
-  T.tba.item.fold(~T.tba.refs, it, Nil{})
+  T.tba.nub(T.tba.item.fold(~T.tba.refs, it, Nil{}))
 
-def ax.pass(its: List<&2, T.BItem>, +v: AxV, p: AxP) -> AxP:
+type AxD is Data:
+  AxD{k: String, rs: List<&2, List<&2, U32>>}
+
+def ax.defs(its: List<&2, T.BItem>, +v: AxV) -> List<&2, AxD>:
   match its:
     case Nil{}:
-      p
+      Nil{}
     case T.BiDef{+n, +ps, +ret, +body, +doc} <> t:
-      ax.pass(t, v, ax.raise(ax.key(v, n), ax.refs(T.BiDef{n, ps, ret, body, doc}), v, p))
+      AxD{ax.key(v, n), ax.refs(T.BiDef{n, ps, ret, body, doc})} <> ax.defs(t, v)
     case it <> t:
-      ax.pass(t, v, p)
+      ax.defs(t, v)
 
-def ax.fix.go(fuel: Nat, +its: List<&2, T.BItem>, +v: AxV, p: AxP) -> Map<&2, C.ActCopy>:
+def ax.pass(ds: List<&2, AxD>, +v: AxV, p: AxP) -> AxP:
+  match ds:
+    case Nil{}:
+      p
+    case AxD{+k, +rs} <> t:
+      ax.pass(t, v, ax.raise(k, rs, v, p))
+
+def ax.fix.go(fuel: Nat, +ds: List<&2, AxD>, +v: AxV, p: AxP) -> Map<&2, C.ActCopy>:
   match fuel p:
     case _ AxP{unf, False{}}:
       unf
     case 0n AxP{unf, True{}}:
       unf
     case 1n+f AxP{+unf, True{}}:
-      ax.fix.go(f, its, v, ax.pass(its, v, AxP{unf, False{}}))
+      ax.fix.go(f, ds, v, ax.pass(ds, v, AxP{unf, False{}}))
 
 # The rewrite ---------------------------------------------------------------------
 
@@ -216,56 +246,83 @@ def ax.tpls(xs: List<&2, List<&2, U32>>, a: T.Bt) -> T.Bt:
     case x <> t:
       T.BtArgs{T.BtTplArg{T.BtVar{x}}, ax.tpls(t, a)}
 
-# what a call of f must pass: nothing for a postulate or a local variable
-def ax.call(+f: List<&2, U32>, +bd: List<&2, List<&2, U32>>, +v: AxV, +unf: Map<&2, C.ActCopy>) -> List<&2, List<&2, U32>>:
-  Bool.pick(List<&2, List<&2, U32>>, Bool.or(ax.is(f), ax.mem(f, bd)), Nil{}, ax.get(unf, ax.key(v, f)))
+# the names of a module's text that need an assumption, with what they need: a
+# def's whole text is read per call otherwise, and most modules have none
+def ax.need.put(xs: List<&2, List<&2, U32>>, +k: String, need: Map<&2, List<&2, List<&2, U32>>>) -> Map<&2, List<&2, List<&2, U32>>>:
+  match xs:
+    case Nil{}:
+      need
+    case +x <> +t:
+      Map.set(&2, List<&2, List<&2, U32>>, need, k, x <> t)
 
-def ax.go(t: T.Bt, +bd: List<&2, List<&2, U32>>, +v: AxV, +unf: Map<&2, C.ActCopy>) -> T.Bt:
+def ax.need.go(rs: List<&2, List<&2, U32>>, +v: AxV, +unf: Map<&2, C.ActCopy>, need: Map<&2, List<&2, List<&2, U32>>>) -> Map<&2, List<&2, List<&2, U32>>>:
+  match rs:
+    case Nil{}:
+      need
+    case +r <> t:
+      ax.need.go(t, v, unf, ax.need.put(ax.get(unf, ax.key(v, r)), S.str(r), need))
+
+def ax.need.got(r: Map<&2, List<&2, List<&2, U32>>> & List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  (m, x) = r
+  x
+
+# what a call of f must pass: nothing for a postulate or a local variable
+def ax.call.of(xs: List<&2, List<&2, U32>>, +f: List<&2, U32>, +bd: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  match xs:
+    case Nil{}:
+      Nil{}
+    case +x <> +t:
+      Bool.pick(List<&2, List<&2, U32>>, Bool.or(ax.is(f), ax.mem(f, bd)), Nil{}, x <> t)
+
+def ax.call(+f: List<&2, U32>, +bd: List<&2, List<&2, U32>>, +need: Map<&2, List<&2, List<&2, U32>>>) -> List<&2, List<&2, U32>>:
+  ax.call.of(ax.need.got(Map.get(List<&2, List<&2, U32>>, Nil{}, need, S.str(f))), f, bd)
+
+def ax.go(t: T.Bt, +bd: List<&2, List<&2, U32>>, +need: Map<&2, List<&2, List<&2, U32>>>) -> T.Bt:
   match t:
     case T.BtApp{T.BtVar{+f}, a}:
-      T.BtApp{T.BtVar{f}, ax.tpls(ax.call(f, bd, v, unf), ax.go(a, bd, v, unf))}
+      T.BtApp{T.BtVar{f}, ax.tpls(ax.call(f, bd, need), ax.go(a, bd, need))}
     case T.BtApp{f, a}:
-      T.BtApp{ax.go(f, bd, v, unf), ax.go(a, bd, v, unf)}
+      T.BtApp{ax.go(f, bd, need), ax.go(a, bd, need)}
     case T.BtTplArg{a}:
-      T.BtTplArg{ax.go(a, bd, v, unf)}
+      T.BtTplArg{ax.go(a, bd, need)}
     case T.BtLam{m, +x, b}:
-      T.BtLam{m, x, ax.go(b, x <> bd, v, unf)}
+      T.BtLam{m, x, ax.go(b, x <> bd, need)}
     case T.BtPi{m, +x, d, a, b}:
-      T.BtPi{m, x, d, ax.go(a, bd, v, unf), ax.go(b, x <> bd, v, unf)}
+      T.BtPi{m, x, d, ax.go(a, bd, need), ax.go(b, x <> bd, need)}
     case T.BtCon{c, a}:
-      T.BtCon{c, ax.go(a, bd, v, unf)}
+      T.BtCon{c, ax.go(a, bd, need)}
     case T.BtTyApp{c, a}:
-      T.BtTyApp{c, ax.go(a, bd, v, unf)}
+      T.BtTyApp{c, ax.go(a, bd, need)}
     case T.BtEq{ty, a, b}:
-      T.BtEq{ax.go(ty, bd, v, unf), ax.go(a, bd, v, unf), ax.go(b, bd, v, unf)}
+      T.BtEq{ax.go(ty, bd, need), ax.go(a, bd, need), ax.go(b, bd, need)}
     case T.BtSucc{a}:
-      T.BtSucc{ax.go(a, bd, v, unf)}
+      T.BtSucc{ax.go(a, bd, need)}
     case T.BtAnn{a, ty}:
-      T.BtAnn{ax.go(a, bd, v, unf), ax.go(ty, bd, v, unf)}
+      T.BtAnn{ax.go(a, bd, need), ax.go(ty, bd, need)}
     case T.BtMatch{xs, cs}:
-      T.BtMatch{xs, ax.go(cs, bd, v, unf)}
+      T.BtMatch{xs, ax.go(cs, bd, need)}
     case T.BtExpr{e}:
-      T.BtExpr{ax.go(e, bd, v, unf)}
+      T.BtExpr{ax.go(e, bd, need)}
     case T.BtRw{e, p, b}:
-      T.BtRw{ax.go(e, bd, v, unf), ax.go(p, bd, v, unf), ax.go(b, bd, v, unf)}
+      T.BtRw{ax.go(e, bd, need), ax.go(p, bd, need), ax.go(b, bd, need)}
     case T.BtLet{+x, a, b}:
-      T.BtLet{x, ax.go(a, bd, v, unf), ax.go(b, x <> bd, v, unf)}
+      T.BtLet{x, ax.go(a, bd, need), ax.go(b, x <> bd, need)}
     case T.BtCase{+p, b, rest}:
-      T.BtCase{p, ax.go(b, T.tba.pvars(p, bd), v, unf), ax.go(rest, bd, v, unf)}
+      T.BtCase{p, ax.go(b, T.tba.pvars(p, bd), need), ax.go(rest, bd, need)}
     case T.BtDead{a}:
-      T.BtDead{ax.go(a, bd, v, unf)}
+      T.BtDead{ax.go(a, bd, need)}
     case T.BtArgs{a, rest}:
-      T.BtArgs{ax.go(a, bd, v, unf), ax.go(rest, bd, v, unf)}
+      T.BtArgs{ax.go(a, bd, need), ax.go(rest, bd, need)}
     case t:
       t
 
 # a header's parameters, each in the scope of those before it
-def ax.ps(ps: List<&2, T.BParam>, +bd: List<&2, List<&2, U32>>, +v: AxV, +unf: Map<&2, C.ActCopy>) -> List<&2, T.BParam>:
+def ax.ps(ps: List<&2, T.BParam>, +bd: List<&2, List<&2, U32>>, +need: Map<&2, List<&2, List<&2, U32>>>) -> List<&2, T.BParam>:
   match ps:
     case Nil{}:
       Nil{}
     case T.BParam{m, +x, ty} <> t:
-      T.BParam{m, x, ax.go(ty, bd, v, unf)} <> ax.ps(t, x <> bd, v, unf)
+      T.BParam{m, x, ax.go(ty, bd, need)} <> ax.ps(t, x <> bd, need)
 
 def ax.bound(ps: List<&2, T.BParam>, acc: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
   match ps:
@@ -301,20 +358,28 @@ def ax.params(xs: List<&2, List<&2, U32>>, +env: C.ActEnv, +v: AxV, +unf: Map<&2
     case +x <> t:
       T.BParam{T.BmTpl{}, x, ax.ty.call(x, env, unf, v)} <> ax.params(t, env, v, unf)
 
-def ax.item(it: T.BItem, +env: C.ActEnv, +v: AxV, +unf: Map<&2, C.ActCopy>) -> T.BItem:
+def ax.item(it: T.BItem, +env: C.ActEnv, +v: AxV, +unf: Map<&2, C.ActCopy>, +need: Map<&2, List<&2, List<&2, U32>>>) -> T.BItem:
   match it:
     case T.BiDef{+n, +ps, ret, body, doc}:
       +bd = ax.bound(ps, Nil{})
-      T.BiDef{n, List.append(&2, T.BParam, ax.params(ax.get(unf, ax.key(v, n)), env, v, unf), ax.ps(ps, Nil{}, v, unf)), ax.go(ret, bd, v, unf), ax.go(body, bd, v, unf), doc}
+      T.BiDef{n, List.append(&2, T.BParam, ax.params(ax.get(unf, ax.key(v, n)), env, v, unf), ax.ps(ps, Nil{}, need)), ax.go(ret, bd, need), ax.go(body, bd, need), doc}
     case it:
       it
 
-def ax.items(its: List<&2, T.BItem>, +env: C.ActEnv, +v: AxV, +unf: Map<&2, C.ActCopy>) -> List<&2, T.BItem>:
+def ax.items.go(its: List<&2, T.BItem>, +env: C.ActEnv, +v: AxV, +unf: Map<&2, C.ActCopy>, +need: Map<&2, List<&2, List<&2, U32>>>) -> List<&2, T.BItem>:
   match its:
     case Nil{}:
       Nil{}
     case it <> t:
-      ax.item(it, env, v, unf) <> ax.items(t, env, v, unf)
+      ax.item(it, env, v, unf, need) <> ax.items.go(t, env, v, unf, need)
+
+# the items as they are when nothing they mention needs an assumption
+def ax.items(none: Bool, +its: List<&2, T.BItem>, +env: C.ActEnv, +v: AxV, +unf: Map<&2, C.ActCopy>, +need: Map<&2, List<&2, List<&2, U32>>>) -> List<&2, T.BItem>:
+  match none:
+    case True{}:
+      its
+    case False{}:
+      ax.items.go(its, env, v, unf, need)
 
 # The pass ------------------------------------------------------------------------
 
@@ -332,9 +397,42 @@ def ax.names(its: List<&2, T.BItem>, acc: Map<&2, Bool>) -> Map<&2, Bool>:
 type AxOut is Data:
   AxOut{fits: List<&2, T.BItem>, alts: List<&2, T.BItem>, unf: Map<&2, C.ActCopy>}
 
+def ax.names.all(ds: List<&2, AxD>, acc: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  match ds:
+    case Nil{}:
+      acc
+    case AxD{k, +rs} <> t:
+      ax.names.all(t, List.append(&2, List<&2, U32>, rs, acc))
+
+def ax.need(+ds: List<&2, AxD>, +its: List<&2, T.BItem>, +v: AxV, +unf: Map<&2, C.ActCopy>) -> Map<&2, List<&2, List<&2, U32>>>:
+  ax.need.go(T.tba.nub(ax.names.all(ds, Nil{})), v, unf, Map.new(&2, List<&2, List<&2, U32>>))
+
+def ax.none.cell(xs: List<&2, List<&2, U32>>) -> Bool:
+  match xs:
+    case Nil{}:
+      True{}
+    case x <> t:
+      False{}
+
+# whether no name a def mentions, and no def itself, needs an assumption
+def ax.none.go(ds: List<&2, AxD>, +unf: Map<&2, C.ActCopy>, ok: Bool) -> Bool:
+  match ds ok:
+    case _ False{}:
+      False{}
+    case Nil{} True{}:
+      True{}
+    case AxD{+k, rs} <> t True{}:
+      ax.none.go(t, unf, ax.none.cell(ax.get(unf, k)))
+
+def ax.none(+ds: List<&2, AxD>, +need: Map<&2, List<&2, List<&2, U32>>>, +v: AxV, +unf: Map<&2, C.ActCopy>) -> Bool:
+  Bool.and(Nat.is_eq(Map.size(&2, List<&2, List<&2, U32>>, need), 0n), ax.none.go(ds, unf, True{}))
+
 def ax.module(+m: List<&2, U32>, +q: List<&2, U32>, +tab: Map<&2, C.ActSym>, +al: Map<&2, List<&2, U32>>, +unf0: Map<&2, C.ActCopy>, +fits: List<&2, T.BItem>, +alts: List<&2, T.BItem>) -> AxOut:
   +all = List.append(&2, T.BItem, fits, alts)
   +v : AxV = AxV{ax.names(all, Map.new(&2, Bool)), q}
   +env : C.ActEnv = C.ActEnv{m, tab, al, unf0}
-  +unf = ax.fix.go(16n, all, v, AxP{unf0, True{}})
-  AxOut{ax.items(fits, env, v, unf), ax.items(alts, env, v, unf), unf}
+  +ds = ax.defs(all, v)
+  +unf = ax.fix.go(16n, ds, v, AxP{unf0, True{}})
+  +need = ax.need(ds, all, v, unf)
+  +none = ax.none(ds, need, v, unf)
+  AxOut{ax.items(none, fits, env, v, unf, need), ax.items(none, alts, env, v, unf, need), unf}

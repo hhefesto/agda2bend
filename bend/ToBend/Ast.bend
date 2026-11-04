@@ -358,12 +358,32 @@ def tba.minus(xs: List<&2, List<&2, U32>>, +bound: Map<&2, Bool>) -> List<&2, Li
 def tba.item.refs(+it: BItem) -> List<&2, List<&2, U32>>:
   tba.minus(tba.item.fold(~tba.refs, it, Nil{}), tba.set(tba.item.names(it, tba.item.fold(~tba.binds, it, Nil{})), Map.new(&2, Bool)))
 
-def tba.subst.in(+x: List<&2, U32>, xs: List<&2, List<&2, U32>>) -> Bool:
-  match xs:
+# names, each once, in order
+def tba.nub.put(has: Bool, +r: List<&2, U32>, rest: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  match has:
+    case True{}:
+      rest
+    case False{}:
+      r <> rest
+
+def tba.nub.go(rs: List<&2, List<&2, U32>>, +seen: Map<&2, Bool>) -> List<&2, List<&2, U32>>:
+  match rs:
     case Nil{}:
-      False{}
-    case +y <> t:
-      Bool.or(S.eq(x, y), tba.subst.in(x, t))
+      Nil{}
+    case +r <> t:
+      tba.nub.put(tba.has.got(Map.has(&2, Bool, seen, S.str(r))), r, tba.nub.go(t, Map.set(&2, Bool, seen, S.str(r), True{})))
+
+def tba.nub(+rs: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  tba.nub.go(rs, Map.new(&2, Bool))
+
+def tba.subst.in(+x: List<&2, U32>, xs: List<&2, List<&2, U32>>) -> Bool:
+  S.mem(x, xs)
+
+# the names a value mentions, as a set: looked up at every binder the value
+# goes under, where a list was a walk of the value per binder (a module's
+# whole time on agda-unimath's commutative-algebra)
+def tba.subst.fvin(+x: List<&2, U32>, fv: Map<&2, Bool>) -> Bool:
+  tba.has.got(Map.has(&2, Bool, fv, S.str(x)))
 
 def tba.subst.isvar(+v: Bt) -> Bool:
   match v:
@@ -392,20 +412,22 @@ def tba.subst.isvar(+v: Bt) -> Bool:
 type TbRen is Data:
   TbRen{a: List<&2, U32>, b: List<&2, U32>}
 
-# y, else y with _c appended until no name of avoid (both of Bool.pick's
-# arms are evaluated, so a short fuel)
-def tba.fresh(fuel: Nat, +y: List<&2, U32>, +avoid: List<&2, List<&2, U32>>) -> List<&2, U32>:
-  match fuel:
-    case 0n:
+# y, else y with _c appended until no name of the value's or the body's
+def tba.fresh(fuel: Nat, +y: List<&2, U32>, +fv: Map<&2, Bool>, +rb: List<&2, List<&2, U32>>, hit: Bool) -> List<&2, U32>:
+  match fuel hit:
+    case _ False{}:
       y
-    case 1n+f:
-      Bool.pick(List<&2, U32>, tba.subst.in(y, avoid), tba.fresh(f, List.append(&2, U32, y, [95, 99]), avoid), y)
+    case 0n True{}:
+      y
+    case 1n+f True{}:
+      +y2 = List.append(&2, U32, y, [95, 99])
+      tba.fresh(f, y2, fv, rb, Bool.or(tba.subst.fvin(y2, fv), S.mem(y2, rb)))
 
 # a binder's name: y, or a fresh one when y is captured (cap)
-def tba.ren.nm(cap: Bool, +y: List<&2, U32>, +fv: List<&2, List<&2, U32>>, +b: Bt) -> List<&2, U32>:
+def tba.ren.nm(cap: Bool, +y: List<&2, U32>, +fv: Map<&2, Bool>, +b: Bt) -> List<&2, U32>:
   match cap:
     case True{}:
-      tba.fresh(12n, List.append(&2, U32, y, [95, 99]), List.append(&2, List<&2, U32>, fv, tba.refs(b, Nil{})))
+      tba.fresh(12n, y, fv, tba.refs(b, Nil{}), True{})
     case False{}:
       y
 
@@ -431,7 +453,7 @@ def tba.ren.var(m: Maybe<&2, List<&2, U32>>, +hit: Bool, +y: List<&2, U32>, +v: 
     case None{}:
       Bool.pick(Bt, hit, v, BtVar{y})
 
-def tba.subst.go(t: Bt, +x: List<&2, U32>, +v: Bt, +fv: List<&2, List<&2, U32>>, +on: Bool, +ren: List<&2, TbRen>) -> Bt:
+def tba.subst.go(t: Bt, +x: List<&2, U32>, +v: Bt, +fv: Map<&2, Bool>, +on: Bool, +ren: List<&2, TbRen>) -> Bt:
   match t:
     case BtExpr{e}:
       BtExpr{tba.subst.go(e, x, v, fv, on, ren)}
@@ -439,7 +461,7 @@ def tba.subst.go(t: Bt, +x: List<&2, U32>, +v: Bt, +fv: List<&2, List<&2, U32>>,
       BtRw{tba.subst.go(e, x, v, fv, on, ren), tba.subst.go(p, x, v, fv, on, ren), tba.subst.go(b, x, v, fv, on, ren)}
     case BtLet{+y, w, +b}:
       +on2 = Bool.and(on, Bool.not(S.eq(x, y)))
-      +y2 = tba.ren.nm(Bool.and(on2, tba.subst.in(y, fv)), y, fv, b)
+      +y2 = tba.ren.nm(Bool.and(on2, tba.subst.fvin(y, fv)), y, fv, b)
       BtLet{y2, tba.subst.go(w, x, v, fv, on, ren), tba.subst.go(b, x, v, fv, on2, tba.ren.push(y, y2, ren))}
     case BtMatch{+xs, cs}:
       BtMatch{tba.subst.go(xs, x, v, fv, Bool.and(on, tba.subst.isvar(v)), ren), tba.subst.go(cs, x, v, fv, on, ren)}
@@ -453,11 +475,11 @@ def tba.subst.go(t: Bt, +x: List<&2, U32>, +v: Bt, +fv: List<&2, List<&2, U32>>,
       BtTplArg{tba.subst.go(a, x, v, fv, on, ren)}
     case BtLam{m, +y, +b}:
       +on2 = Bool.and(on, Bool.not(S.eq(x, y)))
-      +y2 = tba.ren.nm(Bool.and(on2, tba.subst.in(y, fv)), y, fv, b)
+      +y2 = tba.ren.nm(Bool.and(on2, tba.subst.fvin(y, fv)), y, fv, b)
       BtLam{m, y2, tba.subst.go(b, x, v, fv, on2, tba.ren.push(y, y2, ren))}
     case BtPi{m, +y, d, a, +b}:
       +on2 = Bool.and(on, Bool.not(S.eq(x, y)))
-      +y2 = tba.ren.nm(Bool.and(on2, tba.subst.in(y, fv)), y, fv, b)
+      +y2 = tba.ren.nm(Bool.and(on2, tba.subst.fvin(y, fv)), y, fv, b)
       BtPi{m, y2, d, tba.subst.go(a, x, v, fv, on, ren), tba.subst.go(b, x, v, fv, on2, tba.ren.push(y, y2, ren))}
     case BtCon{c, a}:
       BtCon{c, tba.subst.go(a, x, v, fv, on, ren)}
@@ -477,5 +499,5 @@ def tba.subst.go(t: Bt, +x: List<&2, U32>, +v: Bt, +fv: List<&2, List<&2, U32>>,
       t
 
 def tba.subst(t: Bt, +x: List<&2, U32>, +v: Bt) -> Bt:
-  tba.subst.go(t, x, v, tba.refs(v, Nil{}), True{}, Nil{})
+  tba.subst.go(t, x, v, tba.set(tba.refs(v, Nil{}), Map.new(&2, Bool)), True{}, Nil{})
 

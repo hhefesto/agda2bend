@@ -167,11 +167,7 @@ def tqf.atoms(t: T.Bt) -> List<&2, List<&2, U32>>:
   S.split.str(tqf.noparen(tqf.qname(t)), S.b(" <&> "))
 
 def tqf.mem(+x: List<&2, U32>, xs: List<&2, List<&2, U32>>) -> Bool:
-  match xs:
-    case Nil{}:
-      False{}
-    case +y <> t:
-      Bool.or(S.eq(x, y), tqf.mem(x, t))
+  S.mem(x, xs)
 
 def tqf.dd.put(dup: Bool, +x: List<&2, U32>, r: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
   match dup:

@@ -45,24 +45,48 @@ def append(xs: List<&2, U32>, ys: List<&2, U32>) -> List<&2, U32>:
 def len(+xs: List<&2, U32>) -> Nat:
   List.length(&2, U32, xs)
 
-def eq(xs: List<&2, U32>, ys: List<&2, U32>) -> Bool:
-  match xs ys:
-    case Nil{} Nil{}:
+# (Bool.and takes its arguments evaluated, so a loop through it never stops
+# early: eq walked the shorter of two names to its end at every comparison,
+# bumping a count per cell of a shared one.  ok is the walk so far.)
+def eq.go(xs: List<&2, U32>, ys: List<&2, U32>, ok: Bool) -> Bool:
+  match xs ys ok:
+    case Nil{} Nil{} True{}:
       True{}
-    case +x <> xt +y <> yt:
-      Bool.and(U32.is_eq(x, y), eq(xt, yt))
-    case _ _:
+    case +x <> xt +y <> yt True{}:
+      eq.go(xt, yt, U32.is_eq(x, y))
+    case _ _ _:
       False{}
 
-# does xs start with p
-def prefix(xs: List<&2, U32>, p: List<&2, U32>) -> Bool:
-  match xs p:
-    case _ Nil{}:
+def eq(xs: List<&2, U32>, ys: List<&2, U32>) -> Bool:
+  eq.go(xs, ys, True{})
+
+# whether x is one of xs, stopping at the first
+def mem.go(xs: List<&2, List<&2, U32>>, +x: List<&2, U32>, hit: Bool) -> Bool:
+  match xs hit:
+    case _ True{}:
       True{}
-    case Nil{} _:
+    case Nil{} False{}:
       False{}
-    case +x <> xt +y <> pt:
-      Bool.and(U32.is_eq(x, y), prefix(xt, pt))
+    case h <> t False{}:
+      mem.go(t, x, eq(h, x))
+
+def mem(+x: List<&2, U32>, xs: List<&2, List<&2, U32>>) -> Bool:
+  mem.go(xs, x, False{})
+
+# does xs start with p
+def prefix.go(xs: List<&2, U32>, p: List<&2, U32>, ok: Bool) -> Bool:
+  match xs p ok:
+    case _ _ False{}:
+      False{}
+    case _ Nil{} True{}:
+      True{}
+    case Nil{} _ True{}:
+      False{}
+    case +x <> xt +y <> pt True{}:
+      prefix.go(xt, pt, U32.is_eq(x, y))
+
+def prefix(xs: List<&2, U32>, p: List<&2, U32>) -> Bool:
+  prefix.go(xs, p, True{})
 
 # xs without the prefix p (xs when it does not start with p)
 def strip(+xs: List<&2, U32>, +p: List<&2, U32>) -> List<&2, U32>:
