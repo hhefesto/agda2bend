@@ -40,22 +40,64 @@
     }
     if (G.order.length !== had) book_valid(G, G.order.length);
   };
+  // The gate checks a module again after each repair, and the checker stops at the
+  // first failure, in order. So from the last check of a file: what lies before its first
+  // changed line, and before the definition that failed, passed then and is not checked
+  // again. A file that passes that way is checked whole before it is said to pass.
+  const last = new Map();
+  const tops = (lines) => {
+    const r = [];
+    lines.forEach((l, i) => {
+      const m = /^(?:@\w+\s+)*(?:def|type)\s+([^\s(<:]+)/.exec(l);
+      if (m !== null) r.push([i, m[1]]);
+    });
+    return r;
+  };
+  const skipOf = (lines, order, base, prev) => {
+    if (prev === undefined || prev.fail === null) return 0;
+    let L = 0;
+    while (L < lines.length && L < prev.lines.length && lines[L] === prev.lines[L]) L++;
+    const ts = tops(lines);
+    const same = new Set();
+    ts.forEach(([at, k], j) => {
+      const end = j + 1 < ts.length ? ts[j + 1][0] : lines.length;
+      if (end <= L) same.add(k);
+    });
+    let n = 0;
+    for (let i = base; i < order.length; i++) {
+      const k = order[i];
+      if (k === prev.fail || !same.has(k)) break;
+      n++;
+    }
+    return n;
+  };
+  const verdict = async (real, lines, prev) => {
+    const base = G.order.length;
+    const book = book_seed(G);
+    const seen = new Map(seenG);
+    await book_load(book, real, "", seen, undefined, root);
+    const skip = skipOf(lines, book.order, base, prev);
+    book_valid(book, base + skip);
+    if (book.hols > 0) {
+      throw "Error: " + String(book.hols) + " TODO" + (book.hols === 1 ? "" : "s")
+        + " found.\nThe code is incomplete, and not a valid proof yet.";
+    }
+    return skip === 0 ? book : null;
+  };
   const check = async (file) => {
     out = [];
     let rc = 1;
+    let real = file;
+    let lines = [];
     try {
-      const real = fs4.realpathSync(file);
+      real = fs4.realpathSync(file);
+      lines = fs4.readFileSync(real, "utf8").split("\n");
       try { await take(real); } catch (e) {}
-      const book = book_seed(G);
-      const seen = new Map(seenG);
-      await book_load(book, real, "", seen, undefined, root);
-      book_valid(book, G.order.length);
-      if (book.hols > 0) {
-        throw "Error: " + String(book.hols) + " TODO" + (book.hols === 1 ? "" : "s")
-          + " found.\nThe code is incomplete, and not a valid proof yet.";
-      }
+      const book = (await verdict(real, lines, last.get(real))) ?? (await verdict(real, lines, undefined));
+      last.set(real, { lines, fail: null });
       rc = cli_verdict(book, false);
     } catch (e) {
+      last.set(real, { lines, fail: e?.$ === "Err" && typeof e.def === "string" ? e.def : null });
       cli_say(2, book_err(new Check_Fail(e)) + "\n");
       rc = 1;
     }
@@ -69,7 +111,9 @@
       data(s, b) {
         const file = b.toString().trim();
         chain = chain.then(async () => {
+          const t0 = Date.now();
           const r = await check(file);
+          console.error(path3.basename(file) + " " + (Date.now() - t0) + " ms " + r.slice(0, 5).trim());
           s.write(r);
           s.end();
         });
