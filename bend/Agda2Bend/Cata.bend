@@ -1673,6 +1673,39 @@ def act.monus.or(on: Bool, args: T.Bt, other: T.Bt) -> T.Bt:
     case False{}:
       other
 
+# A postulate's use: a call of the template parameter Ax.bend gives every def
+# that needs it (2026-11-03: agda-unimath's funext, univalence, truncations);
+# all its arguments, as a variable's are, but for the modes its type's Pis say.
+def act.ax.dot(xs: List<&2, U32>) -> List<&2, U32>:
+  match xs:
+    case Nil{}:
+      Nil{}
+    case +h <> t:
+      Bool.pick(U32, U32.is_eq(h, 46), 95, h) <> act.ax.dot(t)
+
+def act.ax.var(+n: List<&2, U32>) -> List<&2, U32>:
+  List.append(&2, U32, S.b("a2b_ax_"), act.ax.dot(n))
+
+def act.ax.ty.name(+n: List<&2, U32>) -> List<&2, U32>:
+  List.append(&2, U32, S.b("a2b_axty_"), act.ax.dot(n))
+
+def act.ax.mem(+x: List<&2, U32>, xs: List<&2, List<&2, U32>>) -> Bool:
+  match xs:
+    case Nil{}:
+      False{}
+    case +h <> t:
+      Bool.or(S.eq(h, x), act.ax.mem(x, t))
+
+def act.ax.app(f: T.Bt, xs: List<&2, T.Bt>) -> T.Bt:
+  match xs:
+    case Nil{}:
+      f
+    case h <> t:
+      T.BtApp{f, T.tba.args(h <> t)}
+
+def act.ax.call(+n: List<&2, U32>, ms: List<&2, ActM>, args: T.Bt) -> T.Bt:
+  act.ax.app(T.BtVar{act.ax.var(n)}, act.keep(args, ms))
+
 # a definition applied
 def act.app.def(s: ActSym, +env: ActEnv, +args: T.Bt) -> T.Bt:
   match s:
@@ -1694,6 +1727,8 @@ def act.app.def(s: ActSym, +env: ActEnv, +args: T.Bt) -> T.Bt:
       T.BtVar{S.b("String")}
     case ActSym{m, n, k, ms, ar, AbEq{}, fs, c, cp}:
       act.eq(act.eq.noq(act.quant.on(), act.keep(args, ms)))
+    case ActSym{m, +n, A.AkPostulate{}, ms, ar, AbNone{}, fs, c, None{}}:
+      act.ax.call(n, ms, args)
     case ActSym{+m, +n, k, ms, ar, b, fs, c, cp}:
       act.monus.or(act.monus.is(m, n), args, act.app.def.kind(k, act.copy.is(cp), act.ref.of(act.is.here(env, m), env, m, n), ms, ar, args))
 
@@ -12933,8 +12968,11 @@ def act.items.of(s: ActSym, k: A.AgKw, cp: Bool, nc: Bool, d: A.AgD, +key: Strin
       act.item.rec(ActSym{m, n, k2, ms, ar, AbNone{}, fs, c, cop}, d, env, doc)
     case ActSym{m, n, k2, ms, ar, AbNone{}, fs, c, cop} A.AkData{} False{} False{}:
       act.item.data(ActSym{m, n, k2, ms, ar, AbNone{}, fs, c, cop}, d, ty, env, decls, doc)
-    case ActSym{m, n, k2, ms, ar, AbNone{}, fs, c, cop} A.AkPostulate{} False{} False{}:
-      [T.BiComment{List.append(&2, List<&2, U32>, doc, [S.b("a postulate: not translated (Bend has none)")])}]
+    # a postulate: its type, as a def of its own, for the defs that take it as an
+    # extra input (Ax.bend); read as a signature, so that a hidden binder is erased
+    # and a caller's erased f can be passed; the quantity passes see it like any def
+    case ActSym{m, +n, k2, ms, ar, AbNone{}, fs, c, cop} A.AkPostulate{} False{} False{}:
+      [T.BiDef{act.ax.ty.name(n), Nil{}, T.BtType{}, T.BtExpr{act.t(ty, Nil{}, act.sig.with(None{}, A.AgPrNone{}, env))}, List.append(&2, List<&2, U32>, doc, [S.b("a postulate: Bend has none, so what uses it takes it as an input of this type")])}]
     case _ _ _ _:
       Nil{}
 

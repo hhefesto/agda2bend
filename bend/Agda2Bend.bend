@@ -4,6 +4,7 @@ import ./Clock.bend as Ck
 import ./ToBend/Sexp.bend as X
 import ./Agda2Bend/Ast.bend as A
 import ./Agda2Bend/Cata.bend as C
+import ./Agda2Bend/Ax.bend as AX
 import ./ToBend/Ast.bend as T
 import ./ToBend/Print.bend as P
 import ./ToBend/Names.bend as N
@@ -529,7 +530,7 @@ def a2b.rec.fix(+d: A.AgDecl, +nm: List<&2, U32>, tab: Map<&2, C.ActSym>) -> Map
 def a2b.syms.one(+top: List<&2, U32>, +d: A.AgDecl, +nm: List<&2, U32>, +al: Map<&2, List<&2, U32>>, t: A2bTabs) -> A2bTabs:
   match t:
     case A2bTabs{+tab, +unf, +dm, used, nk, pj, qs}:
-      A2bTabs{a2b.rec.fix(d, nm, Map.set(&2, C.ActSym, tab, C.act.key(a2b.dq(d)), a2b.sym.for(top, nm, d, tab, unf))), C.act.cop.add(d, a2b.unf.put(C.act.one.of(d, unf, tab), "one:" ++ C.act.key(a2b.dq(d)), a2b.unf.put(C.act.rft.of(d), C.act.rft.key(a2b.dq(d)), a2b.unf.put(C.act.tcl.of(d, unf), C.act.tcl.key(a2b.dq(d)), a2b.unf.put(C.act.cmb.of(d, unf), C.act.cmb.key(a2b.dq(d)), a2b.unf.put(C.act.etu.of(d, unf, tab), C.act.etu.key(a2b.dq(d)), a2b.unf.put(C.act.unf.of(d, unf), C.act.key(a2b.dq(d)), a2b.unf.put(C.act.fty.of(d), C.act.fty.key(C.act.key(a2b.dq(d))), a2b.unf.put(C.act.nu.cty.of(d), C.act.nu.cty.key(C.act.key(a2b.dq(d))), a2b.unf.put(C.act.nu.cdq.of(d), C.act.nu.cdq.key(C.act.key(a2b.dq(d))), a2b.unf.put(C.act.nu.rcon.of(d), C.act.nu.rcon.k(d), unf))))))))))), Map.set(&2, A.AgDecl, dm, C.act.key(a2b.dq(d)), d), nm <> used, Map.set(&2, String, nk, S.str(nm), C.act.key(a2b.dq(d))), a2b.pj.put(C.act.pj.of(d, tab), a2b.qual(al, top, nm), al, pj), qs}
+      A2bTabs{a2b.rec.fix(d, nm, Map.set(&2, C.ActSym, tab, C.act.key(a2b.dq(d)), a2b.sym.for(top, nm, d, tab, unf))), AX.ax.sym(d, a2b.sym.for(top, nm, d, tab, unf), top, nm, C.act.cop.add(d, a2b.unf.put(C.act.one.of(d, unf, tab), "one:" ++ C.act.key(a2b.dq(d)), a2b.unf.put(C.act.rft.of(d), C.act.rft.key(a2b.dq(d)), a2b.unf.put(C.act.tcl.of(d, unf), C.act.tcl.key(a2b.dq(d)), a2b.unf.put(C.act.cmb.of(d, unf), C.act.cmb.key(a2b.dq(d)), a2b.unf.put(C.act.etu.of(d, unf, tab), C.act.etu.key(a2b.dq(d)), a2b.unf.put(C.act.unf.of(d, unf), C.act.key(a2b.dq(d)), a2b.unf.put(C.act.fty.of(d), C.act.fty.key(C.act.key(a2b.dq(d))), a2b.unf.put(C.act.nu.cty.of(d), C.act.nu.cty.key(C.act.key(a2b.dq(d))), a2b.unf.put(C.act.nu.cdq.of(d), C.act.nu.cdq.key(C.act.key(a2b.dq(d))), a2b.unf.put(C.act.nu.rcon.of(d), C.act.nu.rcon.k(d), unf)))))))))))), Map.set(&2, A.AgDecl, dm, C.act.key(a2b.dq(d)), d), nm <> used, Map.set(&2, String, nk, S.str(nm), C.act.key(a2b.dq(d))), a2b.pj.put(C.act.pj.of(d, tab), a2b.qual(al, top, nm), al, pj), qs}
 
 def a2b.syms.nm(+top: List<&2, U32>, +d: A.AgDecl, +b: List<&2, U32>, +nm: List<&2, U32>, +al: Map<&2, List<&2, U32>>, t: A2bTabs) -> A2bTabs:
   match t:
@@ -771,6 +772,22 @@ def a2b.corpus.write(off: Bool, +path: String, +head: List<&2, List<&2, U32>>, +
 # dropped names go (G.tgt.ext), then the checks.  The file before the gate
 # is OUT/raw/<path>.bend.  The answer is the kept items, as the gate's
 # repairs left them (re-solved by Qfix against qe).
+# A2B_RAW_ONLY=1: the translation alone, every item kept, no checker: a pass's
+# effect on one module in minutes, where the gate takes hours up to it (the raw
+# file is the result)
+def a2b.em.gate(gate: Bool, +out: String, +m: List<&2, U32>, +kept: Map<&2, Bool>, +ral: Map<&2, List<&2, U32>>, +its: List<&2, T.BItem>, +ims: List<&2, T.BImport>, +nd: Nat, +gaps: List<&2, List<&2, U32>>, +nits: Nat, +qe: QF.TqEnv, +path: String) -> IO(List<&2, T.BItem>):
+  match gate:
+    case False{}:
+      IO.pure(List<&2, T.BItem>, its)
+    case True{}:
+      do IO<List<&2, T.BItem>>:
+        +bend : String <- S.env("BEND", "bend")
+        +maxl : Nat <- S.env.nat("A2B_MAXLINE", 0n)
+        +r : G.TgtRun <- G.tgt.gate(bend, 900, path, a2b.head.doc(m, nd), ims, G.tgt.wide(maxl, G.tgt.ext(its, kept, ral)), qe)
+        +cl : Nat <- S.env.nat("A2B_CORPUS_LINE", 0n)
+        a2b.corpus.write(Nat.is_eq(cl, 0n), out ++ "/corpus/" ++ S.str(C.act.path(m)), a2b.head.doc(m, nd), ims, cl, r)
+        a2b.gated(out, m, nd, gaps, nits, r)
+
 def a2b.em.write(+out: String, +m: List<&2, U32>, +kept: Map<&2, Bool>, +ral: Map<&2, List<&2, U32>>, +its: List<&2, T.BItem>, +ims: List<&2, T.BImport>, +nd: Nat, +gaps: List<&2, List<&2, U32>>, +nits: Nat, +qe: QF.TqEnv) -> IO(List<&2, T.BItem>):
   +path = out ++ "/src/" ++ S.str(C.act.path(m))
   +raw = out ++ "/raw/" ++ S.str(C.act.path(m))
@@ -778,12 +795,8 @@ def a2b.em.write(+out: String, +m: List<&2, U32>, +kept: Map<&2, Bool>, +ral: Ma
     S.mkdir(S.parent(path))
     S.mkdir(S.parent(raw))
     S.write(raw, P.tpr.file(T.BFile{a2b.head.doc(m, nd), ims, its}))
-    +bend : String <- S.env("BEND", "bend")
-    +maxl : Nat <- S.env.nat("A2B_MAXLINE", 0n)
-    +r : G.TgtRun <- G.tgt.gate(bend, 900, path, a2b.head.doc(m, nd), ims, G.tgt.wide(maxl, G.tgt.ext(its, kept, ral)), qe)
-    +cl : Nat <- S.env.nat("A2B_CORPUS_LINE", 0n)
-    a2b.corpus.write(Nat.is_eq(cl, 0n), out ++ "/corpus/" ++ S.str(C.act.path(m)), a2b.head.doc(m, nd), ims, cl, r)
-    a2b.gated(out, m, nd, gaps, nits, r)
+    +ro : Nat <- S.env.nat("A2B_RAW_ONLY", 0n)
+    a2b.em.gate(Nat.is_eq(ro, 0n), out, m, kept, ral, its, ims, nd, gaps, nits, qe, path)
 
 # Helpers a module gets when its items use them: a2b_pred, Nat's
 # predecessor (Cata.bend act.ds: suc's injectivity for a dotted field)
@@ -1035,11 +1048,17 @@ def a2b.qs.go(its: List<&2, T.BItem>, +al: Map<&2, List<&2, U32>>, +m: List<&2, 
 def a2b.qs.add(+its: List<&2, T.BItem>, +al: Map<&2, List<&2, U32>>, +m: List<&2, U32>, qs: Map<&2, QF.TqSig>) -> Map<&2, QF.TqSig>:
   a2b.qs.go(its, al, m, a2b.names.map(its, Map.new(&2, Bool)), qs)
 
+def a2b.em.round3(+out: String, +m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +nd: Nat, +kept: Map<&2, Bool>, +pj: Map<&2, Q.TcpProj>, +qs: Map<&2, QF.TqSig>, +tab: Map<&2, C.ActSym>, r: AX.AxOut) -> IO(A2bG):
+  match r:
+    case AX.AxOut{+fits, +alts, +unf}:
+      do IO<A2bG>:
+        +gs : List<&2, T.BItem> <- a2b.em.items(out, m, al, ral, kept, nd, fits, a2b.qe.alts(a2b.qs.add(fits, al, m, qs), al, m, alts), alts)
+        return A2bG{tab, unf, a2b.kept.add(a2b.kept.of(a2b.ral.got(Map.get(List<&2, U32>, Nil{}, al, S.str(m))), gs), kept), pj, a2b.qs.add(gs, al, m, qs)}
+
+# the postulates become extra inputs here, after the quantity passes (Agda2Bend/Ax.bend)
 def a2b.em.round2(+out: String, +m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +nd: Nat, +kept: Map<&2, Bool>, +unf: Map<&2, C.ActCopy>, +pj: Map<&2, Q.TcpProj>, +qs: Map<&2, QF.TqSig>, +tab: Map<&2, C.ActSym>, p: List<&2, T.BItem> & List<&2, T.BItem>) -> IO(A2bG):
   (+fits, +alts) = p
-  do IO<A2bG>:
-    +gs : List<&2, T.BItem> <- a2b.em.items(out, m, al, ral, kept, nd, fits, a2b.qe.alts(a2b.qs.add(fits, al, m, qs), al, m, alts), alts)
-    return A2bG{tab, unf, a2b.kept.add(a2b.kept.of(a2b.ral.got(Map.get(List<&2, U32>, Nil{}, al, S.str(m))), gs), kept), pj, a2b.qs.add(gs, al, m, qs)}
+  a2b.em.round3(out, m, al, ral, nd, kept, pj, qs, tab, AX.ax.module(m, a2b.qual(al, m, Nil{}), tab, al, unf, fits, alts))
 
 def a2b.em.round(+out: String, +m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +nd: Nat, +kept: Map<&2, Bool>, +unf: Map<&2, C.ActCopy>, +pj: Map<&2, Q.TcpProj>, +qs: Map<&2, QF.TqSig>, r: A2bRound) -> IO(A2bG):
   match r:
