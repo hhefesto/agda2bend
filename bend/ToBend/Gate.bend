@@ -750,7 +750,7 @@ def tgt.up.is(+w: List<&2, U32>) -> Bool:
 
 # a family over Type expected, one over Kind(q) passed (ToBend/Copy.bend tcp.dom.raise)
 def tgt.dom.is(+w: List<&2, U32>) -> Bool:
-  Bool.and(S.prefix(w, S.b("expected : @-")), Bool.and(S.infix(w, S.b(":Type -> ")), S.infix(w, S.b("observed : @-x:Kind("))))
+  Bool.and(S.prefix(w, S.b("expected : @")), Bool.and(S.infix(w, S.b("@-x:Type -> ")), Bool.and(S.infix(w, S.b(" observed : @")), S.infix(w, S.b("@-x:Kind(")))))
 
 def tgt.dom.of(m: Maybe<&2, T.BItem>) -> Maybe<&2, T.BItem>:
   match m:
@@ -762,10 +762,10 @@ def tgt.dom.of(m: Maybe<&2, T.BItem>) -> Maybe<&2, T.BItem>:
 # 1: a use twice, 2: an erased binder used live, 3: a Type where Data is
 # expected (the marked span a type parameter), 4: &2 expected, 5: a Type
 # where a Kind(q) is expected, 6: &1 or Type expected (a callee
-# specialised to &1), 7: one datatype at &2 where &1 is expected (tgt.up),
-# 8: a family over Type expected, 0: none of these
+# specialised to &1; then a family over Type expected, tcp.dom.raise), 7: one
+# datatype at &2 where &1 is expected (tgt.up), 0: none of these
 def tgt.repair.kind(+w: List<&2, U32>) -> Nat:
-  Bool.pick(Nat, tgt.dom.is(w), 8n, Bool.pick(Nat, tgt.up.is(w), 7n, Bool.pick(Nat, S.infix(w, S.b("(consumed more than once)")), 1n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : -")), S.infix(w, S.b("observed : "))), 2n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : Data")), Bool.or(S.infix(w, S.b("observed : Type")), S.infix(w, S.b("observed : Kind(")))), 3n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : Kind(")), Bool.or(S.infix(w, S.b("observed : Type")), S.infix(w, S.b("observed : Kind(")))), 5n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : ")), Bool.or(S.infix(w, S.b("&2")), tgt.data.fam(w))), 4n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : ")), Bool.or(S.infix(w, S.b("&1")), S.infix(w, S.b("Type")))), 6n, 0n))))))))
+  Bool.pick(Nat, tgt.up.is(w), 7n, Bool.pick(Nat, S.infix(w, S.b("(consumed more than once)")), 1n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : -")), S.infix(w, S.b("observed : "))), 2n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : Data")), Bool.or(S.infix(w, S.b("observed : Type")), S.infix(w, S.b("observed : Kind(")))), 3n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : Kind(")), Bool.or(S.infix(w, S.b("observed : Type")), S.infix(w, S.b("observed : Kind(")))), 5n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : ")), Bool.or(S.infix(w, S.b("&2")), tgt.data.fam(w))), 4n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : ")), Bool.or(S.infix(w, S.b("&1")), S.infix(w, S.b("Type")))), 6n, 0n)))))))
 
 def tgt.find(its: List<&2, T.BItem>, +n: List<&2, U32>) -> Maybe<&2, T.BItem>:
   match its:
@@ -1075,6 +1075,16 @@ def tgt.up.add(m: Maybe<&2, T.BItem>, +it: T.BItem, +its: List<&2, T.BItem>) -> 
     case None{}:
       it <> its
 
+# the quantity repair first: a family's quantity named on one side only goes to &1, as it
+# did (foundation.subuniverses' equiv-subuniverse); where it is on both, only the domains
+# can move
+def tgt.dom.or(m: Maybe<&2, T.BItem>, n: Maybe<&2, T.BItem>, +why: List<&2, U32>) -> Maybe<&2, T.BItem>:
+  match m:
+    case Some{x}:
+      Some{x}
+    case None{}:
+      Bool.pick(Maybe<&2, T.BItem>, tgt.dom.is(why), tgt.dom.of(n), None{})
+
 # (a helper's own field through a helper: not solved again, which would read its
 # result's quantity off its A: Kind(&2) and undo it; Data.Nat.Properties' `Dec<&1, A>`
 # came back `Dec<&2, A>`, so the term at ≡-irrelevant went through it again and again,
@@ -1157,12 +1167,10 @@ def tgt.on.fail(+k: Nat, +blame: List<&2, U32>, +why: List<&2, U32>, +sp: List<&
       tgt.q.or.up(tgt.q.of(tgt.find(its, blame), S.strip(S.strip(tgt.word(sp), S.b("~")), S.b("-")), why), blame, why, sp, its, ds, qe)
     case 7n:
       tgt.up(blame, why, sp, its, ds, qe)
-    case 8n:
-      tgt.repaired(tgt.dom.of(tgt.find(its, blame)), blame, why, its, ds, qe)
     case 5n:
       tgt.repaired(tgt.q1.of(tgt.find(its, blame), why), blame, why, its, ds, qe)
     case 6n:
-      tgt.repaired(tgt.q1o.of(tgt.find(its, blame), why), blame, why, its, ds, qe)
+      tgt.repaired(tgt.dom.or(tgt.q1o.of(tgt.find(its, blame), why), tgt.find(its, blame), why), blame, why, its, ds, qe)
     case 1n+p:
       tgt.repaired(tgt.raise.of(tgt.find(its, blame), tgt.var.of(why), Nat.is_eq(k, 1n)), blame, why, its, ds, qe)
 

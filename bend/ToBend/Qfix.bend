@@ -561,8 +561,20 @@ def tqf.endq.m(m: Maybe<&2, T.Bt>) -> T.Bt:
 def tqf.base(+x: List<&2, U32>) -> Bool:
   Bool.or(Bool.or(S.eq(x, S.b("Nat")), S.eq(x, S.b("Bool"))), Bool.or(S.eq(x, S.b("Unit")), S.eq(x, S.b("U32"))))
 
+# (a postulated type at a level is Kind(l), which what fills a Kind(eta) of a family needs,
+# yet its values are no more reusable than Agda says: `is-trunc(&1, k, type-trunc k A)`, so
+# `trunc`'s pair checks; at Set it is Data, as an empty type is; 2026-11-05)
+def tqf.kind.opq(k: T.Bt) -> T.Bt:
+  match k:
+    case T.BtVar{+d}:
+      Bool.pick(T.Bt, S.eq(d, S.b("Data")), tqf.q2(), tqf.q1())
+    case _:
+      tqf.q1()
+
 def tqf.kind.ty(s: TqSig, +args: T.Bt) -> T.Bt:
   match s:
+    case TqType{ps, k, Nil{}}:
+      tqf.kind.opq(k)
     case TqType{ps, k, cs}:
       tqf.endq(tqf.inst(k, ps, args))
     case _:
@@ -1623,6 +1635,13 @@ def tqf.ku.field(+self: List<&2, U32>, +t: T.Bt, +ctx: List<&2, T.BParam>, +e: T
       tqf.q2()
     case T.BtTyApp{+n, +a}:
       Bool.pick(T.Bt, S.eq(n, self), tqf.q2(), tqf.kind(8n, T.BtTyApp{n, a}, ctx, e))
+    # (a family parameter applied has its end's kind; a type-valued definition's call may
+    # reduce to a function, whatever sort it declares: the standard library's Acc, whose
+    # field is a WfRec, stays a Type)
+    case T.BtApp{T.BtVar{+fn}, +a}:
+      Bool.pick(T.Bt, tqf.is.some(tqf.ctx.ty(ctx, fn)), tqf.kind(8n, T.BtApp{T.BtVar{fn}, a}, ctx, e), tqf.q1())
+    case T.BtApp{g, a}:
+      tqf.q1()
     case t:
       tqf.kind(8n, t, ctx, e)
 

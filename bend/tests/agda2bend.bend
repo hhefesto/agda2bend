@@ -471,7 +471,7 @@ def qf.dead(+xs: List<&2, String>) -> T.Bt:
 def qf.env2() -> QF.TqEnv:
   +rel : QF.TqSig = QF.TqDef{[qf.q("a"), T.BParam{T.BmErased{}, S.b("A"), qf.kind("a")}, qf.q("l")], T.BtType{}, T.BtExpr{qf.pi(v("A"), qf.pi(v("A"), qf.kind("l")))}}
   +ise : QF.TqSig = QF.TqType{[qf.q("a"), qf.q("l"), T.BParam{T.BmErased{}, S.b("A"), qf.kind("a")}, T.BParam{T.BmErased{}, S.b("eq"), qf.pi(v("A"), qf.pi(v("A"), qf.kind("l")))}], T.BtType{}, Nil{}}
-  +pr : QF.TqSig = QF.TqType{[qf.q("a"), qf.q("b"), T.BParam{T.BmErased{}, S.b("A"), qf.kind("a")}, T.BParam{T.BmErased{}, S.b("B"), qf.kind("b")}], qf.kind("(a <&> b)"), Nil{}}
+  +pr : QF.TqSig = QF.TqType{[qf.q("a"), qf.q("b"), T.BParam{T.BmErased{}, S.b("A"), qf.kind("a")}, T.BParam{T.BmErased{}, S.b("B"), qf.kind("b")}], qf.kind("(a <&> b)"), [T.BCtor{S.b("Pr"), Nil{}}]}
   +mk : QF.TqSig = QF.TqDef{[qf.q("a")], T.BtTyApp{S.b("Pr"), qf.dead(["a", "&2", "Nat", "Nat"])}, T.BtExpr{v("x")}}
   +ex : QF.TqSig = QF.TqDef{[qf.q("a"), qf.q("b"), T.BParam{T.BmErased{}, S.b("A"), qf.kind("a")}], T.BtPi{T.BmErased{}, S.b("x"), True{}, qf.pi(v("A"), qf.kind("b")), qf.kind("(a <&> b)")}, T.BtExpr{v("x")}}
   QF.TqEnv{Map.set(&2, QF.TqSig, Map.set(&2, QF.TqSig, Map.set(&2, QF.TqSig, Map.set(&2, QF.TqSig, Map.set(&2, QF.TqSig, Map.new(&2, QF.TqSig), "Rel", rel), "IsE", ise), "Pr", pr), "mk", mk), "ex", ex), S.b("N."), Nil{}}
@@ -1469,7 +1469,7 @@ def kq.laws() -> IO(Unit):
     g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
     +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bKindQ.sexp"))
     g2 : D.A2bG <- kq.of(al, ral, ds, D.a2b.mod.items(S.b("A2bKindQ"), al, ds, g1))
-    IO.print(verdict("a family over Type expected, one over Kind(q) passed: repair 8", Nat.is_eq(G.tgt.repair.kind(S.b("expected : @-x:Type -> Kind(a) observed : @-x:Kind(a) -> Kind(a) ")), 8n)))
+    IO.print(verdict("a family over Type expected, one over Kind(q) passed", G.tgt.dom.is(S.b("expected : @-x:Type -> Kind(a) observed : @-x:Kind(a) -> Kind(a) "))))
     IO.print(verdict("an assumption's family binder takes Type, its result stays", S.infix(P.tpr.item(kq.or(Q.tcp.dom.raise(ax), ax), Nil{}), S.b("@-x:Type -> Kind(a)"))))
     IO.print(verdict("a def's family parameter takes Type", S.infix(P.tpr.item(kq.or(Q.tcp.dom.raise(it), it), Nil{}), S.b("@-x:Type -> Kind(a)"))))
     IO.print(verdict("no family, no change", kq.none(Q.tcp.dom.raise(T.BiDef{S.b("h"), Nil{}, T.BtVar{S.b("Nat")}, T.BtExpr{T.BtNat{S.b("0")}}, Nil{}}))))

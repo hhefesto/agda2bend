@@ -390,10 +390,18 @@ def tcp.pi.fam(b: T.Bt, +v: List<&2, U32>) -> TcpRet:
 def tcp.dom.fam.put(+hit: Bool, m: T.BMode, +x: List<&2, U32>, dep: Bool, a: T.Bt, b: T.Bt) -> TcpRet:
   TcpRet{T.BtPi{m, x, dep, Bool.pick(T.Bt, hit, T.BtType{}, a), b}, hit}
 
+def tcp.dom.fam.past(m: T.BMode, x: List<&2, U32>, dep: Bool, a: T.Bt, r: TcpRet) -> TcpRet:
+  match r:
+    case TcpRet{b, h}:
+      TcpRet{T.BtPi{m, x, dep, a, b}, h}
+
+# (past the family's other arguments: an indexed one's I -> I -> Set a -> Set b)
 def tcp.dom.fam(t: T.Bt) -> TcpRet:
   match t:
     case T.BtPi{T.BmErased{}, +x, dep, T.BtApp{T.BtVar{+k}, q}, b}:
       tcp.dom.fam.put(S.eq(k, S.b("Kind")), T.BmErased{}, x, dep, T.BtApp{T.BtVar{k}, q}, b)
+    case T.BtPi{m, x, dep, a, b}:
+      tcp.dom.fam.past(m, x, dep, a, tcp.dom.fam(b))
     case T.BtExpr{e}:
       tcp.dom.fam(e)
     case t:

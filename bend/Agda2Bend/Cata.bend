@@ -1698,6 +1698,13 @@ def act.ax.app(f: T.Bt, xs: List<&2, T.Bt>) -> T.Bt:
 def act.ax.call(+n: List<&2, U32>, ms: List<&2, ActM>, args: T.Bt) -> T.Bt:
   act.ax.app(T.BtVar{act.ax.var(n)}, act.keep(args, ms))
 
+# `Size< i` is Size: Agda has one below the other, Bend has neither, and every sized
+# type passed the one where the other was wanted ("expected Size observed Size_lt<i>";
+# 2026-11-05).  Bend does not read sizes: a sized recursion is refused as not decreasing
+# and assumed.
+def act.size.lt(+m: List<&2, U32>, +n: List<&2, U32>) -> Bool:
+  Bool.and(S.eq(m, S.b("Agda.Builtin.Size")), S.eq(n, S.b("Size_lt")))
+
 # a definition applied
 def act.app.def(s: ActSym, +env: ActEnv, +args: T.Bt) -> T.Bt:
   match s:
@@ -1722,7 +1729,7 @@ def act.app.def(s: ActSym, +env: ActEnv, +args: T.Bt) -> T.Bt:
     case ActSym{m, +n, A.AkPostulate{}, ms, ar, AbNone{}, fs, c, None{}}:
       act.ax.call(n, ms, args)
     case ActSym{+m, +n, k, ms, ar, b, fs, c, cp}:
-      act.monus.or(act.monus.is(m, n), args, act.app.def.kind(k, act.copy.is(cp), act.ref.of(act.is.here(env, m), env, m, n), ms, ar, args))
+      Bool.pick(T.Bt, act.size.lt(m, n), T.BtTyApp{act.ref.of(act.is.here(env, m), env, m, S.b("Size")), T.BtANil{}}, act.monus.or(act.monus.is(m, n), args, act.app.def.kind(k, act.copy.is(cp), act.ref.of(act.is.here(env, m), env, m, n), ms, ar, args)))
 
 # suc applied, or unapplied (`cong suc`, `map suc xs`): the function
 # sn => 1n+sn
@@ -9761,19 +9768,38 @@ def act.copat.unf.q(c: ActCopy) -> Maybe<&2, A.AgQ>:
     case ActCopy{n, body}:
       act.cod.q(0n, body)
 
-def act.copat.unf(+env: ActEnv, +r: A.AgQ) -> Maybe<&2, A.AgQ>:
+def act.copat.unf.map(+env: ActEnv, +r: A.AgQ) -> Maybe<&2, A.AgQ>:
   match env:
     case ActEnv{mod, tab, al, unf}:
       act.copat.unf.q(act.unf.got(Map.get(ActCopy, ActCopy{0n, A.AgNone{}}, unf, act.key(r))))
 
+def act.copat.unf.s(s: ActSym, +env: ActEnv, +r: A.AgQ) -> Maybe<&2, A.AgQ>:
+  match s:
+    case ActSym{m, n, k, ms, ar, b, fs, c, Some{cp}}:
+      act.copat.unf.q(cp)
+    case _:
+      act.copat.unf.map(env, r)
+
+def act.copat.unf(+env: ActEnv, +r: A.AgQ) -> Maybe<&2, A.AgQ>:
+  act.copat.unf.s(act.sym(env, r), env, r)
+
+def act.copat.not.copy(s: ActSym) -> Bool:
+  match s:
+    case ActSym{m, n, k, ms, ar, b, fs, c, cp}:
+      Bool.not(act.copy.is(cp))
+
 # the record a copattern definition builds: its type's head, or where that
 # is a type-valued definition, the head it unfolds to, fuel times
 # (agda-unimath's section f = Σ (B → A) …: section-comp's clauses are
-# Σ's pr1 and pr2)
+# Σ's pr1 and pr2).  A record's copy (agda-prelude's `open import Prelude.Monad.Indexed
+# {I = ⊤} as Indexed`, `Monad M = Indexed.IMonad …`) has no item: on to the record, whose
+# fields the clauses' projections name (a2b.pjo).  MonadMaybe was
+# `Prelude_Monad.Indexed{?TODO, ?TODO}`, and every Monad and Applicative instance with it
+# (2026-11-05).
 def act.copat.isrec(+env: ActEnv, m: Maybe<&2, A.AgQ>) -> Bool:
   match m:
-    case Some{r}:
-      act.sym.is.rec(act.sym(env, r))
+    case Some{+r}:
+      Bool.and(act.sym.is.rec(act.sym(env, r)), act.copat.not.copy(act.sym(env, r)))
     case None{}:
       True{}
 
@@ -12905,17 +12931,18 @@ def act.data.kps(on: Bool, +n: Nat, +t: A.Ag, +ms: List<&2, ActM>, +env: ActEnv,
     case False{}:
       act.ps.ps(r)
 
-# A postulated type at a level (a2b.post: agda-unimath's `type-trunc k A : UU l`) stays a
-# Type: as Data, what is true of it said is-trunc(&2, ...) where `trunc`'s pair wants
+# A postulated type at a level (a2b.post: agda-unimath's `type-trunc k A : UU l`) keeps its
+# kind: as Data, what is true of it said is-trunc(&2, ...) where `trunc`'s pair wants
 # &1, so trunc was dropped and assumed, opaque, and nothing that reads its first
 # projection checked (is-truncation-trunc and 86 dependents at 203 modules; 2026-11-05).
-# At Set (Word64, Float) it is Data, as a real empty type is.
+# Qfix reads such a type's values as &1 (tqf.kind.opq).  At Set (Word64, Float) it is
+# Data, as a real empty type is.
 def act.opq.kind(ret: T.Bt) -> T.Bt:
   match ret:
     case T.BtExpr{e}:
       act.opq.kind(e)
     case T.BtApp{T.BtVar{+k}, a}:
-      Bool.pick(T.Bt, S.eq(k, S.b("Kind")), T.BtType{}, T.BtVar{S.b("Data")})
+      Bool.pick(T.Bt, S.eq(k, S.b("Kind")), T.BtApp{T.BtVar{k}, a}, T.BtVar{S.b("Data")})
     case _:
       T.BtVar{S.b("Data")}
 

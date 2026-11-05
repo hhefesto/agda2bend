@@ -806,7 +806,7 @@ def a2b.ledger.drops(+m: List<&2, U32>, ds: List<&2, G.TgtDrop>) -> List<&2, U32
     case Nil{}:
       Nil{}
     case G.TgtDrop{n, a, w, d} <> t:
-      List.append(&2, U32, S.join([m, n, a, S.b(Bool.pick(String, d, "dependent", "dropped")), w], 9), 10 <> a2b.ledger.drops(m, t))
+      List.append(&2, U32, S.join([m, n, a, S.b(Bool.pick(String, d, "dependent", "dropped")), List.take(&2, U32, w, 2000n)], 9), 10 <> a2b.ledger.drops(m, t))
 
 def a2b.dropped.n(ds: List<&2, G.TgtDrop>, +dep: Bool) -> Nat:
   match ds:
@@ -1700,10 +1700,38 @@ def a2b.auto.rows(ls: List<&2, List<&2, U32>>, acc: Map<&2, Bool>) -> Map<&2, Bo
       +hit : Bool = S.eq(a2b.auto.nth(3n, fs), S.b("dropped"))
       a2b.auto.rows(t, a2b.auto.put(hit, a2b.auto.parent(a2b.auto.nth(2n, fs)), a2b.auto.put(hit, a2b.auto.nth(2n, fs), acc)))
 
+# A def Rord wrote with its matched parameters first (anon.cancel_dec, "agda2bend: anon.cancel
+# with ...") is no declaration either: the one that uses it, its own, is assumed
+# (agda-prelude's Tactic.Nat.NF cancel, 152 dependents; Container.Bag union, 51; 2026-11-05).
+def a2b.auto.own(ls: List<&2, List<&2, U32>>, acc: Map<&2, Bool>) -> Map<&2, Bool>:
+  match ls:
+    case Nil{}:
+      acc
+    case l <> t:
+      +fs : List<&2, List<&2, U32>> = S.split(l, 9)
+      a2b.auto.own(t, a2b.auto.put(Bool.and(S.eq(a2b.auto.nth(3n, fs), S.b("dropped")), S.prefix(a2b.auto.nth(2n, fs), S.b("agda2bend: "))), a2b.auto.nth(1n, fs), acc))
+
+def a2b.auto.uses(ls: List<&2, List<&2, U32>>, +own: Map<&2, Bool>, acc: Map<&2, Bool>) -> Map<&2, Bool>:
+  match ls:
+    case Nil{}:
+      acc
+    case l <> t:
+      +fs : List<&2, List<&2, U32>> = S.split(l, 9)
+      +why : List<&2, U32> = a2b.auto.nth(4n, fs)
+      a2b.auto.uses(t, own, a2b.auto.put(Bool.and(S.eq(a2b.auto.nth(3n, fs), S.b("dependent")), Bool.and(S.prefix(why, S.b("uses ")), T.tba.has.got(Map.has(&2, Bool, own, S.str(List.drop(&2, U32, why, 5n)))))), a2b.auto.nth(2n, fs), acc))
+
+# A function, unless its value is a level; a type too (2026-11-05): what the gate refuses
+# (a field that needs an assumption, which a type cannot take: agda-prelude's LessFloat,
+# 60 dependents) is opaque, its constructors and fields no longer there, so what only
+# names it checks.  Its fields, as they fail, are assumed in turn.
 def a2b.auto.elig(d: A.AgDecl, +unf: Map<&2, C.ActCopy>) -> Bool:
   match d:
     case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, fl, lang, +ty, A.AgDFun{pr, re, w, ex, te, mu, cl, tr}}:
       Bool.not(C.act.ends.level(ty))
+    case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, fl, lang, ty, A.AgDData{p, ix, cs, s, cl}}:
+      True{}
+    case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, fl, lang, ty, A.AgDRec{p, c, nm, ind, fs, tel, eta, pm, cl}}:
+      True{}
     case _:
       False{}
 
@@ -1736,7 +1764,8 @@ def a2b.auto.run(ns: List<&2, List<&2, U32>>, +out: String, +al: Map<&2, List<&2
 def a2b.auto.step(+out: String, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +m: List<&2, U32>, +ds0: List<&2, A.AgDecl>, +asm: Map<&2, Bool>, +unf: Map<&2, C.ActCopy>, +g: A2bG, g1: A2bG) -> IO(A2bAuto):
   do IO<A2bAuto>:
     +led : List<&2, U32> <- S.read(a2b.led(out))
-    +dr : Map<&2, Bool> = a2b.auto.rows(S.split.lines(led), Map.new(&2, Bool))
+    +ls : List<&2, List<&2, U32>> = S.split.lines(led)
+    +dr : Map<&2, Bool> = a2b.auto.uses(ls, a2b.auto.own(ls, Map.new(&2, Bool)), a2b.auto.rows(ls, Map.new(&2, Bool)))
     a2b.auto.run(a2b.auto.new(ds0, asm, dr, unf), out, al, ral, m, ds0, asm, g, g1)
 
 def a2b.auto.loop(fuel: Nat, +out: String, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +m: List<&2, U32>, +ds0: List<&2, A.AgDecl>, +unf: Map<&2, C.ActCopy>, +g: A2bG, r: A2bAuto) -> IO(A2bG):
