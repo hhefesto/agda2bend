@@ -801,10 +801,17 @@ def tgt.q1o.of(m: Maybe<&2, T.BItem>, +why: List<&2, U32>) -> Maybe<&2, T.BItem>
       None{}
 
 # a caller passing its own quantity where &2 is expected: specialised too
-def tgt.q.of(m: Maybe<&2, T.BItem>, +why: List<&2, U32>) -> Maybe<&2, T.BItem>:
+def tgt.q.of.or(r: Maybe<&2, T.BItem>, +it: T.BItem, +v: List<&2, U32>) -> Maybe<&2, T.BItem>:
+  match r:
+    case Some{x}:
+      Some{x}
+    case None{}:
+      Q.tcp.fam.raise(it, v)
+
+def tgt.q.of(m: Maybe<&2, T.BItem>, +v: List<&2, U32>, +why: List<&2, U32>) -> Maybe<&2, T.BItem>:
   match m:
     case Some{+it}:
-      Q.tcp.q.spec(it, why)
+      tgt.q.of.or(Q.tcp.q.spec(it, why), it, v)
     case None{}:
       None{}
 
@@ -1125,7 +1132,7 @@ def tgt.on.fail(+k: Nat, +blame: List<&2, U32>, +why: List<&2, U32>, +sp: List<&
     case 3n:
       tgt.repaired(tgt.data.of(tgt.find(its, blame), tgt.data.v(S.strip(S.strip(tgt.word(sp), S.b("~")), S.b("-")), tgt.find(its, blame)), why), blame, why, its, ds, qe)
     case 4n:
-      tgt.q.or.up(tgt.q.of(tgt.find(its, blame), why), blame, why, sp, its, ds, qe)
+      tgt.q.or.up(tgt.q.of(tgt.find(its, blame), S.strip(S.strip(tgt.word(sp), S.b("~")), S.b("-")), why), blame, why, sp, its, ds, qe)
     case 7n:
       tgt.up(blame, why, sp, its, ds, qe)
     case 5n:

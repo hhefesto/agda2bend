@@ -1279,7 +1279,9 @@ def a2b.gone.add(fits: List<&2, T.BItem>, +names: Map<&2, Bool>, gone: Map<&2, B
 
 def a2b.em.round3(+out: String, +m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +nd: Nat, +kept: Map<&2, Bool>, +pj: Map<&2, Q.TcpProj>, +qs: Map<&2, QF.TqSig>, +tab: Map<&2, C.ActSym>, +gone: Map<&2, Bool>, r: AX.AxOut) -> IO(A2bG):
   match r:
-    case AX.AxOut{+fits, +alts, +unf}:
+    case AX.AxOut{+fits0, +alts, +unf}:
+      # (again: an assumption's type a2b_axty_R goes before what takes it, in a mutual block too)
+      +fits : List<&2, T.BItem> = O.tor.order(fits0)
       do IO<A2bG>:
         +t0 : Nat <- IO.now()
         +gs : List<&2, T.BItem> <- a2b.em.items(out, m, al, ral, kept, nd, fits, a2b.qe.alts(a2b.qs.add(fits, al, m, qs), al, m, alts), alts)
@@ -1607,7 +1609,19 @@ def a2b.post.is(d: A.AgDecl, +unf: Map<&2, C.ActCopy>) -> Bool:
     case _:
       False{}
 
-def a2b.post.decl(+d: A.AgDecl, +unf: Map<&2, C.ActCopy>) -> A.AgDecl:
+# A primitive with no clauses (primEraseEquality, primWord64ToNat, primShowNat) has no
+# item, so all that used it was a dependent (agda-prelude's primTrustMe, then
+# eraseEquality, then Prelude.Nat's EqNat and OrdNat: half the library).  It is a
+# postulate, so an assumption like any other (2026-11-05).
+def a2b.post.prim(d: A.AgDecl) -> A.AgDecl:
+  match d:
+    case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, fl, lang, ty, A.AgDPrim{n, A.AgClEnd{}, tree}}:
+      A.AgDecl{q, qn, md, f, l, l0, l1, A.AkPostulate{}, m, fl, lang, ty, A.AgDPost{}}
+    case d:
+      d
+
+def a2b.post.decl(+d0: A.AgDecl, +unf: Map<&2, C.ActCopy>) -> A.AgDecl:
+  +d = a2b.post.prim(d0)
   a2b.pjo.decl(a2b.post.data(a2b.post.is(d, unf), d), unf)
 
 def a2b.post.decls(ds: List<&2, A.AgDecl>, +unf: Map<&2, C.ActCopy>) -> List<&2, A.AgDecl>:

@@ -335,21 +335,79 @@ def tcp.pi.data(b: T.Bt, +v: List<&2, U32>) -> TcpRet:
     case b:
       TcpRet{b, False{}}
 
-def tcp.data.pi(r: TcpRet, n: List<&2, U32>, ret: T.Bt, doc: List<&2, List<&2, U32>>) -> Maybe<&2, T.BItem>:
+def tcp.data.pi(r: TcpRet, n: List<&2, U32>, ps: List<&2, T.BParam>, ret: T.Bt, doc: List<&2, List<&2, U32>>) -> Maybe<&2, T.BItem>:
   match r:
     case TcpRet{b, True{}}:
-      Some{T.BiDef{n, Nil{}, ret, b, doc}}
+      Some{T.BiDef{n, ps, ret, b, doc}}
     case _:
       None{}
 
-def tcp.data.or.pi(m: Maybe<&2, T.BItem>, n: List<&2, U32>, ps: List<&2, T.BParam>, ret: T.Bt, body: T.Bt, doc: List<&2, List<&2, U32>>, +v: List<&2, U32>) -> Maybe<&2, T.BItem>:
-  match m ps:
-    case Some{x} ps:
-      Some{x}
-    case None{} Nil{}:
-      tcp.data.pi(tcp.pi.data(body, v), n, ret, doc)
-    case None{} ps:
+# (its parameters, if any, the assumptions its own type takes, 2026-11-05: an
+# assumption whose type uses another assumption, raised to Data, was left at Kind(l))
+def tcp.ps.tpls(ps: List<&2, T.BParam>) -> Bool:
+  match ps:
+    case Nil{}:
+      True{}
+    case T.BParam{T.BmTpl{}, x, ty} <> t:
+      tcp.ps.tpls(t)
+    case _:
+      False{}
+
+# ... and a family binder, `-B:(A -> Kind(l))` where a call asks for @_:A -> Data
+def tcp.tail.data(t: T.Bt) -> T.Bt:
+  match t:
+    case T.BtPi{m, +x, d, a, b}:
+      T.BtPi{m, x, d, a, tcp.tail.data(b)}
+    case T.BtType{}:
+      T.BtVar{S.b("Data")}
+    case T.BtApp{T.BtVar{+k}, +a}:
+      Bool.pick(T.Bt, S.eq(k, S.b("Kind")), T.BtVar{S.b("Data")}, T.BtApp{T.BtVar{k}, a})
+    case t:
+      t
+
+def tcp.pi.fam.put(+hit: Bool, pm: T.BMode, px: List<&2, U32>, dep: Bool, +a: T.Bt, r: TcpRet) -> TcpRet:
+  match r:
+    case TcpRet{rb, h}:
+      TcpRet{T.BtPi{pm, px, dep, Bool.pick(T.Bt, hit, tcp.tail.data(a), a), rb}, Bool.or(hit, h)}
+
+def tcp.pi.fam(b: T.Bt, +v: List<&2, U32>) -> TcpRet:
+  match b:
+    case T.BtPi{pm, +px, dep, T.BtPi{m2, x2, d2, a2, b2}, rb}:
+      tcp.pi.fam.put(S.eq(px, v), pm, px, dep, T.BtPi{m2, x2, d2, a2, b2}, tcp.pi.fam(rb, v))
+    case T.BtPi{pm, px, dep, a, rb}:
+      tcp.pi.fam.put(False{}, pm, px, dep, a, tcp.pi.fam(rb, v))
+    case T.BtExpr{e}:
+      tcp.pi.fam(e, v)
+    case b:
+      TcpRet{b, False{}}
+
+def tcp.fam.raise.of(on: Bool, n: List<&2, U32>, ps: List<&2, T.BParam>, ret: T.Bt, body: T.Bt, doc: List<&2, List<&2, U32>>, +v: List<&2, U32>) -> Maybe<&2, T.BItem>:
+  match on:
+    case True{}:
+      tcp.data.pi(tcp.pi.fam(body, v), n, ps, ret, doc)
+    case False{}:
       None{}
+
+def tcp.fam.raise(it: T.BItem, +v: List<&2, U32>) -> Maybe<&2, T.BItem>:
+  match it:
+    case T.BiDef{n, +ps, ret, body, doc}:
+      tcp.fam.raise.of(tcp.ps.tpls(ps), n, ps, ret, body, doc, v)
+    case _:
+      None{}
+
+def tcp.data.or.pi.of(on: Bool, n: List<&2, U32>, ps: List<&2, T.BParam>, ret: T.Bt, body: T.Bt, doc: List<&2, List<&2, U32>>, +v: List<&2, U32>) -> Maybe<&2, T.BItem>:
+  match on:
+    case True{}:
+      tcp.data.pi(tcp.pi.data(body, v), n, ps, ret, doc)
+    case False{}:
+      None{}
+
+def tcp.data.or.pi(m: Maybe<&2, T.BItem>, n: List<&2, U32>, +ps: List<&2, T.BParam>, ret: T.Bt, body: T.Bt, doc: List<&2, List<&2, U32>>, +v: List<&2, U32>) -> Maybe<&2, T.BItem>:
+  match m:
+    case Some{x}:
+      Some{x}
+    case None{}:
+      tcp.data.or.pi.of(tcp.ps.tpls(ps), n, ps, ret, body, doc, v)
 
 # The item with its type parameter v declared Data (the gate's repair when
 # a call passes v where Data is expected), or None when v is not one; a
