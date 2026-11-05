@@ -1518,6 +1518,91 @@ def tqf.env.put(+n: List<&2, U32>, s: TqSig, e: TqEnv) -> TqEnv:
     case TqEnv{sig, here, alts}:
       TqEnv{Map.set(&2, TqSig, sig, S.str(n), s), here, alts}
 
+# A type's kind from the signatures (2026-11-04).  Cata (act.fq) writes one
+# item at a time and takes a field of another type as &1, so PLFA's `Context`
+# (∅ | Context , Type) was a Type though Type is Data: a context used twice
+# had to be a template, a template wants a closed argument, and subst, rename
+# and exts dropped ("a ~ argument must be closed").  A type written as Type
+# whose every field is Data is Data: the largest such set of the module, so
+# that mutually recursive types need no order.
+def tqf.du.field(+t: T.Bt, +cands: List<&2, List<&2, U32>>, +ctx: List<&2, T.BParam>, +e: TqEnv) -> Bool:
+  match t:
+    case T.BtEq{ty, a, b}:
+      True{}
+    case T.BtTyApp{+n, a}:
+      Bool.or(tqf.mem(n, cands), tqf.is(tqf.kind(8n, T.BtTyApp{n, a}, ctx, e), "&2"))
+    case t:
+      tqf.is(tqf.kind(8n, t, ctx, e), "&2")
+
+def tqf.du.fields(fs: List<&2, T.BField>, +cands: List<&2, List<&2, U32>>, +ctx: List<&2, T.BParam>, +e: TqEnv) -> Bool:
+  match fs:
+    case Nil{}:
+      True{}
+    case T.BField{x, +ty} <> t:
+      Bool.and(tqf.du.field(ty, cands, ctx, e), tqf.du.fields(t, cands, ctx, e))
+
+def tqf.du.ctors(cs: List<&2, T.BCtor>, +cands: List<&2, List<&2, U32>>, +ctx: List<&2, T.BParam>, +e: TqEnv) -> Bool:
+  match cs:
+    case Nil{}:
+      True{}
+    case T.BCtor{c, fs} <> t:
+      Bool.and(tqf.du.fields(fs, cands, ctx, e), tqf.du.ctors(t, cands, ctx, e))
+
+def tqf.du.is.type(k: T.Bt) -> Bool:
+  match k:
+    case T.BtType{}:
+      True{}
+    case _:
+      False{}
+
+def tqf.du.put(ok: Bool, +n: List<&2, U32>, rest: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  match ok:
+    case True{}:
+      n <> rest
+    case False{}:
+      rest
+
+# the types written as Type, by name
+def tqf.du.types(its: List<&2, T.BItem>) -> List<&2, List<&2, U32>>:
+  match its:
+    case Nil{}:
+      Nil{}
+    case T.BiType{+n, ps, k, cs, doc} <> t:
+      tqf.du.put(tqf.du.is.type(k), n, tqf.du.types(t))
+    case i <> t:
+      tqf.du.types(t)
+
+# one round: the candidates whose fields hold, given the candidates
+def tqf.du.round(its: List<&2, T.BItem>, +cands: List<&2, List<&2, U32>>, +e: TqEnv) -> List<&2, List<&2, U32>>:
+  match its:
+    case Nil{}:
+      Nil{}
+    case T.BiType{+n, +ps, k, +cs, doc} <> t:
+      tqf.du.put(Bool.and(tqf.mem(n, cands), tqf.du.ctors(cs, cands, tqf.ctx.of(ps, Nil{}), e)), n, tqf.du.round(t, cands, e))
+    case i <> t:
+      tqf.du.round(t, cands, e)
+
+def tqf.du.fix(fuel: Nat, +its: List<&2, T.BItem>, +cands: List<&2, List<&2, U32>>, +e: TqEnv) -> List<&2, List<&2, U32>>:
+  match fuel:
+    case 0n:
+      Nil{}
+    case 1n+f:
+      +r = tqf.du.round(its, cands, e)
+      Bool.pick(List<&2, List<&2, U32>>, Nat.is_eq(List.length(&2, List<&2, U32>, r), List.length(&2, List<&2, U32>, cands)), r, tqf.du.fix(f, its, r, e))
+
+def tqf.du.apply(its: List<&2, T.BItem>, +ds: List<&2, List<&2, U32>>) -> List<&2, T.BItem>:
+  match its:
+    case Nil{}:
+      Nil{}
+    case T.BiType{+n, ps, +k, cs, doc} <> t:
+      T.BiType{n, ps, Bool.pick(T.Bt, tqf.mem(n, ds), T.BtVar{S.b("Data")}, k), cs, doc} <> tqf.du.apply(t, ds)
+    case i <> t:
+      i <> tqf.du.apply(t, ds)
+
+def tqf.data.up(+its: List<&2, T.BItem>, +e: TqEnv) -> List<&2, T.BItem>:
+  +ts = tqf.du.types(its)
+  tqf.du.apply(its, tqf.du.fix(1n+List.length(&2, List<&2, U32>, ts), its, ts, e))
+
 # The module's items solved in order, each one's signature added for those
 # after it (their own names are printed bare).  An item is solved with its
 # own signature (as written) in scope, so its recursive calls are solved as

@@ -1403,6 +1403,32 @@ def dec.laws() -> IO(Unit):
     g3 : D.A2bG <- dec.of(al, ral, ds, D.a2b.mod.items(S.b("A2bDec"), al, ds, g2))
     return Unit{}
 
+# A2bKinds: a type's kind read from the signatures (ToBend/Qfix.bend,
+# tqf.data.up).  PLFA's Context (∅ | Context , Type) was a Type because Type
+# is another type, so a context used twice was a template, and subst, rename
+# and exts could not close it.  Even and Odd need each other, Holds holds a
+# function through Fn.
+def ctxd.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, tr: D.A2bTr) -> IO(D.A2bG):
+  match tr:
+    case D.A2bTr{its, g}:
+      +text = D.a2b.raw.text.of(S.b("A2bKinds"), al, ral, List.length(&2, A.AgDecl, ds), its)
+      do IO<D.A2bG>:
+        IO.print(verdict("a type whose fields are all Data is Data", S.infix(text, S.b("type Ctx is Data:"))))
+        IO.print(verdict("mutually recursive types are Data together", Bool.and(S.infix(text, S.b("type Even is Data:")), S.infix(text, S.b("type Odd is Data:")))))
+        IO.print(verdict("a function field keeps Type, through another type too", Bool.and(S.infix(text, S.b("type Fn is Type:")), S.infix(text, S.b("type Holds is Type:")))))
+        IO.print(verdict("a Data value used twice is +", S.infix(text, S.b("def both(+x: Ctx)"))))
+        return g
+
+def ctxd.laws() -> IO(Unit):
+  +order : List<&2, List<&2, U32>> = [S.b("Agda.Primitive"), S.b("A2bKinds")]
+  +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
+  +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
+  do IO<Unit>:
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
+    +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bKinds.sexp"))
+    g2 : D.A2bG <- ctxd.of(al, ral, ds, D.a2b.mod.items(S.b("A2bKinds"), al, ds, g1))
+    return Unit{}
+
 def main() -> IO(Unit):
   do IO<Unit>:
     +bool : List<&2, U32> <- S.read("fixtures/agda2bend/Agda.Builtin.Bool.sexp")
@@ -1427,6 +1453,7 @@ def main() -> IO(Unit):
     ftr.laws()
     cs.laws()
     dec.laws()
+    ctxd.laws()
     tpl.laws()
     inl.laws()
     tele.laws()

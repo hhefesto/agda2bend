@@ -1126,10 +1126,15 @@ def a2b.rst.of(r: A2bRe, its: List<&2, T.BItem>) -> A2bRst:
     case A2bRe{tab, c}:
       A2bRst{tab, its, c}
 
+# the types the signatures show to be Data (QF.tqf.data.up), before anything
+# reads a kind
+def a2b.data.up(+its: List<&2, T.BItem>, +qe: QF.TqEnv) -> List<&2, T.BItem>:
+  QF.tqf.data.up(its, a2b.qe.own(its, qe))
+
 def a2b.round(fuel: Nat, +ds: List<&2, A.AgDecl>, +ws: List<&2, Nat>, +m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +unf: Map<&2, C.ActCopy>, +dm: Map<&2, A.AgDecl>, +nk: Map<&2, String>, +te: Q.TcpEnv, +qe: QF.TqEnv, st: A2bRst) -> A2bRound:
   match fuel st:
     case 1n+p A2bRst{+tab, its, True{}}:
-      +its2 = a2b.items.par(ds, ws, C.ActEnv{m, tab, al, unf}, dm)
+      +its2 = a2b.data.up(a2b.items.par(ds, ws, C.ActEnv{m, tab, al, unf}, dm), qe)
       a2b.round(p, ds, ws, m, al, unf, dm, nk, te, qe, a2b.rst.of(a2b.re.items(its2, nk, Q.tcp.datas(its2), te, qe, a2b.qe.own(its2, qe), A2bRe{tab, False{}}), its2))
     case _ A2bRst{tab, its, c}:
       A2bRound{tab, its}
