@@ -1068,12 +1068,21 @@ def tgt.up.def(m: Maybe<&2, T.BItem>, +sp: List<&2, U32>, +h: List<&2, U32>, +as
     case _:
       None{}
 
-def tgt.up.add(m: Maybe<&2, T.BItem>, +it: T.BItem, +its: List<&2, T.BItem>) -> List<&2, T.BItem>:
+# (just before the def that needs it: first in the module, it came before a type of the
+# module's own, "a declared constructor (unknown: Vec.lb_rb)")
+def tgt.up.ins(its: List<&2, T.BItem>, +blame: List<&2, U32>, +hi: T.BItem) -> List<&2, T.BItem>:
+  match its:
+    case Nil{}:
+      [hi]
+    case +it <> +t:
+      Bool.pick(List<&2, T.BItem>, S.eq(tgt.name(it), blame), hi <> it <> t, it <> tgt.up.ins(t, blame, hi))
+
+def tgt.up.add(m: Maybe<&2, T.BItem>, +it: T.BItem, +blame: List<&2, U32>, +its: List<&2, T.BItem>) -> List<&2, T.BItem>:
   match m:
     case Some{x}:
       its
     case None{}:
-      it <> its
+      tgt.up.ins(its, blame, it)
 
 # the quantity repair first: a family's quantity named on one side only goes to &1, as it
 # did (foundation.subuniverses' equiv-subuniverse); where it is on both, only the domains
@@ -1100,7 +1109,7 @@ def tgt.up.solve(helper: Bool, new: T.BItem, +qe: QF.TqEnv) -> T.BItem:
 def tgt.up.put(r: Maybe<&2, T.BItem>, +hi: T.BItem, +blame: List<&2, U32>, +why: List<&2, U32>, +its: List<&2, T.BItem>, ds: List<&2, TgtDrop>, +qe: QF.TqEnv) -> TgtSt:
   match r:
     case Some{new}:
-      TgtSt{tgt.fixed(blame, tgt.up.add(tgt.find(its, tgt.name(hi)), hi, its), tgt.up.solve(S.prefix(blame, S.b("a2b_up.")), new, qe), qe), ds}
+      TgtSt{tgt.fixed(blame, tgt.up.add(tgt.find(its, tgt.name(hi)), hi, blame, its), tgt.up.solve(S.prefix(blame, S.b("a2b_up.")), new, qe), qe), ds}
     case None{}:
       tgt.alt.or.fail(blame, why, its, ds, qe)
 
