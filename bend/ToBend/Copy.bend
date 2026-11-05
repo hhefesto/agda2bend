@@ -807,7 +807,7 @@ def tcp.params(ps: List<&2, T.BParam>, +body: T.Bt, +datas: List<&2, List<&2, U3
 def tcp.tpl.names(ps: List<&2, T.BParam>, ms: List<&2, T.BMode>, acc: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
   match ps ms:
     case T.BParam{x, n, ty} <> pt T.BmTpl{} <> mt:
-      tcp.tpl.names(pt, mt, T.tba.refs(ty, acc))
+      tcp.tpl.names(pt, mt, T.tba.frees(ty, acc))
     case p <> pt m <> mt:
       tcp.tpl.names(pt, mt, acc)
     case _ _:

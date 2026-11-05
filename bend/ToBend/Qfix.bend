@@ -54,6 +54,47 @@ def tqf.sig(+e: TqEnv, +n: List<&2, U32>) -> TqSig:
     case TqEnv{+sig, +here, alts}:
       tqf.pick(tqf.has(Map.has(&2, TqSig, sig, S.str(n))), n, sig, here)
 
+# The assumptions a def takes (Agda2Bend/Ax.bend: `~a2b_ax_x: ...` first in its header,
+# `~a2b_ax_x` first in each call of it) are added after the quantity passes, so another
+# module's signature has them but a call Cata has just written does not: reading the two
+# side by side put each argument one parameter out, and `trunc(l, k, x)` came out as
+# `trunc(l, k, &1)`, x taken for l's quantity (2026-11-04).  So a call without them reads
+# the signature without them; the gate's calls have them and read it whole.
+def tqf.ax.is(+x: List<&2, U32>) -> Bool:
+  S.prefix(x, S.b("a2b_ax_"))
+
+def tqf.ax.args(a: T.Bt) -> Bool:
+  match a:
+    case T.BtArgs{T.BtTplArg{T.BtVar{+x}}, rest}:
+      tqf.ax.is(x)
+    case _:
+      False{}
+
+def tqf.ax.drop(hit: Bool, +p: T.BParam, +t: List<&2, T.BParam>, rest: List<&2, T.BParam>) -> List<&2, T.BParam>:
+  match hit:
+    case True{}:
+      rest
+    case False{}:
+      p <> t
+
+def tqf.ax.ps(+ps: List<&2, T.BParam>) -> List<&2, T.BParam>:
+  match ps:
+    case Nil{}:
+      Nil{}
+    case T.BParam{+m, +x, +ty} <> +t:
+      tqf.ax.drop(tqf.ax.is(x), T.BParam{m, x, ty}, t, tqf.ax.ps(t))
+
+def tqf.sig.ax(has: Bool, s: TqSig) -> TqSig:
+  match has s:
+    case False{} TqDef{+ps, ret, b}:
+      TqDef{tqf.ax.ps(ps), ret, b}
+    case _ s:
+      s
+
+# fn's signature as a call with arguments a reads it
+def tqf.sig.at(+e: TqEnv, +n: List<&2, U32>, a: T.Bt) -> TqSig:
+  tqf.sig.ax(tqf.ax.args(a), tqf.sig(e, n))
+
 # a name's signature unless the context binds it (m: its type there), for a
 # field or a parameter shadows a global of the same name
 def tqf.sig.free(m: Maybe<&2, T.Bt>, +e: TqEnv, +n: List<&2, U32>) -> TqSig:
@@ -433,7 +474,7 @@ def tqf.beta(fuel: Nat, t: T.Bt, a: T.Bt) -> Maybe<&2, T.Bt>:
 def tqf.whnf(fuel: Nat, t: T.Bt, +e: TqEnv) -> T.Bt:
   match fuel t:
     case 1n+f T.BtApp{T.BtVar{+fn}, +args}:
-      +u = tqf.unf(tqf.sig(e, fn), args)
+      +u = tqf.unf(tqf.sig.at(e, fn, args), args)
       Bool.pick(T.Bt, tqf.is.some(u), tqf.whnf(f, tqf.unf.get(u), e), T.BtApp{T.BtVar{fn}, args})
     case 1n+(+f) T.BtApp{T.BtApp{+g, +a1}, +a2}:
       +r = tqf.beta(64n, tqf.whnf(f, T.BtApp{g, a1}, e), a2)
@@ -498,7 +539,7 @@ def tqf.ty(fuel: Nat, t: T.Bt, +ctx: List<&2, T.BParam>, +e: TqEnv) -> Maybe<&2,
     case f T.BtVar{+x}:
       tqf.ty.var(tqf.ctx.ty(ctx, x), tqf.sig(e, x))
     case 1n+f T.BtApp{T.BtVar{+fn}, +args}:
-      tqf.ty.app(tqf.ctx.ty(ctx, fn), tqf.sig(e, fn), args, e)
+      tqf.ty.app(tqf.ctx.ty(ctx, fn), tqf.sig.at(e, fn, args), args, e)
     case 1n+f T.BtApp{g, args}:
       tqf.apply.pis(tqf.ty(f, g, ctx, e), args, e)
     case 1n+f T.BtDead{a}:
@@ -545,7 +586,7 @@ def tqf.endq.unf(fuel: Nat, t: T.Bt, +e: TqEnv) -> T.Bt:
       +r = tqf.beta(64n, T.BtExpr{l}, a)
       Bool.pick(T.Bt, tqf.is.some(r), tqf.endq.unf(f, tqf.unf.get(r), e), tqf.q1())
     case 1n+f T.BtApp{T.BtVar{+fn}, +args}:
-      +u = tqf.unf(tqf.sig(e, fn), args)
+      +u = tqf.unf(tqf.sig.at(e, fn, args), args)
       Bool.pick(T.Bt, tqf.is.some(u), tqf.endq.unf(f, tqf.unf.get(u), e), tqf.endq(T.BtApp{T.BtVar{fn}, args}))
     case 1n+f T.BtDead{a}:
       tqf.endq.unf(f, a, e)
@@ -666,7 +707,7 @@ def tqf.bind(fuel: Nat, pty: T.Bt, +a: T.Bt, +ctx: List<&2, T.BParam>, +e: TqEnv
     case f T.BtTyApp{+pn, pa}:
       tqf.match.ty(pn, pa, tqf.ty(16n, a, ctx, e), bs)
     case 1n+f T.BtApp{T.BtVar{+fn}, +pargs}:
-      +u = tqf.unf(tqf.sig(e, fn), pargs)
+      +u = tqf.unf(tqf.sig.at(e, fn, pargs), pargs)
       Bool.pick(List<&2, TqBind>, tqf.is.some(u), tqf.bind(f, tqf.unf.get(u), a, ctx, e, bs), bs)
     case _ _:
       bs
@@ -773,11 +814,11 @@ def tqf.widen(t: T.Bt) -> T.Bt:
 # (inner ones first, so an argument's type is already right)
 def tqf.fix(t: T.Bt, +ctx: List<&2, T.BParam>, +e: TqEnv) -> T.Bt:
   match t:
-    case T.BtApp{T.BtVar{+fn}, a}:
-      T.BtApp{T.BtVar{fn}, tqf.fix.call(tqf.sig.free(tqf.ctx.ty(ctx, fn), e, fn), tqf.fix(a, ctx, e), ctx, e)}
-    case T.BtApp{T.BtApp{T.BtVar{+fn}, a}, a2}:
+    case T.BtApp{T.BtVar{+fn}, +a}:
+      T.BtApp{T.BtVar{fn}, tqf.fix.call(tqf.sig.ax(tqf.ax.args(a), tqf.sig.free(tqf.ctx.ty(ctx, fn), e, fn)), tqf.fix(a, ctx, e), ctx, e)}
+    case T.BtApp{T.BtApp{T.BtVar{+fn}, +a}, a2}:
       +a2f = tqf.fix(a2, ctx, e)
-      T.BtApp{T.BtApp{T.BtVar{fn}, tqf.fix.call2(tqf.sig.free(tqf.ctx.ty(ctx, fn), e, fn), tqf.fix(a, ctx, e), a2f, ctx, e)}, a2f}
+      T.BtApp{T.BtApp{T.BtVar{fn}, tqf.fix.call2(tqf.sig.ax(tqf.ax.args(a), tqf.sig.free(tqf.ctx.ty(ctx, fn), e, fn)), tqf.fix(a, ctx, e), a2f, ctx, e)}, a2f}
     case T.BtApp{f, a}:
       T.BtApp{tqf.fix(f, ctx, e), tqf.fix(a, ctx, e)}
     case T.BtTyApp{+n, a}:
@@ -1143,7 +1184,7 @@ def tqf.wd.callee(s: TqSig, a: T.Bt) -> List<&2, List<&2, U32>>:
 
 def tqf.wd.fn(+fn: List<&2, U32>, +a: T.Bt, +bound: List<&2, List<&2, U32>>, +e: TqEnv) -> List<&2, List<&2, U32>>:
   +own = Bool.pick(List<&2, List<&2, U32>>, tqf.wd.pi(a), fn <> Nil{}, Nil{})
-  Bool.pick(List<&2, List<&2, U32>>, tqf.mem(fn, bound), own, tqf.wd.cat(own, tqf.wd.callee(tqf.sig(e, fn), a)))
+  Bool.pick(List<&2, List<&2, U32>>, tqf.mem(fn, bound), own, tqf.wd.cat(own, tqf.wd.callee(tqf.sig.at(e, fn, a), a)))
 
 # the names the term applies to a function type or passes in a slot of Type domain
 def tqf.wd.need(t: T.Bt, +bound: List<&2, List<&2, U32>>, +e: TqEnv) -> List<&2, List<&2, U32>>:

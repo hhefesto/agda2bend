@@ -343,6 +343,56 @@ def tba.keep(b: Bool, x: List<&2, U32>, rest: List<&2, List<&2, U32>>) -> List<&
     case False{}:
       x <> rest
 
+# ns less x, in front of acc
+def tba.less(+x: List<&2, U32>, +ns: List<&2, List<&2, U32>>, acc: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  match ns:
+    case Nil{}:
+      acc
+    case n <> t:
+      tba.keep(S.eq(n, x), n, tba.less(x, t, acc))
+
+# tba.refs without what the term's own lambdas, Pis and lets bind: the names it
+# mentions from outside (`@n:Nat -> P(n)` does not mention an n around it).
+# Patterns are not told from what they match, so a case's binders stay in.
+def tba.frees(t: Bt, acc: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  match t:
+    case BtRw{e, p, b}:
+      tba.frees(e, tba.frees(p, tba.frees(b, acc)))
+    case BtLet{+x, v, b}:
+      tba.frees(v, tba.less(x, tba.frees(b, Nil{}), acc))
+    case BtDead{a}:
+      tba.frees(a, acc)
+    case BtVar{x}:
+      x <> acc
+    case BtApp{f, a}:
+      tba.frees(f, tba.frees(a, acc))
+    case BtTplArg{a}:
+      tba.frees(a, acc)
+    case BtLam{m, +x, b}:
+      tba.less(x, tba.frees(b, Nil{}), acc)
+    case BtPi{m, +x, d, a, b}:
+      tba.frees(a, tba.less(x, tba.frees(b, Nil{}), acc))
+    case BtCon{c, a}:
+      c <> tba.frees(a, acc)
+    case BtTyApp{n, a}:
+      n <> tba.frees(a, acc)
+    case BtEq{ty, a, b}:
+      tba.frees(ty, tba.frees(a, tba.frees(b, acc)))
+    case BtSucc{a}:
+      tba.frees(a, acc)
+    case BtAnn{a, ty}:
+      tba.frees(a, tba.frees(ty, acc))
+    case BtMatch{xs, cs}:
+      tba.frees(cs, acc)
+    case BtExpr{e}:
+      tba.frees(e, acc)
+    case BtCase{p, b, rest}:
+      tba.frees(p, tba.frees(b, tba.frees(rest, acc)))
+    case BtArgs{a, rest}:
+      tba.frees(a, tba.frees(rest, acc))
+    case _:
+      acc
+
 def tba.minus(xs: List<&2, List<&2, U32>>, +bound: Map<&2, Bool>) -> List<&2, List<&2, U32>>:
   match xs:
     case Nil{}:
