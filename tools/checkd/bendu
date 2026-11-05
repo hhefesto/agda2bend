@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# bendu FILE --check-only: a unit's check through tools/checkd's daemons, for ana's bend-check (units.sh).
+# bend-check runs `bend Unit.bend --check-only` in a worker's copy of the module tree, and each such run loads and
+# checks every import: 2-4 s, where a daemon holding the imports takes 30-150 ms.  The file goes beside its module in
+# the tree the daemons hold ($A2B_TREE), under a name of its own, to the daemon its directory hashes to (one slow
+# module holds up that daemon alone).  What it prints and how it exits are the command's.  Anything else: the real bend.
+[ "${2:-}" = --check-only ] || exec "$A2B_BEND" "$@"
+case "$PWD" in
+  */src/mods|*/src/mods/*) r=${PWD##*/src/mods} ;;
+  *) exec "$A2B_BEND" "$@" ;;
+esac
+h=$(printf %s "$r" | cksum | cut -d' ' -f1)
+s=$A2B_CHECKD_BASE.$(( h % A2B_CHECKD_N ))
+exec 3<>"/dev/tcp/127.0.0.1/$(cat "$s/port")" 2>/dev/null || exec "$A2B_BEND" "$@"
+t=$A2B_TREE/mods$r/Unit_$$_$RANDOM.bend
+cp "$1" "$t" || exec "$A2B_BEND" "$@"
+trap 'rm -f "$t"' EXIT
+printf '%s\n' "$t" >&3
+if IFS=' ' read -r -t "${A2B_CHECKD_SECS:-880}" tag rc <&3 && [ "$tag" = RC ]; then
+  cat <&3
+  exit "$rc"
+fi
+kill -9 "$(cat "$s/pid")" 2>/dev/null
+echo "Error: the check took more than ${A2B_CHECKD_SECS:-880} s"
+exit 124
