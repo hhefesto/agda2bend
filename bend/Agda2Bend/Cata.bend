@@ -2639,6 +2639,10 @@ def act.params.go(fuel: Nat, n: Nat, t: A.Ag, ms: List<&2, ActM>, +ctx: List<&2,
       act.params.put(m, nm, act.t(a, ctx, env), act.params.go(f, p, b, Nil{}, act.bind(d, act.entry(m, nm), ctx), nm <> seen, env, renv))
     case 1n+g 1n+p A.AgEl{s, A.AgDef{+q, +es}} ms:
       act.params.go(g, 1n+p, A.AgEl{s, act.params.open(q, act.unfold(env, q, es), es, env)}, ms, ctx, seen, env, renv)
+    case 1n+g 1n+p A.AgEl{s, A.AgStored{x}} ms:
+      act.params.go(g, 1n+p, A.AgEl{s, x}, ms, ctx, seen, env, renv)
+    case 1n+g 1n+p A.AgStored{x} ms:
+      act.params.go(g, 1n+p, x, ms, ctx, seen, env, renv)
     case f 1n+p t ms:
       ActPs{Nil{}, act.todo("a type with fewer Pis than its clauses take parameters (" ++ act.params.head(t) ++ ")"), ctx, Nil{}, False{}}
 

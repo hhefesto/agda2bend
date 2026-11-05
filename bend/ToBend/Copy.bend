@@ -540,15 +540,49 @@ def tcp.q.names(+ps: List<&2, T.BParam>, +why: List<&2, U32>) -> List<&2, List<&
   +obs = tcp.obs(why)
   tcp.q.cands.or(tcp.q.cands(qs, exp, obs), qs, exp, obs)
 
+# A Type where a Kind(q) is expected, deep inside a bigger type: pointed-map's
+# "expected Sigma_<&1, &1, @_:A -> Kind(l2), ..> observed Sigma_<&1, &1, @_:A ->
+# Type, ..>" (218 dependents in corpus-um16 at 1,123 modules) names l2 where
+# tgt.repair.kind's prefix test does not look.  Read at the first place the two
+# differ: the quantities that Kind( names go to &1 (2026-11-04).
+def tcp.q.upto(xs: List<&2, U32>) -> List<&2, U32>:
+  match xs:
+    case Nil{}:
+      Nil{}
+    case +c <> t:
+      Bool.pick(List<&2, U32>, U32.is_eq(c, 41), Nil{}, c <> tcp.q.upto(t))
+
+def tcp.q.at1.at(+e: List<&2, U32>, +o: List<&2, U32>, +qs: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  Bool.pick(List<&2, List<&2, U32>>, Bool.and(S.prefix(e, S.b("Kind(")), S.prefix(o, S.b("Type"))), tcp.q.cands(qs, Nil{}, tcp.q.upto(e)), Nil{})
+
+def tcp.q.at1(e: List<&2, U32>, o: List<&2, U32>, +qs: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  match e o:
+    case +a <> +s +b <> +t:
+      Bool.pick(List<&2, List<&2, U32>>, U32.is_eq(a, b), tcp.q.at1(s, t, qs), tcp.q.at1.at(a <> s, b <> t, qs))
+    case _ _:
+      Nil{}
+
+def tcp.q.kinds(+ps: List<&2, T.BParam>, +why: List<&2, U32>) -> List<&2, List<&2, U32>>:
+  +exp = tcp.exp.of(S.find(why, S.b("observed : "), 0n), why)
+  +obs = tcp.obs(why)
+  tcp.q.at1(tcp.q.past(S.find(exp, S.b("expected : "), 0n), exp), tcp.q.past(S.find(obs, S.b("observed : "), 0n), obs), tcp.q.params(ps))
+
+def tcp.q.kinds.or(m: Maybe<&2, T.BItem>, +it: T.BItem, +ps: List<&2, T.BParam>, +why: List<&2, U32>) -> Maybe<&2, T.BItem>:
+  match m:
+    case Some{x}:
+      Some{x}
+    case None{}:
+      tcp.q.done(tcp.q.kinds(ps, why), it, S.b("&1"))
+
 # The item specialised in the quantities the failure names, or None: to &2
 # those the observed type names (a copy needs Data), to &1 those the
 # expected kind names (a Type fills a Kind(q): `_≉_ = λ x y → ¬ …`).
 def tcp.q.spec(+it: T.BItem, +why: List<&2, U32>) -> Maybe<&2, T.BItem>:
   match it:
     case T.BiDef{n, +ps, ret, body, doc}:
-      tcp.q.done(tcp.q.names(ps, why), it, S.b("&2"))
+      tcp.q.kinds.or(tcp.q.done(tcp.q.names(ps, why), it, S.b("&2")), it, ps, why)
     case T.BiType{n, +ps, k, cs, doc}:
-      tcp.q.done(tcp.q.names(ps, why), it, S.b("&2"))
+      tcp.q.kinds.or(tcp.q.done(tcp.q.names(ps, why), it, S.b("&2")), it, ps, why)
     case _:
       None{}
 
@@ -640,7 +674,7 @@ def tcp.q.spec1(+it: T.BItem, +why: List<&2, U32>) -> Maybe<&2, T.BItem>:
 def tcp.q.spec1o(+it: T.BItem, +why: List<&2, U32>) -> Maybe<&2, T.BItem>:
   match it:
     case T.BiDef{n, +ps, ret, body, doc}:
-      tcp.q.done(tcp.q.cands(tcp.q.params(ps), tcp.exp.of(S.find(why, S.b("observed : "), 0n), why), tcp.obs(why)), it, S.b("&1"))
+      tcp.q.kinds.or(tcp.q.done(tcp.q.cands(tcp.q.params(ps), tcp.exp.of(S.find(why, S.b("observed : "), 0n), why), tcp.obs(why)), it, S.b("&1")), it, ps, why)
     case _:
       None{}
 

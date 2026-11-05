@@ -428,7 +428,7 @@ def tgt.word(xs: List<&2, U32>) -> List<&2, U32>:
 
 def tgt.span.at(+ml: List<&2, U32>, +cl: List<&2, U32>) -> List<&2, U32>:
   +k = tgt.lead(tgt.bar(cl), 32, True{})
-  tgt.word(tgt.cols.take(tgt.lead(tgt.cols.drop(k, tgt.bar(cl)), 94, True{}), tgt.cols.drop(k, tgt.bar(ml))))
+  tgt.cols.take(tgt.lead(tgt.cols.drop(k, tgt.bar(cl)), 94, True{}), tgt.cols.drop(k, tgt.bar(ml)))
 
 def tgt.line.hd(ls: List<&2, List<&2, U32>>) -> List<&2, U32>:
   match ls:
@@ -622,12 +622,112 @@ def tgt.var.of(+w: List<&2, U32>) -> List<&2, U32>:
 def tgt.data.fam(+w: List<&2, U32>) -> Bool:
   Bool.and(S.infix(w, S.b("-> Data observed : ")), S.infix(w, S.b("-> Kind(")))
 
+# A datatype of Data at the wrong quantity (2026-11-04).  Qfix writes
+# is_contr(&2, {x == y : empty}) for the type of agda-unimath's is-prop-empty,
+# since an identity of Data is Data, but Prop(&1)'s family writes is_contr(&1,
+# ..) for the same type, so empty-Prop is refused: "expected Sigma_<&1, &1, T,
+# F> observed Sigma_<&2, &1, T, F>" (21 roots of corpus-um16, empty-Set 1559
+# dependents and is-prop-is-positive-ℤ 949 among them).  The two have the same
+# values; Bend does not say so, and a match needs a variable, so the marked term
+# goes through a helper of the module's that takes it apart and builds it again:
+#   def a2b_up.T.0(-l2: Quant, -A: Kind(&2), -B: A -> Kind(l2), a2b_x: T<&2, l2, A, B>)
+#     -> T<&1, l2, A, B>: match a2b_x: case pair{f_pr1, f_pr2}: pair{f_pr1, f_pr2}
+# A Type-valued T is refused at A: Kind(&2), and the item drops as before.
+type TgUp is Data:
+  TgUp{ty: List<&2, U32>, args: List<&2, List<&2, U32>>}
+
+type TgUp2 is Data:
+  TgUp2{e: TgUp, o: TgUp}
+
+def tgt.up.d(+h: U32, +prev: U32, +d: Nat) -> Nat:
+  Bool.pick(Nat, Bool.or(U32.is_eq(h, 60), Bool.or(U32.is_eq(h, 123), Bool.or(U32.is_eq(h, 40), U32.is_eq(h, 91)))), 1n+d, Bool.pick(Nat, Bool.and(Bool.or(U32.is_eq(h, 62), Bool.or(U32.is_eq(h, 125), Bool.or(U32.is_eq(h, 41), U32.is_eq(h, 93)))), Bool.not(Bool.or(U32.is_eq(prev, 45), U32.is_eq(prev, 61)))), Nat.sub(d, 1n), d))
+
+# a type's arguments, split at its top-level commas (the > of -> and => closes nothing)
+def tgt.up.split(xs: List<&2, U32>, +d: Nat, +prev: U32, +cur: List<&2, U32>) -> List<&2, List<&2, U32>>:
+  match xs:
+    case Nil{}:
+      [tgt.trim(List.reverse(&2, U32, cur))]
+    case +h <> +t:
+      +c = Bool.and(U32.is_eq(h, 44), Nat.is_eq(d, 0n))
+      +r = tgt.up.split(t, tgt.up.d(h, prev, d), h, Bool.pick(List<&2, U32>, c, Nil{}, h <> cur))
+      Bool.pick(List<&2, List<&2, U32>>, c, tgt.trim(List.reverse(&2, U32, cur)) <> r, r)
+
+def tgt.up.last(xs: List<&2, U32>, +c: U32) -> Bool:
+  match xs:
+    case Nil{}:
+      False{}
+    case +h <> Nil{}:
+      U32.is_eq(h, c)
+    case h <> t:
+      tgt.up.last(t, c)
+
+def tgt.up.parse.at(m: Maybe<&2, Nat>, +w: List<&2, U32>) -> Maybe<&2, TgUp>:
+  match m:
+    case None{}:
+      None{}
+    case Some{+i}:
+      Bool.pick(Maybe<&2, TgUp>, Bool.and(tgt.up.last(w, 62), Bool.not(S.infix(List.take(&2, U32, w, i), S.b(" ")))), Some{TgUp{List.take(&2, U32, w, i), tgt.up.split(List.take(&2, U32, List.drop(&2, U32, w, 1n+i), Nat.sub(List.length(&2, U32, w), Nat.add(2n, i))), 0n, 32, Nil{})}}, None{})
+
+# T<a, b>, its head and arguments
+def tgt.up.parse(+w: List<&2, U32>) -> Maybe<&2, TgUp>:
+  tgt.up.parse.at(S.find(w, S.b("<"), 0n), w)
+
+# a side of the reason: what follows lead, without the spaces after it
+def tgt.up.side(+w: List<&2, U32>, +lead: List<&2, U32>) -> Maybe<&2, TgUp>:
+  tgt.up.parse(List.reverse(&2, U32, tgt.trim(List.reverse(&2, U32, S.strip(w, lead)))))
+
+def tgt.up.exp(+why: List<&2, U32>) -> Maybe<&2, TgUp>:
+  tgt.up.side(Q.tcp.exp.of(S.find(why, S.b("observed : "), 0n), why), S.b("expected : "))
+
+def tgt.up.obs(+why: List<&2, U32>) -> Maybe<&2, TgUp>:
+  tgt.up.side(Q.tcp.obs(why), S.b("observed : "))
+
+def tgt.up.isq(+x: List<&2, U32>) -> Bool:
+  Bool.or(S.eq(x, S.b("&1")), S.eq(x, S.b("&2")))
+
+# the two lists agree but for quantities, and not everywhere
+def tgt.up.same(es: List<&2, List<&2, U32>>, os: List<&2, List<&2, U32>>, +any: Bool) -> Bool:
+  match es os:
+    case Nil{} Nil{}:
+      any
+    case +e <> et +o <> ot:
+      +q = S.eq(e, o)
+      Bool.and(Bool.or(q, Bool.and(tgt.up.isq(e), tgt.up.isq(o))), tgt.up.same(et, ot, Bool.or(any, Bool.not(q))))
+    case _ _:
+      False{}
+
+# some place expects &2
+def tgt.up.down(es: List<&2, List<&2, U32>>, os: List<&2, List<&2, U32>>) -> Bool:
+  match es os:
+    case +e <> et +o <> ot:
+      Bool.or(Bool.and(Bool.not(S.eq(e, o)), S.eq(e, S.b("&2"))), tgt.up.down(et, ot))
+    case _ _:
+      False{}
+
+def tgt.up.pair(m: Maybe<&2, TgUp>, n: Maybe<&2, TgUp>) -> Maybe<&2, TgUp2>:
+  match m n:
+    case Some{+a} Some{+b}:
+      Some{TgUp2{a, b}}
+    case _ _:
+      None{}
+
+def tgt.up.is.of(m: Maybe<&2, TgUp2>) -> Bool:
+  match m:
+    case Some{TgUp2{TgUp{+t, +es}, TgUp{+u, +os}}}:
+      Bool.and(S.eq(t, u), Bool.and(tgt.up.same(es, os, False{}), Bool.not(tgt.up.down(es, os))))
+    case None{}:
+      False{}
+
+def tgt.up.is(+w: List<&2, U32>) -> Bool:
+  Bool.pick(Bool, Bool.and(S.prefix(w, S.b("expected : ")), S.infix(w, S.b("&2"))), tgt.up.is.of(tgt.up.pair(tgt.up.exp(w), tgt.up.obs(w))), False{})
+
 # 1: a use twice, 2: an erased binder used live, 3: a Type where Data is
 # expected (the marked span a type parameter), 4: &2 expected, 5: a Type
 # where a Kind(q) is expected, 6: &1 or Type expected (a callee
-# specialised to &1), 0: none of these
+# specialised to &1), 7: one datatype at &2 where &1 is expected (tgt.up),
+# 0: none of these
 def tgt.repair.kind(+w: List<&2, U32>) -> Nat:
-  Bool.pick(Nat, S.infix(w, S.b("(consumed more than once)")), 1n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : -")), S.infix(w, S.b("observed : "))), 2n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : Data")), Bool.or(S.infix(w, S.b("observed : Type")), S.infix(w, S.b("observed : Kind(")))), 3n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : Kind(")), S.infix(w, S.b("observed : Type"))), 5n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : ")), Bool.or(S.infix(w, S.b("&2")), tgt.data.fam(w))), 4n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : ")), Bool.or(S.infix(w, S.b("&1")), S.infix(w, S.b("Type")))), 6n, 0n))))))
+  Bool.pick(Nat, tgt.up.is(w), 7n, Bool.pick(Nat, S.infix(w, S.b("(consumed more than once)")), 1n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : -")), S.infix(w, S.b("observed : "))), 2n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : Data")), Bool.or(S.infix(w, S.b("observed : Type")), S.infix(w, S.b("observed : Kind(")))), 3n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : Kind(")), S.infix(w, S.b("observed : Type"))), 5n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : ")), Bool.or(S.infix(w, S.b("&2")), tgt.data.fam(w))), 4n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : ")), Bool.or(S.infix(w, S.b("&1")), S.infix(w, S.b("Type")))), 6n, 0n)))))))
 
 def tgt.find(its: List<&2, T.BItem>, +n: List<&2, U32>) -> Maybe<&2, T.BItem>:
   match its:
@@ -783,6 +883,189 @@ def tgt.repaired(r: Maybe<&2, T.BItem>, +blame: List<&2, U32>, +why: List<&2, U3
     case None{}:
       tgt.alt.or.fail(blame, why, its, ds, qe)
 
+def tgt.up.at(+x: List<&2, U32>, ps: List<&2, T.BParam>) -> List<&2, T.BParam>:
+  match ps:
+    case Nil{}:
+      Nil{}
+    case T.BParam{m, y, ty} <> t:
+      T.BParam{m, y, T.tba.subst(ty, x, T.BtVar{S.b("&2")})} <> tgt.up.at(x, t)
+
+# the type's parameters less the quantities that differ, Kind(q) as Kind(&2)
+def tgt.up.ps(es: List<&2, List<&2, U32>>, os: List<&2, List<&2, U32>>, ps: List<&2, T.BParam>) -> List<&2, T.BParam>:
+  match es os ps:
+    case +e <> et +o <> ot T.BParam{m, +x, ty} <> +t:
+      +q = S.eq(e, o)
+      +r = tgt.up.ps(et, ot, Bool.pick(List<&2, T.BParam>, q, t, tgt.up.at(x, t)))
+      Bool.pick(List<&2, T.BParam>, q, T.BParam{T.BmErased{}, x, ty} <> r, r)
+    case _ _ _:
+      Nil{}
+
+# the type at one side's quantities, its other parameters by name
+def tgt.up.names(ps: List<&2, T.BParam>, vs: List<&2, List<&2, U32>>, es: List<&2, List<&2, U32>>, os: List<&2, List<&2, U32>>) -> List<&2, T.Bt>:
+  match ps vs es os:
+    case T.BParam{m, +x, ty} <> t +v <> vt +e <> et +o <> ot:
+      T.BtVar{Bool.pick(List<&2, U32>, S.eq(e, o), x, v)} <> tgt.up.names(t, vt, et, ot)
+    case _ _ _ _:
+      Nil{}
+
+def tgt.up.fields(fs: List<&2, T.BField>) -> List<&2, T.Bt>:
+  match fs:
+    case Nil{}:
+      Nil{}
+    case T.BField{x, ty} <> t:
+      T.BtVar{List.append(&2, U32, S.b("f_"), x)} <> tgt.up.fields(t)
+
+def tgt.up.cases(cs: List<&2, T.BCtor>, +pre: List<&2, U32>) -> T.Bt:
+  match cs:
+    case Nil{}:
+      T.BtCEnd{}
+    case T.BCtor{c, +fs} <> t:
+      +n = List.append(&2, U32, pre, c)
+      T.BtCase{T.tba.args([T.BtCon{n, T.tba.args(tgt.up.fields(fs))}]), T.BtExpr{T.BtCon{n, T.tba.args(tgt.up.fields(fs))}}, tgt.up.cases(t, pre)}
+
+def tgt.up.pre.go(xs: List<&2, U32>) -> List<&2, U32>:
+  match xs:
+    case Nil{}:
+      Nil{}
+    case +h <> +t:
+      Bool.pick(List<&2, U32>, U32.is_eq(h, 46), List.reverse(&2, U32, h <> t), tgt.up.pre.go(t))
+
+# what comes before a qualified name's last part, its dot too
+def tgt.up.pre(+n: List<&2, U32>) -> List<&2, U32>:
+  tgt.up.pre.go(List.reverse(&2, U32, n))
+
+def tgt.up.flat(xs: List<&2, U32>) -> List<&2, U32>:
+  match xs:
+    case Nil{}:
+      Nil{}
+    case +h <> t:
+      Bool.pick(U32, U32.is_eq(h, 46), 95, h) <> tgt.up.flat(t)
+
+# the helper's name says which quantities change
+def tgt.up.mark(es: List<&2, List<&2, U32>>, os: List<&2, List<&2, U32>>) -> List<&2, U32>:
+  match es os:
+    case +e <> et +o <> ot:
+      Bool.pick(U32, S.eq(e, o), 95, Bool.pick(U32, S.eq(e, S.b("&1")), 117, 100)) <> tgt.up.mark(et, ot)
+    case _ _:
+      Nil{}
+
+def tgt.up.item(+h: List<&2, U32>, +t: List<&2, U32>, +ps: List<&2, T.BParam>, cs: List<&2, T.BCtor>, +es: List<&2, List<&2, U32>>, +os: List<&2, List<&2, U32>>) -> T.BItem:
+  T.BiDef{h, List.append(&2, T.BParam, tgt.up.ps(es, os, ps), [T.BParam{T.BmLive{}, S.b("a2b_x"), T.BtTyApp{t, T.tba.args(tgt.up.names(ps, os, es, os))}}]), T.BtTyApp{t, T.tba.args(tgt.up.names(ps, es, es, os))}, T.BtMatch{T.tba.args([T.BtVar{S.b("a2b_x")}]), tgt.up.cases(cs, tgt.up.pre(t))}, Nil{}}
+
+# the arguments a call of the helper gives before the term: the type's own
+# where the quantities agree
+def tgt.up.args(es: List<&2, List<&2, U32>>, os: List<&2, List<&2, U32>>) -> List<&2, T.Bt>:
+  match es os:
+    case +e <> et +o <> ot:
+      +r = tgt.up.args(et, ot)
+      Bool.pick(List<&2, T.Bt>, S.eq(e, o), T.BtDead{T.BtVar{o}} <> r, r)
+    case _ _:
+      Nil{}
+
+# whether f(..) can be the marked text: its head starts it
+def tgt.up.hd(+f: T.Bt, +sp: List<&2, U32>) -> Bool:
+  match f:
+    case T.BtVar{y}:
+      S.prefix(sp, y)
+    case T.BtApp{g, a}:
+      tgt.up.hd(g, sp)
+    case _:
+      False{}
+
+def tgt.up.text(+t: T.Bt) -> List<&2, U32>:
+  P.tpr.t(t, P.TpLoose{}, 0n, Nil{})
+
+# (printed only when its head can be the marked text: a pick evaluates both
+# sides, and a body has a call at every turn)
+def tgt.up.text.is(hd: Bool, +t: T.Bt, +sp: List<&2, U32>) -> Bool:
+  match hd:
+    case True{}:
+      S.eq(tgt.up.text(t), sp)
+    case False{}:
+      False{}
+
+# t with the term printed as sp put through the helper.  A pattern is left
+# alone, and a call's head when it is a name (head).
+def tgt.up.site(t: T.Bt, +head: Bool, +sp: List<&2, U32>, +h: List<&2, U32>, +as: List<&2, T.Bt>) -> T.Bt:
+  match t:
+    case T.BtExpr{e}:
+      T.BtExpr{tgt.up.site(e, False{}, sp, h, as)}
+    case T.BtRw{e, p, b}:
+      T.BtRw{tgt.up.site(e, False{}, sp, h, as), p, tgt.up.site(b, False{}, sp, h, as)}
+    case T.BtLet{y, v, b}:
+      T.BtLet{y, tgt.up.site(v, False{}, sp, h, as), tgt.up.site(b, False{}, sp, h, as)}
+    case T.BtMatch{xs, cs}:
+      T.BtMatch{xs, tgt.up.site(cs, False{}, sp, h, as)}
+    case T.BtCase{p, b, rest}:
+      T.BtCase{p, tgt.up.site(b, False{}, sp, h, as), tgt.up.site(rest, False{}, sp, h, as)}
+    case T.BtVar{+y}:
+      Bool.pick(T.Bt, Bool.and(Bool.not(head), S.eq(y, sp)), T.tba.call(T.BtVar{h}, List.append(&2, T.Bt, as, [T.BtVar{y}])), T.BtVar{y})
+    case T.BtApp{+f, +a}:
+      Bool.pick(T.Bt, tgt.up.text.is(tgt.up.hd(f, sp), T.BtApp{f, a}, sp), T.tba.call(T.BtVar{h}, List.append(&2, T.Bt, as, [T.BtApp{f, a}])), T.BtApp{tgt.up.site(f, True{}, sp, h, as), tgt.up.site(a, False{}, sp, h, as)})
+    case T.BtTplArg{a}:
+      T.BtTplArg{tgt.up.site(a, False{}, sp, h, as)}
+    case T.BtLam{m, y, b}:
+      T.BtLam{m, y, tgt.up.site(b, False{}, sp, h, as)}
+    case T.BtCon{c, a}:
+      T.BtCon{c, tgt.up.site(a, False{}, sp, h, as)}
+    case T.BtAnn{a, ty}:
+      T.BtAnn{tgt.up.site(a, False{}, sp, h, as), ty}
+    case T.BtArgs{a, rest}:
+      T.BtArgs{tgt.up.site(a, False{}, sp, h, as), tgt.up.site(rest, False{}, sp, h, as)}
+    case t:
+      t
+
+def tgt.up.def(m: Maybe<&2, T.BItem>, +sp: List<&2, U32>, +h: List<&2, U32>, +as: List<&2, T.Bt>) -> Maybe<&2, T.BItem>:
+  match m:
+    case Some{T.BiDef{n, ps, ret, +body, doc}}:
+      +b2 = tgt.up.site(body, False{}, sp, h, as)
+      Bool.pick(Maybe<&2, T.BItem>, S.eq(P.tpr.t(b2, P.TpStmt{}, 0n, Nil{}), P.tpr.t(body, P.TpStmt{}, 0n, Nil{})), None{}, Some{T.BiDef{n, ps, ret, b2, doc}})
+    case _:
+      None{}
+
+def tgt.up.add(m: Maybe<&2, T.BItem>, +it: T.BItem, +its: List<&2, T.BItem>) -> List<&2, T.BItem>:
+  match m:
+    case Some{x}:
+      its
+    case None{}:
+      it <> its
+
+# the helper, if the module has none yet, and the def with the term through it
+def tgt.up.put(r: Maybe<&2, T.BItem>, +hi: T.BItem, +blame: List<&2, U32>, +why: List<&2, U32>, +its: List<&2, T.BItem>, ds: List<&2, TgtDrop>, +qe: QF.TqEnv) -> TgtSt:
+  match r:
+    case Some{new}:
+      TgtSt{tgt.fixed(blame, tgt.up.add(tgt.find(its, tgt.name(hi)), hi, its), QF.tqf.item(new, qe), qe), ds}
+    case None{}:
+      tgt.alt.or.fail(blame, why, its, ds, qe)
+
+def tgt.up.of(s: QF.TqSig, +t: List<&2, U32>, +es: List<&2, List<&2, U32>>, +os: List<&2, List<&2, U32>>, +blame: List<&2, U32>, +why: List<&2, U32>, +sp: List<&2, U32>, +its: List<&2, T.BItem>, ds: List<&2, TgtDrop>, +qe: QF.TqEnv) -> TgtSt:
+  match s:
+    case QF.TqType{+ps, k, +cs}:
+      +h = List.append(&2, U32, S.b("a2b_up."), List.append(&2, U32, tgt.up.flat(t), 46 <> tgt.up.mark(es, os)))
+      tgt.up.put(tgt.up.def(tgt.find(its, blame), sp, h, tgt.up.args(es, os)), tgt.up.item(h, t, ps, cs, es, os), blame, why, its, ds, qe)
+    case _:
+      tgt.alt.or.fail(blame, why, its, ds, qe)
+
+def tgt.up.go(m: Maybe<&2, TgUp2>, +blame: List<&2, U32>, +why: List<&2, U32>, +sp: List<&2, U32>, +its: List<&2, T.BItem>, +ds: List<&2, TgtDrop>, +qe: QF.TqEnv) -> TgtSt:
+  match m:
+    case Some{TgUp2{TgUp{+t, +es}, TgUp{+u, +os}}}:
+      Bool.pick(TgtSt, Bool.and(S.eq(t, u), tgt.up.same(es, os, False{})), tgt.up.of(QF.tqf.sig(qe, t), t, es, os, blame, why, sp, its, ds, qe), tgt.alt.or.fail(blame, why, its, ds, qe))
+    case None{}:
+      tgt.alt.or.fail(blame, why, its, ds, qe)
+
+# (a local variable of the def's is printed blame~x)
+def tgt.up(+blame: List<&2, U32>, +why: List<&2, U32>, +sp: List<&2, U32>, +its: List<&2, T.BItem>, ds: List<&2, TgtDrop>, +qe: QF.TqEnv) -> TgtSt:
+  +w = S.replace(why, List.append(&2, U32, blame, [126]), Nil{})
+  tgt.up.go(tgt.up.pair(tgt.up.exp(w), tgt.up.obs(w)), blame, why, sp, its, ds, qe)
+
+# the quantity repair, else the term through a helper
+def tgt.q.or.up(r: Maybe<&2, T.BItem>, +blame: List<&2, U32>, +why: List<&2, U32>, +sp: List<&2, U32>, +its: List<&2, T.BItem>, ds: List<&2, TgtDrop>, +qe: QF.TqEnv) -> TgtSt:
+  match r:
+    case Some{new}:
+      TgtSt{tgt.fixed(blame, its, QF.tqf.item(new, qe), qe), ds}
+    case None{}:
+      tgt.up(blame, why, sp, its, ds, qe)
+
 # A copied pattern variable (+x, a constructor's field) whose type must be
 # Data: Bend names no type, so the def's first type parameter (Type or a
 # Kind) is the one declared Data (filter's x of a List<A>, used by the with
@@ -813,9 +1096,11 @@ def tgt.on.fail(+k: Nat, +blame: List<&2, U32>, +why: List<&2, U32>, +sp: List<&
     case 0n:
       tgt.alt.or.fail(blame, why, its, ds, qe)
     case 3n:
-      tgt.repaired(tgt.data.of(tgt.find(its, blame), tgt.data.v(S.strip(S.strip(sp, S.b("~")), S.b("-")), tgt.find(its, blame)), why), blame, why, its, ds, qe)
+      tgt.repaired(tgt.data.of(tgt.find(its, blame), tgt.data.v(S.strip(S.strip(tgt.word(sp), S.b("~")), S.b("-")), tgt.find(its, blame)), why), blame, why, its, ds, qe)
     case 4n:
-      tgt.repaired(tgt.q.of(tgt.find(its, blame), why), blame, why, its, ds, qe)
+      tgt.q.or.up(tgt.q.of(tgt.find(its, blame), why), blame, why, sp, its, ds, qe)
+    case 7n:
+      tgt.up(blame, why, sp, its, ds, qe)
     case 5n:
       tgt.repaired(tgt.q1.of(tgt.find(its, blame), why), blame, why, its, ds, qe)
     case 6n:

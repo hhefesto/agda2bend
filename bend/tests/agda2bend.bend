@@ -563,7 +563,7 @@ def qf.rel.ret(+n: String, +l: String, body: T.Bt) -> T.BItem:
 
 def gate.laws() -> IO(Unit):
   do IO<Unit>:
-    IO.print(verdict("the carets mark a binder", S.eq(G.tgt.span(S.split.lines(S.b("Location: u\n1 | def u(-A: Type) -> A -> A:\n2>|   +x_8 => x_8\n  |   ^^^^^\n3 | "))), S.b("+x_8"))))
+    IO.print(verdict("the carets mark a binder", S.eq(G.tgt.word(G.tgt.span(S.split.lines(S.b("Location: u\n1 | def u(-A: Type) -> A -> A:\n2>|   +x_8 => x_8\n  |   ^^^^^\n3 | ")))), S.b("+x_8"))))
     IO.print(verdict("the carets mark an argument", S.eq(G.tgt.span(S.split.lines(S.b("  12>|   u02e2(A, B, C, x, g)\n     |         ^\n  13 | "))), S.b("A"))))
     IO.print(verdict("a Type where Data is expected is repair 3", Nat.is_eq(G.tgt.repair.kind(S.b("expected : Data observed : Type ")), 3n)))
     IO.print(verdict("a + parameter typed by a type parameter declares it Data", S.eq(gt.pr(Q.tcp.finish(gt.contra(False{}), Q.tcp.decide(gt.contra(False{}), Nil{}, Q.tcp.qe0()))), S.b(gt.contra.want()))))
@@ -1432,12 +1432,30 @@ def ctxd.laws() -> IO(Unit):
 # The gate's quantity repair (ToBend/Copy.bend, tcp.q.names) when the caller
 # passes one quantity for two of the callee's: a is on both sides of the
 # failure, so the old reading had nothing; the place they differ names it.
+# a datatype of Data at &2 where &1 is expected goes through a helper (G.tgt.up)
+def up.laws() -> IO(Unit):
+  +sg : String = "expected : M.Sigma_<&1, &1, {x == y : empty}, a => @z:{x == y : empty} -> {a == z : T<A, B>}> observed : M.Sigma_<&2, &1, {x == y : empty}, a => @z:{x == y : empty} -> {a == z : T<A, B>}> "
+  +t : T.BParam = T.BParam{T.BmErased{}, S.b("l1"), T.BtVar{S.b("Quant")}}
+  +u : T.BParam = T.BParam{T.BmErased{}, S.b("A"), T.tba.call(T.BtVar{S.b("Kind")}, [T.BtVar{S.b("l1")}])}
+  +c : T.BCtor = T.BCtor{S.b("box"), [T.BField{S.b("v"), T.BtVar{S.b("A")}}]}
+  +it : T.BItem = G.tgt.up.item(S.b("h"), S.b("M.D"), [t, u], [c], [S.b("&1"), S.b("A")], [S.b("&2"), S.b("A")])
+  do IO<Unit>:
+    IO.print(verdict("Sigma_ at &2 for &1, a family's arrows closing nothing: the helper's repair", G.tgt.up.is(S.b(sg))))
+    IO.print(verdict("&1 where &2 is expected is the quantity repair's first", Bool.not(G.tgt.up.is(S.b("expected : T<&2, A> observed : T<&1, A> ")))))
+    IO.print(verdict("not when anything but a quantity differs", Bool.not(G.tgt.up.is(S.b("expected : T<&1, A> observed : T<&2, B> ")))))
+    IO.print(verdict("not across two datatypes", Bool.not(G.tgt.up.is(S.b("expected : T<&1, A> observed : U<&2, A> ")))))
+    IO.print(verdict("the helper takes the value at &2 and rebuilds it at &1, its Kind at &2", S.eq(P.tpr.item(it, Nil{}), S.b("def h(-A: Kind(&2), a2b_x: M.D<&2, A>) -> M.D<&1, A>:\n  match a2b_x:\n    case M.box{f_v}:\n      M.box{f_v}\n"))))
+
 def at2.laws() -> IO(Unit):
   +ps : List<&2, T.BParam> = [T.BParam{T.BmTpl{}, S.b("a"), T.BtVar{S.b("Quant")}}, T.BParam{T.BmTpl{}, S.b("b"), T.BtVar{S.b("Quant")}}]
   +both : List<&2, List<&2, U32>> = Q.tcp.q.names(ps, S.b("expected : R/S.Setoid<&2, f~a> observed : R/S.Setoid<f~a, f~a> "))
   +one : List<&2, List<&2, U32>> = Q.tcp.q.names(ps, S.b("expected : Setoid<&2, l> observed : Setoid<b, l> "))
   +other : List<&2, List<&2, U32>> = Q.tcp.q.names(ps, S.b("expected : Setoid<c, f~a> observed : Setoid<f~a, f~a> "))
+  +deep : List<&2, List<&2, U32>> = Q.tcp.q.kinds(ps, S.b("expected : Sigma_<&1, &1, @_:A -> Kind(a), P> observed : Sigma_<&1, &1, @_:A -> Type, P> "))
+  +none : List<&2, List<&2, U32>> = Q.tcp.q.kinds(ps, S.b("expected : Sigma_<&1, Type, P> observed : Sigma_<&2, Kind(a), P> "))
   do IO<Unit>:
+    IO.print(verdict("a Type where a Kind(a) is expected deep in a type: a, read where the two differ", Bool.and(S.mem(S.b("a"), deep), Nat.is_eq(List.length(&2, List<&2, U32>, deep), 1n))))
+    IO.print(verdict("no Kind repair when the first difference is something else", Nat.is_eq(List.length(&2, List<&2, U32>, none), 0n)))
     IO.print(verdict("a quantity on both sides of a failure, read where &2 is expected", Bool.and(S.mem(S.b("a"), both), Nat.is_eq(List.length(&2, List<&2, U32>, both), 1n))))
     IO.print(verdict("a quantity only the observed type names", Bool.and(S.mem(S.b("b"), one), Nat.is_eq(List.length(&2, List<&2, U32>, one), 1n))))
     IO.print(verdict("no repair where something other than &2 is expected", Nat.is_eq(List.length(&2, List<&2, U32>, other), 0n)))
@@ -1469,6 +1487,7 @@ def main() -> IO(Unit):
     dec.laws()
     ctxd.laws()
     at2.laws()
+    up.laws()
     tpl.laws()
     inl.laws()
     tele.laws()
