@@ -1433,13 +1433,31 @@ def ctxd.laws() -> IO(Unit):
 # passes one quantity for two of the callee's: a is on both sides of the
 # failure, so the old reading had nothing; the place they differ names it.
 # a datatype of Data at &2 where &1 is expected goes through a helper (G.tgt.up)
+def Maybe.or.it(m: Maybe<&2, T.BItem>, +d: T.BItem) -> T.BItem:
+  match m:
+    case Some{x}:
+      x
+    case None{}:
+      d
+
+def Maybe.none.is(m: Maybe<&2, T.BItem>) -> Bool:
+  match m:
+    case Some{x}:
+      False{}
+    case None{}:
+      True{}
+
 def up.laws() -> IO(Unit):
   +sg : String = "expected : M.Sigma_<&1, &1, {x == y : empty}, a => @z:{x == y : empty} -> {a == z : T<A, B>}> observed : M.Sigma_<&2, &1, {x == y : empty}, a => @z:{x == y : empty} -> {a == z : T<A, B>}> "
   +t : T.BParam = T.BParam{T.BmErased{}, S.b("l1"), T.BtVar{S.b("Quant")}}
   +u : T.BParam = T.BParam{T.BmErased{}, S.b("A"), T.tba.call(T.BtVar{S.b("Kind")}, [T.BtVar{S.b("l1")}])}
   +c : T.BCtor = T.BCtor{S.b("box"), [T.BField{S.b("v"), T.BtVar{S.b("A")}}]}
   +it : T.BItem = G.tgt.up.item(S.b("h"), S.b("M.D"), [t, u], [c], [S.b("&1"), S.b("A")], [S.b("&2"), S.b("A")])
+  +ty : T.Bt = T.BtPi{T.BmErased{}, S.b("l1"), True{}, T.BtVar{S.b("Quant")}, T.BtPi{T.BmErased{}, S.b("I"), True{}, T.tba.call(T.BtVar{S.b("Kind")}, [T.BtVar{S.b("l1")}]), T.BtVar{S.b("I")}}}
+  +ax : T.BItem = T.BiDef{S.b("a2b_axty_x"), Nil{}, T.BtType{}, ty, Nil{}}
   do IO<Unit>:
+    IO.print(verdict("an assumption's type, a def that is a Pi: its binder I declared Data", S.eq(P.tpr.item(Maybe.or.it(Q.tcp.data.raise(ax, S.b("I")), ax), Nil{}), S.b("def a2b_axty_x() -> Type:\n@-l1:Quant -> @-I:Data -> I"))))
+    IO.print(verdict("not a binder that is no type's (the quantity l1)", Maybe.none.is(Q.tcp.data.raise(ax, S.b("l1")))))
     IO.print(verdict("Sigma_ at &2 for &1, a family's arrows closing nothing: the helper's repair", G.tgt.up.is(S.b(sg))))
     IO.print(verdict("&1 where &2 is expected is the quantity repair's first", Bool.not(G.tgt.up.is(S.b("expected : T<&2, A> observed : T<&1, A> ")))))
     IO.print(verdict("not when anything but a quantity differs", Bool.not(G.tgt.up.is(S.b("expected : T<&1, A> observed : T<&2, B> ")))))

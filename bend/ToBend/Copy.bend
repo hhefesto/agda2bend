@@ -320,13 +320,45 @@ def tcp.data.or(hit: Bool, +it: T.BItem, r: TcpRet, n: List<&2, U32>, ps: List<&
     case False{}:
       tcp.data.ret(r, n, ps, body, doc)
 
+# a def that is a type, no parameters and a Pi for a body (Ax's a2b_axty_x, an
+# assumption's type: `@-I:Kind(l1) -> …`): its binder v, a type's, declared Data
+def tcp.pi.data(b: T.Bt, +v: List<&2, U32>) -> TcpRet:
+  match b:
+    case T.BtPi{pm, +px, dep, T.BtType{}, rb}:
+      tcp.ret.put(S.eq(px, v), pm, px, dep, T.BtType{}, tcp.pi.data(rb, v))
+    case T.BtPi{pm, +px, dep, T.BtApp{T.BtVar{+k}, ka}, rb}:
+      tcp.ret.put(Bool.and(S.eq(k, S.b("Kind")), S.eq(px, v)), pm, px, dep, T.BtApp{T.BtVar{k}, ka}, tcp.pi.data(rb, v))
+    case T.BtPi{pm, px, dep, a, rb}:
+      tcp.ret.put(False{}, pm, px, dep, a, tcp.pi.data(rb, v))
+    case T.BtExpr{e}:
+      tcp.pi.data(e, v)
+    case b:
+      TcpRet{b, False{}}
+
+def tcp.data.pi(r: TcpRet, n: List<&2, U32>, ret: T.Bt, doc: List<&2, List<&2, U32>>) -> Maybe<&2, T.BItem>:
+  match r:
+    case TcpRet{b, True{}}:
+      Some{T.BiDef{n, Nil{}, ret, b, doc}}
+    case _:
+      None{}
+
+def tcp.data.or.pi(m: Maybe<&2, T.BItem>, n: List<&2, U32>, ps: List<&2, T.BParam>, ret: T.Bt, body: T.Bt, doc: List<&2, List<&2, U32>>, +v: List<&2, U32>) -> Maybe<&2, T.BItem>:
+  match m ps:
+    case Some{x} ps:
+      Some{x}
+    case None{} Nil{}:
+      tcp.data.pi(tcp.pi.data(body, v), n, ret, doc)
+    case None{} ps:
+      None{}
+
 # The item with its type parameter v declared Data (the gate's repair when
 # a call passes v where Data is expected), or None when v is not one; a
-# head lambda v of a point-free def has its return type's Pi raised instead.
+# head lambda v of a point-free def has its return type's Pi raised instead,
+# a def that is a Pi its binder.
 def tcp.data.raise(it: T.BItem, +v: List<&2, U32>) -> Maybe<&2, T.BItem>:
   match it:
     case T.BiDef{+n, +ps, +ret, +body, +doc}:
-      tcp.data.or(tcp.has.type(ps, v), T.BiDef{n, tcp.kinds.ps(ps, v <> Nil{}), ret, body, doc}, tcp.ret.data(body, ret, v), n, ps, body, doc)
+      tcp.data.or.pi(tcp.data.or(tcp.has.type(ps, v), T.BiDef{n, tcp.kinds.ps(ps, v <> Nil{}), ret, body, doc}, tcp.ret.data(body, ret, v), n, ps, body, doc), n, ps, ret, body, doc, v)
     case _:
       None{}
 
