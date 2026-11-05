@@ -1316,6 +1316,106 @@ def tgt.widest(ls: List<&2, List<&2, U32>>, +w: Nat) -> Nat:
 def tgt.width(+it: T.BItem) -> Nat:
   tgt.widest(S.split(P.tpr.item(it, Nil{}), 10), 0n)
 
+# A2B_CORPUS_WRAP=W (2026-11-05): a corpus copy's line wider than W is broken after
+# a comma of a call's arguments, so an elaborated term of a few thousand characters
+# meets ana's limit of 2,000 a line (docs/CORPUS-V2.md C6) instead of leaving the copy
+# with all that uses it: 19% of agda-unimath's checked items at 125 modules.  Bend reads
+# a newline inside parentheses as space.  A line over 8,000 stays too wide: those are
+# reasoning chains spelled out, the slowest to check and the least like code.
+def tgt.wrap.st.of(opn: Bool, cls: Bool, +h: U32, st: List<&2, U32>) -> List<&2, U32>:
+  match opn cls st:
+    case True{} _ st:
+      h <> st
+    case False{} True{} x <> t:
+      t
+    case _ _ st:
+      st
+
+def tgt.wrap.st(on: Bool, +h: U32, st: List<&2, U32>) -> List<&2, U32>:
+  match on:
+    case True{}:
+      tgt.wrap.st.of(Bool.or(U32.is_eq(h, 40), Bool.or(U32.is_eq(h, 123), U32.is_eq(h, 91))), Bool.or(U32.is_eq(h, 41), Bool.or(U32.is_eq(h, 125), U32.is_eq(h, 93))), h, st)
+    case False{}:
+      st
+
+def tgt.wrap.top(st: List<&2, U32>) -> Bool:
+  match st:
+    case h <> t:
+      U32.is_eq(h, 40)
+    case Nil{}:
+      False{}
+
+def tgt.wrap.dec(n: Nat) -> Nat:
+  match n:
+    case 0n:
+      0n
+    case 1n+p:
+      p
+
+def tgt.wrap.ready(n: Nat) -> Bool:
+  match n:
+    case 0n:
+      True{}
+    case 1n+p:
+      False{}
+
+def tgt.wrap.out(brk: Bool, +h: U32, rest: List<&2, U32>) -> List<&2, U32>:
+  match brk:
+    case True{}:
+      44 <> 10 <> 32 <> 32 <> 32 <> rest
+    case False{}:
+      h <> rest
+
+def tgt.wrap.go(xs: List<&2, U32>, +lim: Nat, +rem: Nat, +st: List<&2, U32>, +str: Bool, +esc: Bool) -> List<&2, U32>:
+  match xs:
+    case Nil{}:
+      Nil{}
+    case +h <> t:
+      +brk = Bool.and(Bool.and(Bool.not(str), U32.is_eq(h, 44)), Bool.and(tgt.wrap.top(st), tgt.wrap.ready(rem)))
+      +qt = Bool.and(Bool.not(esc), U32.is_eq(h, 34))
+      tgt.wrap.out(brk, h, tgt.wrap.go(t, lim, Bool.pick(Nat, brk, lim, tgt.wrap.dec(rem)), tgt.wrap.st(Bool.not(str), h, st), Bool.pick(Bool, qt, Bool.not(str), str), Bool.and(str, Bool.and(Bool.not(esc), U32.is_eq(h, 92)))))
+
+def tgt.wrap.cmt(l: List<&2, U32>) -> Bool:
+  match l:
+    case h <> t:
+      U32.is_eq(h, 35)
+    case Nil{}:
+      False{}
+
+def tgt.wrap.one(on: Bool, +l: List<&2, U32>, +lim: Nat) -> List<&2, U32>:
+  match on:
+    case True{}:
+      tgt.wrap.go(l, lim, lim, Nil{}, False{}, False{})
+    case False{}:
+      l
+
+def tgt.wrap.lines(ls: List<&2, List<&2, U32>>, +w: Nat, +lim: Nat) -> List<&2, List<&2, U32>>:
+  match ls:
+    case Nil{}:
+      Nil{}
+    case +l <> t:
+      tgt.wrap.one(Bool.and(Nat.is_lt(w, List.length(&2, U32, l)), Bool.not(tgt.wrap.cmt(l))), l, lim) <> tgt.wrap.lines(t, w, lim)
+
+# a text with its lines over w broken (w 0: as it is)
+def tgt.wrap.text(+w: Nat, txt: List<&2, U32>) -> List<&2, U32>:
+  match w:
+    case 0n:
+      txt
+    case 1n+p:
+      S.join(tgt.wrap.lines(S.split(txt, 10), w, Nat.sub(w, 500n)), 10)
+
+# an item's width as its corpus copy prints it
+def tgt.width.w.of(over: Bool, +w0: Nat, +it: T.BItem, +wrap: Nat) -> Nat:
+  match over:
+    case True{}:
+      w0
+    case False{}:
+      tgt.widest(S.split(tgt.wrap.text(wrap, P.tpr.item(it, Nil{})), 10), 0n)
+
+def tgt.width.w(+it: T.BItem, +wrap: Nat) -> Nat:
+  +w0 = tgt.width(it)
+  tgt.width.w.of(Nat.is_lt(8000n, w0), w0, it, wrap)
+
 def tgt.wide.put(over: Bool, +wide: Nat, +it: T.BItem, st: TgtSt) -> TgtSt:
   match over st:
     case False{} TgtSt{its, ds}:
@@ -1358,6 +1458,16 @@ def tgt.st.items(st: TgtSt) -> List<&2, T.BItem>:
 # After the gate (A2B_CORPUS_LINE): the kept items a corpus takes, those no
 # wider than max and not using a wider one of the module (to a fixed point),
 # so the file they make checks against the same imports.
+def tgt.wide.w(+max: Nat, +wrap: Nat, its: List<&2, T.BItem>) -> TgtSt:
+  match its:
+    case Nil{}:
+      TgtSt{Nil{}, Nil{}}
+    case +it <> t:
+      tgt.wide.one(max, tgt.width.w(it, wrap), it, tgt.wide.w(max, wrap, t))
+
+def tgt.corpus.w(+max: Nat, +wrap: Nat, its: List<&2, T.BItem>) -> List<&2, T.BItem>:
+  tgt.st.items(tgt.deps(S.b("uses a wide item"), tgt.wide.w(max, wrap, its)))
+
 def tgt.corpus(+max: Nat, its: List<&2, T.BItem>) -> List<&2, T.BItem>:
   tgt.st.items(tgt.deps(S.b("uses a wide item"), tgt.wide(max, TgtSt{its, Nil{}})))
 

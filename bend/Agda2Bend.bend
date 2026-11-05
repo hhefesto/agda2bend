@@ -847,21 +847,21 @@ def a2b.gated(+out: String, +m: List<&2, U32>, +nd: Nat, +gaps: List<&2, List<&2
 # items no wider than max, less those using a wider one
 # (G.tgt.corpus), at OUT/corpus/<path>.bend; nothing when none is left.
 # `agda2bend corpus` takes these files into a JSONL for ana.
-def a2b.corpus.items(+path: String, +head: List<&2, List<&2, U32>>, +ims: List<&2, T.BImport>, its: List<&2, T.BItem>) -> IO(Unit):
+def a2b.corpus.items(+path: String, +head: List<&2, List<&2, U32>>, +ims: List<&2, T.BImport>, +wrap: Nat, its: List<&2, T.BItem>) -> IO(Unit):
   match its:
     case Nil{}:
       IO.pure(Unit, Unit{})
     case it <> t:
       do IO<Unit>:
         S.mkdir(S.parent(path))
-        S.write(path, P.tpr.file(T.BFile{head, ims, it <> t}))
+        S.write(path, G.tgt.wrap.text(wrap, P.tpr.file(T.BFile{head, ims, it <> t})))
 
-def a2b.corpus.write(off: Bool, +path: String, +head: List<&2, List<&2, U32>>, +ims: List<&2, T.BImport>, +max: Nat, r: G.TgtRun) -> IO(Unit):
+def a2b.corpus.write(off: Bool, +path: String, +head: List<&2, List<&2, U32>>, +ims: List<&2, T.BImport>, +max: Nat, +wrap: Nat, r: G.TgtRun) -> IO(Unit):
   match off r:
     case True{} _:
       IO.pure(Unit, Unit{})
     case False{} G.TgtRun{G.TgtSt{its, ds}, done, checks}:
-      a2b.corpus.items(path, head, ims, G.tgt.corpus(max, its))
+      a2b.corpus.items(path, head, ims, wrap, G.tgt.corpus.w(max, wrap, its))
 
 # A module's items through the gate: first those using another module's
 # dropped names go (G.tgt.ext), then the checks.  The file before the gate
@@ -880,7 +880,8 @@ def a2b.em.gate(gate: Bool, +out: String, +m: List<&2, U32>, +kept: Map<&2, Bool
         +maxl : Nat <- S.env.nat("A2B_MAXLINE", 0n)
         +r : G.TgtRun <- G.tgt.gate(bend, 900, path, a2b.head.doc(m, nd), ims, G.tgt.wide(maxl, G.tgt.ext(its, kept, ral)), qe)
         +cl : Nat <- S.env.nat("A2B_CORPUS_LINE", 0n)
-        a2b.corpus.write(Nat.is_eq(cl, 0n), out ++ "/corpus/" ++ S.str(C.act.path(m)), a2b.head.doc(m, nd), ims, cl, r)
+        +cw : Nat <- S.env.nat("A2B_CORPUS_WRAP", 0n)
+        a2b.corpus.write(Nat.is_eq(cl, 0n), out ++ "/corpus/" ++ S.str(C.act.path(m)), a2b.head.doc(m, nd), ims, cl, cw, r)
         a2b.gated(out, m, nd, gaps, nits, r)
 
 def a2b.em.write(+out: String, +m: List<&2, U32>, +kept: Map<&2, Bool>, +ral: Map<&2, List<&2, U32>>, +its: List<&2, T.BItem>, +ims: List<&2, T.BImport>, +nd: Nat, +gaps: List<&2, List<&2, U32>>, +nits: Nat, +qe: QF.TqEnv) -> IO(List<&2, T.BItem>):
@@ -1520,21 +1521,119 @@ def a2b.asm.read() -> IO(Map<&2, Bool>):
 
 # one module: its definitions read, its symbols added, its file written;
 # the table with its symbols for the modules after it
+# A copattern clause under `open Eq {{...}} public` names the copy of the field
+# (`iEqOrdering ._==_ LT LT = True`: Haskell.Prim.Eq._._==_, the record's is
+# Haskell.Prim.Eq.Eq._==_), so no clause seemed to define it: "a field no copattern
+# clause defines", 53 of agda2hs-base's 143 drops and 121 of agda-prelude's 347, with
+# instances like iNumberNat that half of each library uses (2026-11-05).  Each
+# projection's copy goes in the unfoldings under "pjo:" and a clause's projection
+# pattern is read as the original.
+def a2b.pjo.key(q: A.AgQ) -> String:
+  "pjo:" ++ C.act.key(q)
+
+def a2b.pjo.put(d: A.AgDecl, unf: Map<&2, C.ActCopy>) -> Map<&2, C.ActCopy>:
+  match d:
+    case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, fl, lang, ty, A.AgDFun{A.AgPrOf{r, +o, ix}, re, w, ex, te, mu, cl, tr}}:
+      Map.set(&2, C.ActCopy, unf, a2b.pjo.key(q), C.ActCopy{0n, A.AgDef{o, A.AgNone{}}})
+    case _:
+      unf
+
+def a2b.pjo.add(ds: List<&2, A.AgDecl>, unf: Map<&2, C.ActCopy>) -> Map<&2, C.ActCopy>:
+  match ds:
+    case Nil{}:
+      unf
+    case d <> t:
+      a2b.pjo.add(t, a2b.pjo.put(d, unf))
+
+def a2b.pjo.of(c: C.ActCopy, +q: A.AgQ) -> A.AgQ:
+  match c:
+    case C.ActCopy{n, A.AgDef{o, es}}:
+      o
+    case _:
+      q
+
+def a2b.pjo.q(+q: A.AgQ, +unf: Map<&2, C.ActCopy>) -> A.AgQ:
+  a2b.pjo.of(C.act.unf.got(Map.get(C.ActCopy, C.ActCopy{0n, A.AgNone{}}, unf, a2b.pjo.key(q))), q)
+
+def a2b.pjo.ps(ps: A.Ag, +unf: Map<&2, C.ActCopy>) -> A.Ag:
+  match ps:
+    case A.AgPArg{i, x, A.AgPProj{+q}, rest}:
+      A.AgPArg{i, x, A.AgPProj{a2b.pjo.q(q, unf)}, a2b.pjo.ps(rest, unf)}
+    case A.AgPArg{i, x, p, rest}:
+      A.AgPArg{i, x, p, a2b.pjo.ps(rest, unf)}
+    case ps:
+      ps
+
+def a2b.pjo.cls(cls: A.Ag, +unf: Map<&2, C.ActCopy>) -> A.Ag:
+  match cls:
+    case A.AgCl{tel, ps, body, ty, ca, rest}:
+      A.AgCl{tel, a2b.pjo.ps(ps, unf), body, ty, ca, a2b.pjo.cls(rest, unf)}
+    case cls:
+      cls
+
+def a2b.pjo.decl(d: A.AgDecl, +unf: Map<&2, C.ActCopy>) -> A.AgDecl:
+  match d:
+    case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, fl, lang, ty, A.AgDFun{pr, re, w, ex, te, mu, cl, tr}}:
+      A.AgDecl{q, qn, md, f, l, l0, l1, k, m, fl, lang, ty, A.AgDFun{pr, re, w, ex, te, mu, a2b.pjo.cls(cl, unf), tr}}
+    case d:
+      d
+
+# A postulated type (Agda.Builtin.Word's Word64, Float, Char, Meta, a library's own
+# `postulate IO : Set -> Set`) as an assumption is a template, and no data type or
+# record can take one: "expected a defined name observed a2b_ax_Word64" kept
+# Agda.Builtin.Reflection's Literal from checking and 681 of agda-prelude's items with it
+# (2026-11-05).  It is a data type with no constructors, its values the assumptions' to
+# make.  String is Bend's (AbString).
+def a2b.post.pis(t: A.Ag) -> Nat:
+  match t:
+    case A.AgEl{s, x}:
+      a2b.post.pis(x)
+    case A.AgPi{i, x, a, d, b}:
+      1n+a2b.post.pis(b)
+    case _:
+      0n
+
+def a2b.post.data(on: Bool, d: A.AgDecl) -> A.AgDecl:
+  match on d:
+    case True{} A.AgDecl{q, qn, md, f, l, l0, l1, k, m, fl, lang, +ty, dd}:
+      A.AgDecl{q, qn, md, f, l, l0, l1, A.AkData{}, m, fl, lang, ty, A.AgDData{a2b.post.pis(ty), 0n, A.AgNone{}, A.AgNone{}, A.AgClEnd{}}}
+    case False{} d:
+      d
+
+def a2b.post.is(d: A.AgDecl, +unf: Map<&2, C.ActCopy>) -> Bool:
+  match d:
+    case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, fl, lang, +ty, A.AgDPost{}}:
+      Bool.and(C.act.ends.sort.u(20n, ty, unf), Bool.not(S.eq(C.act.qs(q), S.b("Agda.Builtin.String.String"))))
+    case _:
+      False{}
+
+def a2b.post.decl(+d: A.AgDecl, +unf: Map<&2, C.ActCopy>) -> A.AgDecl:
+  a2b.pjo.decl(a2b.post.data(a2b.post.is(d, unf), d), unf)
+
+def a2b.post.decls(ds: List<&2, A.AgDecl>, +unf: Map<&2, C.ActCopy>) -> List<&2, A.AgDecl>:
+  match ds:
+    case Nil{}:
+      Nil{}
+    case +d <> t:
+      a2b.post.decl(d, unf) <> a2b.post.decls(t, unf)
+
 def a2b.em.pass(+out: String, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +m: List<&2, U32>, +ds0: List<&2, A.AgDecl>, +asm: Map<&2, Bool>, g: A2bG) -> IO(A2bG):
   match g:
     case A2bG{tab, unf, +kept, pj, qs, +gone}:
-      +ds : List<&2, A.AgDecl> = a2b.asm.decls(ds0, asm)
+      +unf1 : Map<&2, C.ActCopy> = a2b.pjo.add(ds0, unf)
+      +ds : List<&2, A.AgDecl> = a2b.post.decls(a2b.asm.decls(ds0, asm), unf1)
       do IO<A2bG>:
         S.write(a2b.led(out), Nil{})
-        a2b.cop.go(out, m, al, ral, ds, kept, gone, a2b.syms(ds, m, al, A2bTabs{tab, unf, Map.new(&2, A.AgDecl), Nil{}, Map.new(&2, String), pj, qs}))
+        a2b.cop.go(out, m, al, ral, ds, kept, gone, a2b.syms(ds, m, al, A2bTabs{tab, unf1, Map.new(&2, A.AgDecl), Nil{}, Map.new(&2, String), pj, qs}))
 
 # A2B_AUTOASSUME=N (2026-11-05; the user, 11-01: "Add the assumptions as extra
 # input"; 11-05: the most good Bend code by Friday): a definition the gate dropped
 # goes in as an assumption and the module is read again, up to N times, so what uses
 # it, in this module and the ones after, is translated and says what it proves under
-# it instead of being held back.  Only a function whose value is no type and no level:
-# a type-valued definition has to unfold.  The names go to OUT/assumed.txt.  A module's
-# ledger lines wait in OUT/ledger.m.tsv, so only its last pass's reach the ledger.
+# it instead of being held back.  A function whose value is a type becomes an opaque type
+# (a2b.post): what needs it to unfold fails as before, what does not checks.  Not a
+# level-valued one.  The names go to OUT/assumed.txt.  A module's ledger lines wait in
+# OUT/ledger.m.tsv, so only its last pass's reach the ledger.
 type A2bAuto is Data:
   A2bAuto{g: A2bG, asm: Map<&2, Bool>, more: Bool}
 
@@ -1566,7 +1665,7 @@ def a2b.auto.rows(ls: List<&2, List<&2, U32>>, acc: Map<&2, Bool>) -> Map<&2, Bo
 def a2b.auto.elig(d: A.AgDecl, +unf: Map<&2, C.ActCopy>) -> Bool:
   match d:
     case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, fl, lang, +ty, A.AgDFun{pr, re, w, ex, te, mu, cl, tr}}:
-      Bool.not(Bool.or(C.act.ends.sort.u(20n, ty, unf), C.act.ends.level(ty)))
+      Bool.not(C.act.ends.level(ty))
     case _:
       False{}
 
