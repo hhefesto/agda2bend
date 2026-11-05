@@ -381,6 +381,103 @@ def tcp.pi.fam(b: T.Bt, +v: List<&2, U32>) -> TcpRet:
     case b:
       TcpRet{b, False{}}
 
+# A family over Type where one over Kind(q) is passed: RawApplicative's `F : Set f -> Set g`
+# takes `A -> B`, a Type, so the gate made its f &1; F keeps Kind(g), and what passes its
+# own `F : Set a -> Set a` cannot have a at &1, which would change the result too.  A
+# Kind(q) value goes where a Type is wanted, so the family can take any Type: only its
+# domains move (2026-11-05: mkRawMonad, agda-prelude's Monad instances, 36 dropped and
+# the MonadTC cone).
+def tcp.dom.fam.put(+hit: Bool, m: T.BMode, +x: List<&2, U32>, dep: Bool, a: T.Bt, b: T.Bt) -> TcpRet:
+  TcpRet{T.BtPi{m, x, dep, Bool.pick(T.Bt, hit, T.BtType{}, a), b}, hit}
+
+def tcp.dom.fam(t: T.Bt) -> TcpRet:
+  match t:
+    case T.BtPi{T.BmErased{}, +x, dep, T.BtApp{T.BtVar{+k}, q}, b}:
+      tcp.dom.fam.put(S.eq(k, S.b("Kind")), T.BmErased{}, x, dep, T.BtApp{T.BtVar{k}, q}, b)
+    case T.BtExpr{e}:
+      tcp.dom.fam(e)
+    case t:
+      TcpRet{t, False{}}
+
+def tcp.dom.spine.put(pm: T.BMode, px: List<&2, U32>, dep: Bool, a: TcpRet, r: TcpRet) -> TcpRet:
+  match a r:
+    case TcpRet{a2, h1} TcpRet{b2, h2}:
+      TcpRet{T.BtPi{pm, px, dep, a2, b2}, Bool.or(h1, h2)}
+
+def tcp.dom.spine(t: T.Bt) -> TcpRet:
+  match t:
+    case T.BtPi{pm, px, dep, a, b}:
+      tcp.dom.spine.put(pm, px, dep, tcp.dom.fam(a), tcp.dom.spine(b))
+    case T.BtExpr{e}:
+      tcp.dom.spine(e)
+    case t:
+      TcpRet{t, False{}}
+
+type TcpPs is Data:
+  TcpPs{ps: List<&2, T.BParam>, hit: Bool}
+
+def tcp.dom.ps.put(m: T.BMode, x: List<&2, U32>, a: TcpRet, r: TcpPs) -> TcpPs:
+  match a r:
+    case TcpRet{a2, h1} TcpPs{t, h2}:
+      TcpPs{T.BParam{m, x, a2} <> t, Bool.or(h1, h2)}
+
+def tcp.dom.ps(ps: List<&2, T.BParam>) -> TcpPs:
+  match ps:
+    case Nil{}:
+      TcpPs{Nil{}, False{}}
+    case T.BParam{m, x, ty} <> t:
+      tcp.dom.ps.put(m, x, tcp.dom.fam(ty), tcp.dom.ps(t))
+
+def tcp.dom.def(n: List<&2, U32>, p: TcpPs, r: TcpRet, +body: T.Bt, b: TcpRet, doc: List<&2, List<&2, U32>>) -> Maybe<&2, T.BItem>:
+  match p r b:
+    case TcpPs{ps, h1} TcpRet{ret, h2} TcpRet{b2, +h3}:
+      Bool.pick(Maybe<&2, T.BItem>, Bool.or(h1, Bool.or(h2, h3)), Some{T.BiDef{n, ps, ret, Bool.pick(T.Bt, h3, b2, body), doc}}, None{})
+
+# (a field's own binders too: Traversable's `traverse : {F : Set a -> Set a} ...`)
+type TcpFs is Data:
+  TcpFs{fs: List<&2, T.BField>, hit: Bool}
+
+def tcp.dom.fs.put(x: List<&2, U32>, a: TcpRet, r: TcpFs) -> TcpFs:
+  match a r:
+    case TcpRet{a2, h1} TcpFs{t, h2}:
+      TcpFs{T.BField{x, a2} <> t, Bool.or(h1, h2)}
+
+def tcp.dom.fs(fs: List<&2, T.BField>) -> TcpFs:
+  match fs:
+    case Nil{}:
+      TcpFs{Nil{}, False{}}
+    case T.BField{x, ty} <> t:
+      tcp.dom.fs.put(x, tcp.dom.spine(ty), tcp.dom.fs(t))
+
+type TcpCs is Data:
+  TcpCs{cs: List<&2, T.BCtor>, hit: Bool}
+
+def tcp.dom.cs.put(c: List<&2, U32>, a: TcpFs, r: TcpCs) -> TcpCs:
+  match a r:
+    case TcpFs{fs, h1} TcpCs{t, h2}:
+      TcpCs{T.BCtor{c, fs} <> t, Bool.or(h1, h2)}
+
+def tcp.dom.cs(cs: List<&2, T.BCtor>) -> TcpCs:
+  match cs:
+    case Nil{}:
+      TcpCs{Nil{}, False{}}
+    case T.BCtor{c, fs} <> t:
+      tcp.dom.cs.put(c, tcp.dom.fs(fs), tcp.dom.cs(t))
+
+def tcp.dom.type(n: List<&2, U32>, p: TcpPs, k: T.Bt, c: TcpCs, doc: List<&2, List<&2, U32>>) -> Maybe<&2, T.BItem>:
+  match p c:
+    case TcpPs{ps, h1} TcpCs{cs, h2}:
+      Bool.pick(Maybe<&2, T.BItem>, Bool.or(h1, h2), Some{T.BiType{n, ps, k, cs, doc}}, None{})
+
+def tcp.dom.raise(it: T.BItem) -> Maybe<&2, T.BItem>:
+  match it:
+    case T.BiDef{n, ps, ret, +body, doc}:
+      tcp.dom.def(n, tcp.dom.ps(ps), tcp.dom.spine(ret), body, tcp.dom.spine(body), doc)
+    case T.BiType{n, ps, k, cs, doc}:
+      tcp.dom.type(n, tcp.dom.ps(ps), k, tcp.dom.cs(cs), doc)
+    case _:
+      None{}
+
 def tcp.fam.raise.of(on: Bool, n: List<&2, U32>, ps: List<&2, T.BParam>, ret: T.Bt, body: T.Bt, doc: List<&2, List<&2, U32>>, +v: List<&2, U32>) -> Maybe<&2, T.BItem>:
   match on:
     case True{}:

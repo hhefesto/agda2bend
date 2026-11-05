@@ -342,8 +342,15 @@ def a2b.alias.try(fuel: Nat, +k: Nat, +ps: List<&2, List<&2, U32>>, +all: List<&
 def a2b.alias.k0(+ps: List<&2, List<&2, U32>>) -> Nat:
   Bool.pick(Nat, Nat.is_lt(List.length(&2, List<&2, U32>, ps), 2n), 1n, 2n)
 
+# A one-part module's alias is marked: a qualifier in a module's text says what it imports,
+# so a module `Nat` beside a local type `Nat_` (its constructor Nat_.zero) had each import
+# the other, and the standard library's `Size` beside Agda.Builtin.Size's own type asked
+# for a file not written yet (2026-11-05; 345 "import cycle"s in Agda's test suite).
+def a2b.alias.mark(+ps: List<&2, List<&2, U32>>, +a: List<&2, U32>) -> List<&2, U32>:
+  Bool.pick(List<&2, U32>, Nat.is_lt(List.length(&2, List<&2, U32>, ps), 2n), List.append(&2, U32, S.b("M_"), a), a)
+
 def a2b.alias(+ps: List<&2, List<&2, U32>>, +all: List<&2, List<&2, List<&2, U32>>>) -> List<&2, U32>:
-  a2b.alias.try(List.length(&2, List<&2, U32>, ps), a2b.alias.k0(ps), ps, all, Nat.is_le(a2b.suffix.count(a2b.alias.k0(ps), a2b.suffix(a2b.alias.k0(ps), ps), all), 1n))
+  a2b.alias.mark(ps, a2b.alias.try(List.length(&2, List<&2, U32>, ps), a2b.alias.k0(ps), ps, all, Nat.is_le(a2b.suffix.count(a2b.alias.k0(ps), a2b.suffix(a2b.alias.k0(ps), ps), all), 1n)))
 
 def a2b.aliases.go(ns: List<&2, List<&2, U32>>, +all: List<&2, List<&2, List<&2, U32>>>, al: Map<&2, List<&2, U32>>) -> Map<&2, List<&2, U32>>:
   match ns:
@@ -1133,7 +1140,8 @@ def a2b.rst.of(r: A2bRe, its: List<&2, T.BItem>) -> A2bRst:
 # the types the signatures show to be Data (QF.tqf.data.up), before anything
 # reads a kind
 def a2b.data.up(+its: List<&2, T.BItem>, +qe: QF.TqEnv) -> List<&2, T.BItem>:
-  QF.tqf.data.up(its, a2b.qe.own(its, qe))
+  +d : List<&2, T.BItem> = QF.tqf.data.up(its, a2b.qe.own(its, qe))
+  QF.tqf.ku.items(d, a2b.qe.own(d, qe))
 
 def a2b.round(fuel: Nat, +ds: List<&2, A.AgDecl>, +ws: List<&2, Nat>, +m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +unf: Map<&2, C.ActCopy>, +dm: Map<&2, A.AgDecl>, +nk: Map<&2, String>, +te: Q.TcpEnv, +qe: QF.TqEnv, st: A2bRst) -> A2bRound:
   match fuel st:
@@ -1667,14 +1675,30 @@ def a2b.auto.nth(n: Nat, xs: List<&2, List<&2, U32>>) -> List<&2, U32>:
     case _ Nil{}:
       Nil{}
 
-# the Agda names of the rows that were dropped
+# the name a dot before the last part, if any: a copattern definition's field item
+# (Prelude.Product.EqSigma._==_) is no declaration of its own, its parent is
+def a2b.auto.par.rev(xs: List<&2, U32>) -> List<&2, U32>:
+  match xs:
+    case Nil{}:
+      Nil{}
+    case +h <> +t:
+      Bool.pick(List<&2, U32>, U32.is_eq(h, 46), List.reverse(&2, U32, t), a2b.auto.par.rev(t))
+
+def a2b.auto.parent(a: List<&2, U32>) -> List<&2, U32>:
+  a2b.auto.par.rev(List.reverse(&2, U32, a))
+
+# the Agda names of the rows that were dropped, and the definitions they are a
+# field of: an instance with one field the gate refuses (agda2hs-base's
+# iNumNat.fromInteger, 75 dependents; agda-prelude's EqSigma._==_, 180) was held back
+# with all that uses it, the field no definition to assume (2026-11-05)
 def a2b.auto.rows(ls: List<&2, List<&2, U32>>, acc: Map<&2, Bool>) -> Map<&2, Bool>:
   match ls:
     case Nil{}:
       acc
     case l <> t:
       +fs : List<&2, List<&2, U32>> = S.split(l, 9)
-      a2b.auto.rows(t, a2b.auto.put(S.eq(a2b.auto.nth(3n, fs), S.b("dropped")), a2b.auto.nth(2n, fs), acc))
+      +hit : Bool = S.eq(a2b.auto.nth(3n, fs), S.b("dropped"))
+      a2b.auto.rows(t, a2b.auto.put(hit, a2b.auto.parent(a2b.auto.nth(2n, fs)), a2b.auto.put(hit, a2b.auto.nth(2n, fs), acc)))
 
 def a2b.auto.elig(d: A.AgDecl, +unf: Map<&2, C.ActCopy>) -> Bool:
   match d:

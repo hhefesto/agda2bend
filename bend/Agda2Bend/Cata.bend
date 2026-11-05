@@ -2272,13 +2272,19 @@ def act.role.pick(b: ActB, lv: Bool) -> ActB:
 def act.role(+qs: List<&2, U32>, lv: Bool) -> ActB:
   act.role.pick(act.builtin(qs), lv)
 
+# (ana's checker writes each variant as Unit.bend beside its unit's file and removes it:
+# agda-prelude's Prelude/Unit.bend was gone after the first unit in Prelude/, and all that
+# imports it failed, 522 of a2bpre21's 887 units; 2026-11-05)
+def act.path.unit(+s: String) -> String:
+  Bool.pick(String, String.eq(s, "Unit"), "Unit_", s)
+
 # a module's file under src/: its name's parts, each a plain name
 def act.path.parts(xs: List<&2, List<&2, U32>>) -> List<&2, U32>:
   match xs:
     case Nil{}:
       S.b(".bend")
     case h <> Nil{}:
-      List.append(&2, U32, S.b(N.tnm.path(S.str(h))), S.b(".bend"))
+      List.append(&2, U32, S.b(act.path.unit(N.tnm.path(S.str(h)))), S.b(".bend"))
     case h <> t:
       List.append(&2, U32, S.b(N.tnm.path(S.str(h))), 47 <> act.path.parts(t))
 
@@ -12899,17 +12905,38 @@ def act.data.kps(on: Bool, +n: Nat, +t: A.Ag, +ms: List<&2, ActM>, +env: ActEnv,
     case False{}:
       act.ps.ps(r)
 
-def act.item.data.of(+nm: List<&2, U32>, r: ActPs, +kps: List<&2, T.BParam>, +cs: List<&2, T.BCtor>, doc: List<&2, List<&2, U32>>) -> List<&2, T.BItem>:
+# A postulated type at a level (a2b.post: agda-unimath's `type-trunc k A : UU l`) stays a
+# Type: as Data, what is true of it said is-trunc(&2, ...) where `trunc`'s pair wants
+# &1, so trunc was dropped and assumed, opaque, and nothing that reads its first
+# projection checked (is-truncation-trunc and 86 dependents at 203 modules; 2026-11-05).
+# At Set (Word64, Float) it is Data, as a real empty type is.
+def act.opq.kind(ret: T.Bt) -> T.Bt:
+  match ret:
+    case T.BtExpr{e}:
+      act.opq.kind(e)
+    case T.BtApp{T.BtVar{+k}, a}:
+      Bool.pick(T.Bt, S.eq(k, S.b("Kind")), T.BtType{}, T.BtVar{S.b("Data")})
+    case _:
+      T.BtVar{S.b("Data")}
+
+def act.data.kind(op: Bool, ret: T.Bt, +q: T.Bt) -> T.Bt:
+  match op:
+    case True{}:
+      act.opq.kind(ret)
+    case False{}:
+      act.kind.term(q)
+
+def act.item.data.of(op: Bool, +nm: List<&2, U32>, r: ActPs, +kps: List<&2, T.BParam>, +cs: List<&2, T.BCtor>, doc: List<&2, List<&2, U32>>) -> List<&2, T.BItem>:
   match r:
     case ActPs{+ps, ret, ctx, es, ok}:
-      [T.BiType{nm, ps, act.kind.term(act.kind.cs(nm, cs, kps)), cs, doc}]
+      [T.BiType{nm, ps, act.data.kind(op, ret, act.kind.cs(nm, cs, kps)), cs, doc}]
 
 def act.item.data(s: ActSym, d: A.AgD, ty: A.Ag, +env: ActEnv, +decls: Map<&2, A.AgDecl>, doc: List<&2, List<&2, U32>>) -> List<&2, T.BItem>:
   match s d:
-    case ActSym{m, +n, k, +ms, ar, b, fs, c, cp} A.AgDData{+pars, +ixs, cons, sort, dcl}:
+    case ActSym{m, +n, k, +ms, ar, b, fs, c, cp} A.AgDData{+pars, +ixs, +cons, sort, dcl}:
       +t = act.inline(100000n, ty, env)
       +r = act.params(64n, Nat.add(pars, ixs), t, ms, Nil{}, env)
-      act.item.data.of(n, r, act.data.kps(act.quant.on(), Nat.add(pars, ixs), t, ms, env, r), act.ctors(act.keys(cons), pars, env, decls, act.ps.last(ixs, act.ps.ps(r))), doc)
+      act.item.data.of(Bool.and(act.ag.none(sort), act.ag.none(cons)), n, r, act.data.kps(act.quant.on(), Nat.add(pars, ixs), t, ms, env, r), act.ctors(act.keys(cons), pars, env, decls, act.ps.last(ixs, act.ps.ps(r))), doc)
     case _ _:
       Nil{}
 
@@ -12971,7 +12998,7 @@ def act.items.of(s: ActSym, k: A.AgKw, cp: Bool, nc: Bool, d: A.AgD, +key: Strin
     # extra input (Ax.bend); read as a signature, so that a hidden binder is erased
     # and a caller's erased f can be passed; the quantity passes see it like any def
     case ActSym{m, +n, k2, ms, ar, AbNone{}, fs, c, cop} A.AkPostulate{} False{} False{}:
-      [T.BiDef{act.ax.ty.name(n), Nil{}, T.BtType{}, T.BtExpr{act.t(ty, Nil{}, act.sig.with(None{}, A.AgPrNone{}, env))}, List.append(&2, List<&2, U32>, doc, [S.b("a postulate: Bend has none, so what uses it takes it as an input of this type")])}]
+      [T.BiDef{act.ax.ty.name(n), Nil{}, T.BtType{}, T.BtExpr{act.t(act.inline.hdr(100000n, ty, env), Nil{}, act.sig.with(None{}, A.AgPrNone{}, env))}, List.append(&2, List<&2, U32>, doc, [S.b("a postulate: Bend has none, so what uses it takes it as an input of this type")])}]
     case _ _ _ _:
       Nil{}
 

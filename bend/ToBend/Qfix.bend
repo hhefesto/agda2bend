@@ -1562,13 +1562,21 @@ def tqf.du.put(ok: Bool, +n: List<&2, U32>, rest: List<&2, List<&2, U32>>) -> Li
     case False{}:
       rest
 
+# (a Type with no constructors is a postulated one's: Cata means it)
+def tqf.du.has.ctor(cs: List<&2, T.BCtor>) -> Bool:
+  match cs:
+    case Nil{}:
+      False{}
+    case h <> t:
+      True{}
+
 # the types written as Type, by name
 def tqf.du.types(its: List<&2, T.BItem>) -> List<&2, List<&2, U32>>:
   match its:
     case Nil{}:
       Nil{}
     case T.BiType{+n, ps, k, cs, doc} <> t:
-      tqf.du.put(tqf.du.is.type(k), n, tqf.du.types(t))
+      tqf.du.put(Bool.and(tqf.du.is.type(k), tqf.du.has.ctor(cs)), n, tqf.du.types(t))
     case i <> t:
       tqf.du.types(t)
 
@@ -1602,6 +1610,69 @@ def tqf.du.apply(its: List<&2, T.BItem>, +ds: List<&2, List<&2, U32>>) -> List<&
 def tqf.data.up(+its: List<&2, T.BItem>, +e: TqEnv) -> List<&2, T.BItem>:
   +ts = tqf.du.types(its)
   tqf.du.apply(its, tqf.du.fix(1n+List.length(&2, List<&2, U32>, ts), its, ts, e))
+
+# The rest of the way (2026-11-05): a type written as Type whose fields all have a
+# kind is the least of them.  agda-prelude's LessList (lt(x, y), List<l, A>, itself,
+# equations) was a Type, so a `Comparison` over it wanted Kind(l) and had a Type:
+# compareCons and 205 dependents; l is A's too, so no &1 could help.  A function field
+# is &1, so a record of functions stays a Type.  A quantity named by a constructor's
+# own field cannot be in a kind.
+def tqf.ku.field(+self: List<&2, U32>, +t: T.Bt, +ctx: List<&2, T.BParam>, +e: TqEnv) -> T.Bt:
+  match t:
+    case T.BtEq{ty, a, b}:
+      tqf.q2()
+    case T.BtTyApp{+n, +a}:
+      Bool.pick(T.Bt, S.eq(n, self), tqf.q2(), tqf.kind(8n, T.BtTyApp{n, a}, ctx, e))
+    case t:
+      tqf.kind(8n, t, ctx, e)
+
+def tqf.ku.fields(+self: List<&2, U32>, fs: List<&2, T.BField>, +ctx: List<&2, T.BParam>, +e: TqEnv) -> T.Bt:
+  match fs:
+    case Nil{}:
+      tqf.q2()
+    case T.BField{x, +ty} <> t:
+      tqf.min(tqf.ku.field(self, ty, ctx, e), tqf.ku.fields(self, t, ctx, e))
+
+def tqf.ku.ctors(+self: List<&2, U32>, cs: List<&2, T.BCtor>, +ctx: List<&2, T.BParam>, +e: TqEnv) -> T.Bt:
+  match cs:
+    case Nil{}:
+      tqf.q2()
+    case T.BCtor{c, fs} <> t:
+      tqf.min(tqf.ku.fields(self, fs, ctx, e), tqf.ku.ctors(self, t, ctx, e))
+
+def tqf.ku.names(ps: List<&2, T.BParam>) -> List<&2, List<&2, U32>>:
+  match ps:
+    case Nil{}:
+      Nil{}
+    case T.BParam{m, x, ty} <> t:
+      x <> tqf.ku.names(t)
+
+def tqf.ku.all(xs: List<&2, List<&2, U32>>, +ns: List<&2, List<&2, U32>>) -> Bool:
+  match xs:
+    case Nil{}:
+      True{}
+    case +x <> t:
+      Bool.and(tqf.mem(x, ns), tqf.ku.all(t, ns))
+
+def tqf.ku.term(+q: T.Bt, +ps: List<&2, T.BParam>) -> T.Bt:
+  Bool.pick(T.Bt, tqf.is(q, "&2"), T.BtVar{S.b("Data")}, Bool.pick(T.Bt, Bool.and(Bool.not(tqf.is(q, "&1")), tqf.ku.all(tqf.atoms(q), tqf.ku.names(ps))), T.BtApp{T.BtVar{S.b("Kind")}, T.BtArgs{q, T.BtANil{}}}, T.BtType{}))
+
+def tqf.ku.kind(on: Bool, k: T.Bt, +n: List<&2, U32>, +ps: List<&2, T.BParam>, +cs: List<&2, T.BCtor>, +e: TqEnv) -> T.Bt:
+  match on:
+    case True{}:
+      tqf.ku.term(tqf.ku.ctors(n, cs, tqf.ctx.of(ps, Nil{}), e), ps)
+    case False{}:
+      k
+
+def tqf.ku.items(its: List<&2, T.BItem>, +e: TqEnv) -> List<&2, T.BItem>:
+  match its:
+    case Nil{}:
+      Nil{}
+    case T.BiType{+n, +ps, +k, +cs, +doc} <> t:
+      +it2 : T.BItem = T.BiType{n, ps, tqf.ku.kind(Bool.and(tqf.du.is.type(k), tqf.du.has.ctor(cs)), k, n, ps, cs, e), cs, doc}
+      it2 <> tqf.ku.items(t, tqf.env.put(n, tqf.sig.of(it2), e))
+    case i <> t:
+      i <> tqf.ku.items(t, e)
 
 # The module's items solved in order, each one's signature added for those
 # after it (their own names are printed bare).  An item is solved with its

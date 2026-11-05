@@ -1429,6 +1429,55 @@ def ctxd.laws() -> IO(Unit):
     g2 : D.A2bG <- ctxd.of(al, ral, ds, D.a2b.mod.items(S.b("A2bKinds"), al, ds, g1))
     return Unit{}
 
+# A2bKindQ: the rest of a type's kind from the signatures (tqf.ku): agda-prelude's
+# LessList, a Type for its field of another type, so a Comparison over it could not
+# have it.  A family over Type where one over Kind(q) is passed (tcp.dom.raise), and
+# what an instance's refused field assumes (a2b.auto.parent).
+def kq.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, tr: D.A2bTr) -> IO(D.A2bG):
+  match tr:
+    case D.A2bTr{its, g}:
+      +text = D.a2b.raw.text.of(S.b("A2bKindQ"), al, ral, List.length(&2, A.AgDecl, ds), its)
+      do IO<D.A2bG>:
+        IO.print(verdict("a family's fields of another type: the least of their kinds", S.infix(text, S.b(": L<a, A>> is Kind(a):"))))
+        IO.print(verdict("a record of another type has its kind", S.infix(text, S.b("type Box<-a: Quant, -A: Kind(a)> is Kind(a):"))))
+        IO.print(verdict("a record with a function field stays a Type", S.infix(text, S.b("type Fns<-a: Quant, -A: Kind(a)> is Type:"))))
+        return g
+
+def kq.or(m: Maybe<&2, T.BItem>, +d: T.BItem) -> T.BItem:
+  match m:
+    case Some{x}:
+      x
+    case None{}:
+      d
+
+def kq.none(m: Maybe<&2, T.BItem>) -> Bool:
+  match m:
+    case Some{x}:
+      False{}
+    case None{}:
+      True{}
+
+def kq.laws() -> IO(Unit):
+  +order : List<&2, List<&2, U32>> = [S.b("Agda.Primitive"), S.b("A2bKindQ")]
+  +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
+  +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
+  +ka : T.Bt = T.tba.call(T.BtVar{S.b("Kind")}, [T.BtVar{S.b("a")}])
+  +fam : T.Bt = T.BtPi{T.BmErased{}, S.b("x"), True{}, ka, ka}
+  +ax : T.BItem = T.BiDef{S.b("a2b_axty_f"), Nil{}, T.BtType{}, T.BtPi{T.BmErased{}, S.b("F"), True{}, fam, T.BtVar{S.b("Nat")}}, Nil{}}
+  +it : T.BItem = T.BiDef{S.b("g"), [T.BParam{T.BmErased{}, S.b("F"), fam}], T.BtVar{S.b("Nat")}, T.BtExpr{T.BtNat{S.b("0")}}, Nil{}}
+  do IO<Unit>:
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
+    +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bKindQ.sexp"))
+    g2 : D.A2bG <- kq.of(al, ral, ds, D.a2b.mod.items(S.b("A2bKindQ"), al, ds, g1))
+    IO.print(verdict("a family over Type expected, one over Kind(q) passed: repair 8", Nat.is_eq(G.tgt.repair.kind(S.b("expected : @-x:Type -> Kind(a) observed : @-x:Kind(a) -> Kind(a) ")), 8n)))
+    IO.print(verdict("an assumption's family binder takes Type, its result stays", S.infix(P.tpr.item(kq.or(Q.tcp.dom.raise(ax), ax), Nil{}), S.b("@-x:Type -> Kind(a)"))))
+    IO.print(verdict("a def's family parameter takes Type", S.infix(P.tpr.item(kq.or(Q.tcp.dom.raise(it), it), Nil{}), S.b("@-x:Type -> Kind(a)"))))
+    IO.print(verdict("no family, no change", kq.none(Q.tcp.dom.raise(T.BiDef{S.b("h"), Nil{}, T.BtVar{S.b("Nat")}, T.BtExpr{T.BtNat{S.b("0")}}, Nil{}}))))
+    IO.print(verdict("a Kind(q) expected, another passed: the quantity repair", Nat.is_eq(G.tgt.repair.kind(S.b("expected : Kind(a <&> b) observed : Kind(a) ")), 5n)))
+    IO.print(verdict("a copattern field's parent", S.eq(D.a2b.auto.parent(S.b("Prelude.Product.EqSigma._==_")), S.b("Prelude.Product.EqSigma"))))
+    IO.print(verdict("no dot, no parent", S.eq(D.a2b.auto.parent(S.b("x")), Nil{})))
+    return Unit{}
+
 # The gate's quantity repair (ToBend/Copy.bend, tcp.q.names) when the caller
 # passes one quantity for two of the callee's: a is on both sides of the
 # failure, so the old reading had nothing; the place they differ names it.
@@ -1504,6 +1553,7 @@ def main() -> IO(Unit):
     cs.laws()
     dec.laws()
     ctxd.laws()
+    kq.laws()
     at2.laws()
     up.laws()
     tpl.laws()

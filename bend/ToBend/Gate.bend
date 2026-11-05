@@ -748,13 +748,24 @@ def tgt.up.is.of(m: Maybe<&2, TgUp2>) -> Bool:
 def tgt.up.is(+w: List<&2, U32>) -> Bool:
   Bool.pick(Bool, Bool.and(S.prefix(w, S.b("expected : ")), S.infix(w, S.b("&2"))), tgt.up.is.of(tgt.up.pair(tgt.up.exp(w), tgt.up.obs(w))), False{})
 
+# a family over Type expected, one over Kind(q) passed (ToBend/Copy.bend tcp.dom.raise)
+def tgt.dom.is(+w: List<&2, U32>) -> Bool:
+  Bool.and(S.prefix(w, S.b("expected : @-")), Bool.and(S.infix(w, S.b(":Type -> ")), S.infix(w, S.b("observed : @-x:Kind("))))
+
+def tgt.dom.of(m: Maybe<&2, T.BItem>) -> Maybe<&2, T.BItem>:
+  match m:
+    case Some{it}:
+      Q.tcp.dom.raise(it)
+    case None{}:
+      None{}
+
 # 1: a use twice, 2: an erased binder used live, 3: a Type where Data is
 # expected (the marked span a type parameter), 4: &2 expected, 5: a Type
 # where a Kind(q) is expected, 6: &1 or Type expected (a callee
 # specialised to &1), 7: one datatype at &2 where &1 is expected (tgt.up),
-# 0: none of these
+# 8: a family over Type expected, 0: none of these
 def tgt.repair.kind(+w: List<&2, U32>) -> Nat:
-  Bool.pick(Nat, tgt.up.is(w), 7n, Bool.pick(Nat, S.infix(w, S.b("(consumed more than once)")), 1n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : -")), S.infix(w, S.b("observed : "))), 2n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : Data")), Bool.or(S.infix(w, S.b("observed : Type")), S.infix(w, S.b("observed : Kind(")))), 3n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : Kind(")), S.infix(w, S.b("observed : Type"))), 5n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : ")), Bool.or(S.infix(w, S.b("&2")), tgt.data.fam(w))), 4n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : ")), Bool.or(S.infix(w, S.b("&1")), S.infix(w, S.b("Type")))), 6n, 0n)))))))
+  Bool.pick(Nat, tgt.dom.is(w), 8n, Bool.pick(Nat, tgt.up.is(w), 7n, Bool.pick(Nat, S.infix(w, S.b("(consumed more than once)")), 1n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : -")), S.infix(w, S.b("observed : "))), 2n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : Data")), Bool.or(S.infix(w, S.b("observed : Type")), S.infix(w, S.b("observed : Kind(")))), 3n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : Kind(")), Bool.or(S.infix(w, S.b("observed : Type")), S.infix(w, S.b("observed : Kind(")))), 5n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : ")), Bool.or(S.infix(w, S.b("&2")), tgt.data.fam(w))), 4n, Bool.pick(Nat, Bool.and(S.prefix(w, S.b("expected : ")), Bool.or(S.infix(w, S.b("&1")), S.infix(w, S.b("Type")))), 6n, 0n))))))))
 
 def tgt.find(its: List<&2, T.BItem>, +n: List<&2, U32>) -> Maybe<&2, T.BItem>:
   match its:
@@ -1064,11 +1075,22 @@ def tgt.up.add(m: Maybe<&2, T.BItem>, +it: T.BItem, +its: List<&2, T.BItem>) -> 
     case None{}:
       it <> its
 
+# (a helper's own field through a helper: not solved again, which would read its
+# result's quantity off its A: Kind(&2) and undo it; Data.Nat.Properties' `Dec<&1, A>`
+# came back `Dec<&2, A>`, so the term at ≡-irrelevant went through it again and again,
+# 2,000 checks at 4 s; 2026-11-05)
+def tgt.up.solve(helper: Bool, new: T.BItem, +qe: QF.TqEnv) -> T.BItem:
+  match helper:
+    case True{}:
+      new
+    case False{}:
+      QF.tqf.item(new, qe)
+
 # the helper, if the module has none yet, and the def with the term through it
 def tgt.up.put(r: Maybe<&2, T.BItem>, +hi: T.BItem, +blame: List<&2, U32>, +why: List<&2, U32>, +its: List<&2, T.BItem>, ds: List<&2, TgtDrop>, +qe: QF.TqEnv) -> TgtSt:
   match r:
     case Some{new}:
-      TgtSt{tgt.fixed(blame, tgt.up.add(tgt.find(its, tgt.name(hi)), hi, its), QF.tqf.item(new, qe), qe), ds}
+      TgtSt{tgt.fixed(blame, tgt.up.add(tgt.find(its, tgt.name(hi)), hi, its), tgt.up.solve(S.prefix(blame, S.b("a2b_up.")), new, qe), qe), ds}
     case None{}:
       tgt.alt.or.fail(blame, why, its, ds, qe)
 
@@ -1083,7 +1105,7 @@ def tgt.up.of(s: QF.TqSig, +t: List<&2, U32>, +es: List<&2, List<&2, U32>>, +os:
 def tgt.up.go(m: Maybe<&2, TgUp2>, +blame: List<&2, U32>, +why: List<&2, U32>, +sp: List<&2, U32>, +its: List<&2, T.BItem>, +ds: List<&2, TgtDrop>, +qe: QF.TqEnv) -> TgtSt:
   match m:
     case Some{TgUp2{TgUp{+t, +es}, TgUp{+u, +os}}}:
-      Bool.pick(TgtSt, Bool.and(S.eq(t, u), tgt.up.same(es, os, False{})), tgt.up.of(QF.tqf.sig(qe, t), t, es, os, blame, why, sp, its, ds, qe), tgt.alt.or.fail(blame, why, its, ds, qe))
+      Bool.pick(TgtSt, Bool.and(Bool.not(S.prefix(sp, S.b("a2b_up."))), Bool.and(S.eq(t, u), tgt.up.same(es, os, False{}))), tgt.up.of(QF.tqf.sig(qe, t), t, es, os, blame, why, sp, its, ds, qe), tgt.alt.or.fail(blame, why, its, ds, qe))
     case None{}:
       tgt.alt.or.fail(blame, why, its, ds, qe)
 
@@ -1135,6 +1157,8 @@ def tgt.on.fail(+k: Nat, +blame: List<&2, U32>, +why: List<&2, U32>, +sp: List<&
       tgt.q.or.up(tgt.q.of(tgt.find(its, blame), S.strip(S.strip(tgt.word(sp), S.b("~")), S.b("-")), why), blame, why, sp, its, ds, qe)
     case 7n:
       tgt.up(blame, why, sp, its, ds, qe)
+    case 8n:
+      tgt.repaired(tgt.dom.of(tgt.find(its, blame)), blame, why, its, ds, qe)
     case 5n:
       tgt.repaired(tgt.q1.of(tgt.find(its, blame), why), blame, why, its, ds, qe)
     case 6n:
