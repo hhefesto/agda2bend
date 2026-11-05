@@ -1376,6 +1376,33 @@ def spd.laws() -> IO(Unit):
     IO.print(verdict("nor are the others", Bool.not(spd.is.some(D.a2b.dep.find([g], gone, Map.new(&2, C.ActCopy), None{})))))
     IO.print(verdict("subst under a binder the value mentions renames it", S.eq(P.tpr.t(T.tba.subst(T.BtLam{T.BmLive{}, S.b("y"), T.BtApp{T.BtVar{S.b("x")}, T.BtVar{S.b("y")}}}, S.b("x"), T.BtVar{S.b("y")}), P.TpLoose{}, 0n, Nil{}), P.tpr.t(T.BtLam{T.BmLive{}, S.b("y_c"), T.BtApp{T.BtVar{S.b("y")}, T.BtVar{S.b("y_c")}}}, P.TpLoose{}, 0n, Nil{}))))
 
+# fixtures/agda2bend/src/A2bDec.agda (its export A2bDec.sexp, after
+# Agda.Primitive and Agda.Builtin.Bool): a field of a copattern definition's own
+# call at the clause's own patterns is that clause's body, only when that field's
+# clause has those patterns (2026-11-04). The stdlib's map′ has `does (map′ f g
+# a?) = does a?` beside `proof (map′ f g (true because [a]))`, whose implicit
+# argument says `does (map′ f g (true because [a]))`: as many variables, so `does
+# a?` was read there as `does [a]` ("expected : Dec observed : Reflects", 215
+# dependents in corpus-std15). It is the unfolding at the arguments now.
+def dec.of(+al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +ds: List<&2, A.AgDecl>, tr: D.A2bTr) -> IO(D.A2bG):
+  match tr:
+    case D.A2bTr{its, g}:
+      +text = D.a2b.raw.text.of(S.b("A2bDec"), al, ral, List.length(&2, A.AgDecl, ds), its)
+      do IO<D.A2bG>:
+        IO.print(verdict("a field of the def's own call at other patterns is that field's clause at the arguments", S.infix(text, S.b("because{True{}, of(B, True{}, x(invert(A, True{}, lb_a_rb)))}"))))
+        return g
+
+def dec.laws() -> IO(Unit):
+  +order : List<&2, List<&2, U32>> = [S.b("Agda.Primitive"), S.b("Agda.Builtin.Bool"), S.b("A2bDec")]
+  +al : Map<&2, List<&2, U32>> = D.a2b.aliases(order)
+  +ral : Map<&2, List<&2, U32>> = D.a2b.ral(order, al, Map.new(&2, List<&2, U32>))
+  do IO<Unit>:
+    g1 : D.A2bG <- abs.mod("Agda.Primitive", al, D.A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
+    g2 : D.A2bG <- abs.mod("Agda.Builtin.Bool", al, g1)
+    +ds : List<&2, A.AgDecl> <- D.a2b.decls(S.b("fixtures/agda2bend/A2bDec.sexp"))
+    g3 : D.A2bG <- dec.of(al, ral, ds, D.a2b.mod.items(S.b("A2bDec"), al, ds, g2))
+    return Unit{}
+
 def main() -> IO(Unit):
   do IO<Unit>:
     +bool : List<&2, U32> <- S.read("fixtures/agda2bend/Agda.Builtin.Bool.sexp")
@@ -1399,6 +1426,7 @@ def main() -> IO(Unit):
     trl.laws()
     ftr.laws()
     cs.laws()
+    dec.laws()
     tpl.laws()
     inl.laws()
     tele.laws()

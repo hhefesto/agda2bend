@@ -11079,17 +11079,49 @@ def act.slf.chain(fuel: Nat, t: A.Ag, +depth: Nat, +sk: String, +ps: A.Ag, +pks:
     case _ _:
       None{}
 
-def act.slf.find(cls: A.Ag, +path: List<&2, String>, +n: Nat) -> Maybe<&2, A.Ag>:
+def act.mg.peq(a: A.Ag, b: A.Ag) -> Bool:
+  match a b:
+    case A.AgPArg{i, x, p, r} A.AgPArg{j, y, q, s}:
+      Bool.and(act.mg.peq(p, q), act.mg.peq(r, s))
+    case A.AgPEnd{} A.AgPEnd{}:
+      True{}
+    case A.AgPVar{x, n, o} A.AgPVar{y, m, u}:
+      Nat.is_eq(n, m)
+    case A.AgPDot{t} A.AgPDot{u}:
+      True{}
+    case A.AgPCon{q, r, f, ps} A.AgPCon{q2, r2, f2, ps2}:
+      Bool.and(String.eq(act.key(q), act.key(q2)), act.mg.peq(ps, ps2))
+    case _ _:
+      False{}
+
+# the patterns before the projection
+def act.mg.pre(ps: A.Ag) -> A.Ag:
+  match ps:
+    case A.AgPArg{i, x, A.AgPProj{q}, rest}:
+      A.AgPEnd{}
+    case A.AgPArg{i, x, p, rest}:
+      A.AgPArg{i, x, p, act.mg.pre(rest)}
+    case _:
+      A.AgPEnd{}
+
+# (2026-11-04) that clause must also have this clause's patterns: Decidable's
+# `does (map′ f g a?) = does a?` beside `proof (map′ f g (true because [a])) =
+# of {x = does (map′ f g (true because [a]))} …` has as many variables, one of
+# them another variable, so `does a?` read here was `does [a]`: "expected : Dec
+# observed : Reflects", 215 dependents in corpus-std15, 295 in corpus-plfa16.
+# With other patterns the projection stays, and act.cop.at unfolds it at its
+# arguments, as in any other definition.
+def act.slf.find(cls: A.Ag, +path: List<&2, String>, +n: Nat, +ps0: A.Ag) -> Maybe<&2, A.Ag>:
   match cls:
     case A.AgCl{+tel, +ps, +body, ty, ca, rest}:
-      Bool.pick(Maybe<&2, A.Ag>, Bool.and(Bool.and(Nat.is_eq(act.tel.len(tel), n), Bool.not(List.is_empty(&2, String, path))), act.slf.seq(act.slf.path(ps), path)), Some{body}, act.slf.find(rest, path, n))
+      Bool.pick(Maybe<&2, A.Ag>, Bool.and(Bool.and(Bool.and(Nat.is_eq(act.tel.len(tel), n), Bool.not(List.is_empty(&2, String, path))), act.slf.seq(act.slf.path(ps), path)), act.mg.peq(act.mg.pre(ps), act.mg.pre(ps0))), Some{body}, act.slf.find(rest, path, n, ps0))
     case _:
       None{}
 
-def act.slf.at(m: Maybe<&2, List<&2, String>>, +cls: A.Ag, +n: Nat) -> Maybe<&2, A.Ag>:
+def act.slf.at(m: Maybe<&2, List<&2, String>>, +cls: A.Ag, +n: Nat, +ps0: A.Ag) -> Maybe<&2, A.Ag>:
   match m:
     case Some{p}:
-      act.slf.find(cls, p, n)
+      act.slf.find(cls, p, n, ps0)
     case None{}:
       None{}
 
@@ -11103,7 +11135,7 @@ def act.slf.or(m: Maybe<&2, A.Ag>, +depth: Nat, other: A.Ag) -> A.Ag:
 def act.slf.term(t: A.Ag, +depth: Nat, +sk: String, +ps: A.Ag, +pks: List<&2, String>, +cls: A.Ag, +n: Nat) -> A.Ag:
   match t:
     case A.AgDef{+q, +es}:
-      act.slf.or(act.slf.at(act.slf.chain(16n, A.AgDef{q, es}, depth, sk, ps, pks), cls, n), depth, A.AgDef{q, act.slf.term(es, depth, sk, ps, pks, cls, n)})
+      act.slf.or(act.slf.at(act.slf.chain(16n, A.AgDef{q, es}, depth, sk, ps, pks), cls, n, ps), depth, A.AgDef{q, act.slf.term(es, depth, sk, ps, pks, cls, n)})
     case A.AgVar{i, x, es}:
       A.AgVar{i, x, act.slf.term(es, depth, sk, ps, pks, cls, n)}
     case A.AgCon{q, o, es}:
@@ -12465,31 +12497,6 @@ def act.tylevel.env(p: A.AgProj, +ty: A.Ag, +env: ActEnv) -> Bool:
 # them, they are the one clause they came from: the record's constructor
 # at the fields' values, read as any other clause (act.nrf rewrites its
 # refls).  agda-unimath's export A2bInl: 9 -> 17 of 17.
-def act.mg.peq(a: A.Ag, b: A.Ag) -> Bool:
-  match a b:
-    case A.AgPArg{i, x, p, r} A.AgPArg{j, y, q, s}:
-      Bool.and(act.mg.peq(p, q), act.mg.peq(r, s))
-    case A.AgPEnd{} A.AgPEnd{}:
-      True{}
-    case A.AgPVar{x, n, o} A.AgPVar{y, m, u}:
-      Nat.is_eq(n, m)
-    case A.AgPDot{t} A.AgPDot{u}:
-      True{}
-    case A.AgPCon{q, r, f, ps} A.AgPCon{q2, r2, f2, ps2}:
-      Bool.and(String.eq(act.key(q), act.key(q2)), act.mg.peq(ps, ps2))
-    case _ _:
-      False{}
-
-# the patterns before the projection
-def act.mg.pre(ps: A.Ag) -> A.Ag:
-  match ps:
-    case A.AgPArg{i, x, A.AgPProj{q}, rest}:
-      A.AgPEnd{}
-    case A.AgPArg{i, x, p, rest}:
-      A.AgPArg{i, x, p, act.mg.pre(rest)}
-    case _:
-      A.AgPEnd{}
-
 # whether a pattern has a refl in it
 def act.mg.rfl(p: A.Ag, +env: ActEnv) -> Bool:
   match p:
