@@ -1429,6 +1429,19 @@ def ctxd.laws() -> IO(Unit):
     g2 : D.A2bG <- ctxd.of(al, ral, ds, D.a2b.mod.items(S.b("A2bKinds"), al, ds, g1))
     return Unit{}
 
+# The gate's quantity repair (ToBend/Copy.bend, tcp.q.names) when the caller
+# passes one quantity for two of the callee's: a is on both sides of the
+# failure, so the old reading had nothing; the place they differ names it.
+def at2.laws() -> IO(Unit):
+  +ps : List<&2, T.BParam> = [T.BParam{T.BmTpl{}, S.b("a"), T.BtVar{S.b("Quant")}}, T.BParam{T.BmTpl{}, S.b("b"), T.BtVar{S.b("Quant")}}]
+  +both : List<&2, List<&2, U32>> = Q.tcp.q.names(ps, S.b("expected : R/S.Setoid<&2, f~a> observed : R/S.Setoid<f~a, f~a> "))
+  +one : List<&2, List<&2, U32>> = Q.tcp.q.names(ps, S.b("expected : Setoid<&2, l> observed : Setoid<b, l> "))
+  +other : List<&2, List<&2, U32>> = Q.tcp.q.names(ps, S.b("expected : Setoid<c, f~a> observed : Setoid<f~a, f~a> "))
+  do IO<Unit>:
+    IO.print(verdict("a quantity on both sides of a failure, read where &2 is expected", Bool.and(S.mem(S.b("a"), both), Nat.is_eq(List.length(&2, List<&2, U32>, both), 1n))))
+    IO.print(verdict("a quantity only the observed type names", Bool.and(S.mem(S.b("b"), one), Nat.is_eq(List.length(&2, List<&2, U32>, one), 1n))))
+    IO.print(verdict("no repair where something other than &2 is expected", Nat.is_eq(List.length(&2, List<&2, U32>, other), 0n)))
+
 def main() -> IO(Unit):
   do IO<Unit>:
     +bool : List<&2, U32> <- S.read("fixtures/agda2bend/Agda.Builtin.Bool.sexp")
@@ -1454,6 +1467,7 @@ def main() -> IO(Unit):
     cs.laws()
     dec.laws()
     ctxd.laws()
+    at2.laws()
     tpl.laws()
     inl.laws()
     tele.laws()

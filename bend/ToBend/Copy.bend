@@ -487,15 +487,68 @@ def tcp.q.done(+qs: List<&2, List<&2, U32>>, it: T.BItem, +lit: List<&2, U32>) -
     case q <> t:
       Some{tcp.q.item(qs, it, lit)}
 
+# A caller that passes one quantity for two of the callee's: the
+# standard library's strictlyInverseˡ⇒inverseˡ hands `setoid A : Setoid a a` to a
+# lemma specialised to Setoid &2 ℓ, so "expected Setoid<&2, a> observed
+# Setoid<a, a>" names a on both sides and tcp.q.cands has nothing (60
+# dependents in corpus-std15, mk↔ₛ′ among them).  Read at the first place the
+# two differ: &2 expected, the quantity observed (2026-11-04).
+def tcp.q.tok(xs: List<&2, U32>) -> List<&2, U32>:
+  match xs:
+    case Nil{}:
+      Nil{}
+    case +c <> t:
+      Bool.pick(List<&2, U32>, Bool.or(tcp.namec(c), U32.is_eq(c, 126)), c <> tcp.q.tok(t), Nil{})
+
+# a token past its last ~: a template's quantity prints as def~q
+def tcp.q.tail(xs: List<&2, U32>, acc: List<&2, U32>) -> List<&2, U32>:
+  match xs:
+    case Nil{}:
+      acc
+    case +c <> t:
+      tcp.q.tail(t, Bool.pick(List<&2, U32>, U32.is_eq(c, 126), Nil{}, List.append(&2, U32, acc, [c])))
+
+def tcp.q.at2.at(+e: List<&2, U32>, +o: List<&2, U32>, +qs: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  +q = tcp.q.tail(tcp.q.tok(o), Nil{})
+  Bool.pick(List<&2, List<&2, U32>>, Bool.and(S.prefix(e, S.b("&2")), tcp.mem(q, qs)), [q], Nil{})
+
+def tcp.q.at2(e: List<&2, U32>, o: List<&2, U32>, +qs: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  match e o:
+    case +a <> +s +b <> +t:
+      Bool.pick(List<&2, List<&2, U32>>, U32.is_eq(a, b), tcp.q.at2(s, t, qs), tcp.q.at2.at(a <> s, b <> t, qs))
+    case _ _:
+      Nil{}
+
+# the text after "expected : " or "observed : " (both are 11 long)
+def tcp.q.past(m: Maybe<&2, Nat>, +w: List<&2, U32>) -> List<&2, U32>:
+  match m:
+    case Some{i}:
+      List.drop(&2, U32, List.drop(&2, U32, w, i), 11n)
+    case None{}:
+      Nil{}
+
+def tcp.q.cands.or(cs: List<&2, List<&2, U32>>, +qs: List<&2, List<&2, U32>>, +exp: List<&2, U32>, +obs: List<&2, U32>) -> List<&2, List<&2, U32>>:
+  match cs:
+    case Nil{}:
+      tcp.q.at2(tcp.q.past(S.find(exp, S.b("expected : "), 0n), exp), tcp.q.past(S.find(obs, S.b("observed : "), 0n), obs), qs)
+    case c <> t:
+      c <> t
+
+def tcp.q.names(+ps: List<&2, T.BParam>, +why: List<&2, U32>) -> List<&2, List<&2, U32>>:
+  +qs = tcp.q.params(ps)
+  +exp = tcp.exp.of(S.find(why, S.b("observed : "), 0n), why)
+  +obs = tcp.obs(why)
+  tcp.q.cands.or(tcp.q.cands(qs, exp, obs), qs, exp, obs)
+
 # The item specialised in the quantities the failure names, or None: to &2
 # those the observed type names (a copy needs Data), to &1 those the
 # expected kind names (a Type fills a Kind(q): `_≉_ = λ x y → ¬ …`).
 def tcp.q.spec(+it: T.BItem, +why: List<&2, U32>) -> Maybe<&2, T.BItem>:
   match it:
     case T.BiDef{n, +ps, ret, body, doc}:
-      tcp.q.done(tcp.q.cands(tcp.q.params(ps), tcp.exp.of(S.find(why, S.b("observed : "), 0n), why), tcp.obs(why)), it, S.b("&2"))
+      tcp.q.done(tcp.q.names(ps, why), it, S.b("&2"))
     case T.BiType{n, +ps, k, cs, doc}:
-      tcp.q.done(tcp.q.cands(tcp.q.params(ps), tcp.exp.of(S.find(why, S.b("observed : "), 0n), why), tcp.obs(why)), it, S.b("&2"))
+      tcp.q.done(tcp.q.names(ps, why), it, S.b("&2"))
     case _:
       None{}
 
