@@ -782,6 +782,9 @@ def a2b.defs.n(its: List<&2, T.BItem>) -> Nat:
 def a2b.head.doc(+m: List<&2, U32>, +nd: Nat) -> List<&2, List<&2, U32>>:
   [List.append(&2, U32, S.b("Bend 2 translation of the Agda module "), m), S.b("by agda2bend (bend/Agda2Bend.bend) from agda-export's elaboration; " ++ Nat.show(nd) ++ " Agda definitions"), Nil{}]
 
+def a2b.led(+out: String) -> String:
+  out ++ "/ledger.m.tsv"
+
 # the ledger's lines for a module: every kept item, then every dropped one
 # with its reason (module, Bend name, Agda name, status, reason; tabs)
 def a2b.ledger.kept(+m: List<&2, U32>, its: List<&2, T.BItem>) -> List<&2, U32>:
@@ -836,7 +839,7 @@ def a2b.gated(+out: String, +m: List<&2, U32>, +nd: Nat, +gaps: List<&2, List<&2
   match r:
     case G.TgtRun{G.TgtSt{+its, +ds}, done, checks}:
       do IO<List<&2, T.BItem>>:
-        S.add(out ++ "/ledger.tsv", List.append(&2, U32, a2b.ledger.kept(m, its), a2b.ledger.drops(m, List.reverse(&2, G.TgtDrop, ds))))
+        S.add(a2b.led(out), List.append(&2, U32, a2b.ledger.kept(m, its), a2b.ledger.drops(m, List.reverse(&2, G.TgtDrop, ds))))
         Ck.log("emit " ++ S.str(m) ++ ": " ++ Nat.show(nd) ++ " definitions, " ++ Nat.show(nits) ++ " items: " ++ Nat.show(List.length(&2, T.BItem, its)) ++ " check, " ++ Nat.show(a2b.dropped.n(ds, False{})) ++ " dropped, " ++ Nat.show(a2b.dropped.n(ds, True{})) ++ " dependents (" ++ Nat.show(checks) ++ " checks); gaps " ++ Nat.show(List.length(&2, List<&2, U32>, gaps)) ++ a2b.tally.show(a2b.tally(gaps, Nil{})))
         return its
 
@@ -1393,7 +1396,7 @@ def a2b.dep.ledger(+out: String, +m: List<&2, U32>, ds: List<&2, G.TgtDrop>) -> 
       IO.pure(Unit, Unit{})
     case +d <> +t:
       do IO<Unit>:
-        S.add(out ++ "/ledger.tsv", a2b.ledger.drops(m, d <> t))
+        S.add(a2b.led(out), a2b.ledger.drops(m, d <> t))
         Ck.log("emit " ++ S.str(m) ++ ": " ++ Nat.show(List.length(&2, G.TgtDrop, d <> t)) ++ " dependents passed over before translating")
 
 def a2b.em.live(+out: String, +m: List<&2, U32>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +nd: Nat, +kept: Map<&2, Bool>, +unf: Map<&2, C.ActCopy>, +dm: Map<&2, A.AgDecl>, +nk: Map<&2, String>, +pj: Map<&2, Q.TcpProj>, +qs: Map<&2, QF.TqSig>, +tab: Map<&2, C.ActSym>, sp: A2bSp) -> IO(A2bG):
@@ -1517,16 +1520,112 @@ def a2b.asm.read() -> IO(Map<&2, Bool>):
 
 # one module: its definitions read, its symbols added, its file written;
 # the table with its symbols for the modules after it
-def a2b.em.mod(+out: String, +ms: Map<&2, A2bMod>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +m: List<&2, U32>, g: A2bG) -> IO(A2bG):
+def a2b.em.pass(+out: String, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +m: List<&2, U32>, +ds0: List<&2, A.AgDecl>, +asm: Map<&2, Bool>, g: A2bG) -> IO(A2bG):
   match g:
     case A2bG{tab, unf, +kept, pj, qs, +gone}:
+      +ds : List<&2, A.AgDecl> = a2b.asm.decls(ds0, asm)
       do IO<A2bG>:
-        +t0 : Nat <- IO.now()
-        +asm : Map<&2, Bool> <- a2b.asm.read()
-        +ds0 : List<&2, A.AgDecl> <- a2b.decls(a2b.mod.file(a2b.mod.get(ms, m)))
-        +ds : List<&2, A.AgDecl> = a2b.asm.decls(ds0, asm)
-        +t1 : Nat <- a2b.lap(m, "read", t0)
+        S.write(a2b.led(out), Nil{})
         a2b.cop.go(out, m, al, ral, ds, kept, gone, a2b.syms(ds, m, al, A2bTabs{tab, unf, Map.new(&2, A.AgDecl), Nil{}, Map.new(&2, String), pj, qs}))
+
+# A2B_AUTOASSUME=N (2026-11-05; the user, 11-01: "Add the assumptions as extra
+# input"; 11-05: the most good Bend code by Friday): a definition the gate dropped
+# goes in as an assumption and the module is read again, up to N times, so what uses
+# it, in this module and the ones after, is translated and says what it proves under
+# it instead of being held back.  Only a function whose value is no type and no level:
+# a type-valued definition has to unfold.  The names go to OUT/assumed.txt.  A module's
+# ledger lines wait in OUT/ledger.m.tsv, so only its last pass's reach the ledger.
+type A2bAuto is Data:
+  A2bAuto{g: A2bG, asm: Map<&2, Bool>, more: Bool}
+
+def a2b.auto.put(on: Bool, +a: List<&2, U32>, acc: Map<&2, Bool>) -> Map<&2, Bool>:
+  match on:
+    case True{}:
+      Map.set(&2, Bool, acc, S.str(a), True{})
+    case False{}:
+      acc
+
+def a2b.auto.nth(n: Nat, xs: List<&2, List<&2, U32>>) -> List<&2, U32>:
+  match n xs:
+    case 0n h <> t:
+      h
+    case 1n+p h <> t:
+      a2b.auto.nth(p, t)
+    case _ Nil{}:
+      Nil{}
+
+# the Agda names of the rows that were dropped
+def a2b.auto.rows(ls: List<&2, List<&2, U32>>, acc: Map<&2, Bool>) -> Map<&2, Bool>:
+  match ls:
+    case Nil{}:
+      acc
+    case l <> t:
+      +fs : List<&2, List<&2, U32>> = S.split(l, 9)
+      a2b.auto.rows(t, a2b.auto.put(S.eq(a2b.auto.nth(3n, fs), S.b("dropped")), a2b.auto.nth(2n, fs), acc))
+
+def a2b.auto.elig(d: A.AgDecl, +unf: Map<&2, C.ActCopy>) -> Bool:
+  match d:
+    case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, fl, lang, +ty, A.AgDFun{pr, re, w, ex, te, mu, cl, tr}}:
+      Bool.not(Bool.or(C.act.ends.sort.u(20n, ty, unf), C.act.ends.level(ty)))
+    case _:
+      False{}
+
+def a2b.auto.name(d: A.AgDecl) -> List<&2, U32>:
+  match d:
+    case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, fl, lang, ty, dd}:
+      C.act.qs(q)
+
+# the module's definitions to assume now: dropped, not assumed yet, and able to be
+def a2b.auto.new(ds: List<&2, A.AgDecl>, +asm: Map<&2, Bool>, +dr: Map<&2, Bool>, +unf: Map<&2, C.ActCopy>) -> List<&2, List<&2, U32>>:
+  match ds:
+    case Nil{}:
+      Nil{}
+    case +d <> t:
+      +r = a2b.auto.new(t, asm, dr, unf)
+      Bool.pick(List<&2, List<&2, U32>>, Bool.and(Bool.and(a2b.asm.hit(dr, d), Bool.not(a2b.asm.hit(asm, d))), a2b.auto.elig(d, unf)), a2b.auto.name(d) <> r, r)
+
+def a2b.auto.run(ns: List<&2, List<&2, U32>>, +out: String, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +m: List<&2, U32>, +ds0: List<&2, A.AgDecl>, +asm: Map<&2, Bool>, +g: A2bG, g1: A2bG) -> IO(A2bAuto):
+  match ns:
+    case Nil{}:
+      IO.pure(A2bAuto, A2bAuto{g1, asm, False{}})
+    case +n <> +t:
+      +asm2 : Map<&2, Bool> = a2b.asm.map(n <> t, asm)
+      do IO<A2bAuto>:
+        S.add(out ++ "/assumed.txt", List.append(&2, U32, S.join(n <> t, 10), [10]))
+        Ck.log("emit " ++ S.str(m) ++ ": read again, assuming " ++ Nat.show(List.length(&2, List<&2, U32>, n <> t)) ++ " the gate dropped")
+        +g2 : A2bG <- a2b.em.pass(out, al, ral, m, ds0, asm2, g)
+        return A2bAuto{g2, asm2, True{}}
+
+def a2b.auto.step(+out: String, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +m: List<&2, U32>, +ds0: List<&2, A.AgDecl>, +asm: Map<&2, Bool>, +unf: Map<&2, C.ActCopy>, +g: A2bG, g1: A2bG) -> IO(A2bAuto):
+  do IO<A2bAuto>:
+    +led : List<&2, U32> <- S.read(a2b.led(out))
+    +dr : Map<&2, Bool> = a2b.auto.rows(S.split.lines(led), Map.new(&2, Bool))
+    a2b.auto.run(a2b.auto.new(ds0, asm, dr, unf), out, al, ral, m, ds0, asm, g, g1)
+
+def a2b.auto.loop(fuel: Nat, +out: String, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +m: List<&2, U32>, +ds0: List<&2, A.AgDecl>, +unf: Map<&2, C.ActCopy>, +g: A2bG, r: A2bAuto) -> IO(A2bG):
+  match fuel r:
+    case 1n+p A2bAuto{g1, +asm, True{}}:
+      IO.bind(A2bAuto, A2bG, a2b.auto.step(out, al, ral, m, ds0, asm, unf, g, g1), a2b.auto.loop(p, out, al, ral, m, ds0, unf, g))
+    case _ A2bAuto{g1, asm, more}:
+      IO.pure(A2bG, g1)
+
+def a2b.g.unf(g: A2bG) -> Map<&2, C.ActCopy>:
+  match g:
+    case A2bG{tab, unf, kept, pj, qs, gone}:
+      unf
+
+def a2b.em.mod(+out: String, +ms: Map<&2, A2bMod>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +m: List<&2, U32>, +g: A2bG) -> IO(A2bG):
+  do IO<A2bG>:
+    +t0 : Nat <- IO.now()
+    +asm : Map<&2, Bool> <- a2b.asm.read()
+    +ds0 : List<&2, A.AgDecl> <- a2b.decls(a2b.mod.file(a2b.mod.get(ms, m)))
+    +t1 : Nat <- a2b.lap(m, "read", t0)
+    +fuel : Nat <- S.env.nat("A2B_AUTOASSUME", 0n)
+    +g1 : A2bG <- a2b.em.pass(out, al, ral, m, ds0, asm, g)
+    +g2 : A2bG <- a2b.auto.loop(fuel, out, al, ral, m, ds0, a2b.g.unf(g), g, A2bAuto{g1, asm, True{}})
+    +led : List<&2, U32> <- S.read(a2b.led(out))
+    S.add(out ++ "/ledger.tsv", led)
+    return g2
 
 def a2b.em.mods(order: List<&2, List<&2, U32>>, +out: String, +ms: Map<&2, A2bMod>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, g: A2bG) -> IO(Unit):
   match order:

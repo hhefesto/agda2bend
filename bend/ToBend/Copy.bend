@@ -525,12 +525,22 @@ def tcp.q.done(+qs: List<&2, List<&2, U32>>, it: T.BItem, +lit: List<&2, U32>) -
 # Setoid<a, a>" names a on both sides and tcp.q.cands has nothing (60
 # dependents in corpus-std15, mk↔ₛ′ among them).  Read at the first place the
 # two differ: &2 expected, the quantity observed (2026-11-04).
-def tcp.q.tok(xs: List<&2, U32>) -> List<&2, U32>:
+def tcp.q.tok.on(+xs: List<&2, U32>) -> Bool:
   match xs:
     case Nil{}:
-      Nil{}
+      False{}
     case +c <> t:
-      Bool.pick(List<&2, U32>, Bool.or(tcp.namec(c), U32.is_eq(c, 126)), c <> tcp.q.tok(t), Nil{})
+      Bool.or(tcp.namec(c), U32.is_eq(c, 126))
+
+def tcp.q.tok.go(xs: List<&2, U32>, on: Bool) -> List<&2, U32>:
+  match xs on:
+    case c <> +t True{}:
+      c <> tcp.q.tok.go(t, tcp.q.tok.on(t))
+    case _ _:
+      Nil{}
+
+def tcp.q.tok(+xs: List<&2, U32>) -> List<&2, U32>:
+  tcp.q.tok.go(xs, tcp.q.tok.on(xs))
 
 # a token past its last ~: a template's quantity prints as def~q
 def tcp.q.tail(xs: List<&2, U32>, acc: List<&2, U32>) -> List<&2, U32>:
@@ -544,12 +554,28 @@ def tcp.q.at2.at(+e: List<&2, U32>, +o: List<&2, U32>, +qs: List<&2, List<&2, U3
   +q = tcp.q.tail(tcp.q.tok(o), Nil{})
   Bool.pick(List<&2, List<&2, U32>>, Bool.and(S.prefix(e, S.b("&2")), tcp.mem(q, qs)), [q], Nil{})
 
-def tcp.q.at2(e: List<&2, U32>, o: List<&2, U32>, +qs: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+# whether both start, and with the same character
+def tcp.q.same(+e: List<&2, U32>, +o: List<&2, U32>) -> Bool:
   match e o:
-    case +a <> +s +b <> +t:
-      Bool.pick(List<&2, List<&2, U32>>, U32.is_eq(a, b), tcp.q.at2(s, t, qs), tcp.q.at2.at(a <> s, b <> t, qs))
+    case +a <> s +b <> t:
+      U32.is_eq(a, b)
     case _ _:
+      False{}
+
+# e and o from the first place they differ, read there once (at every place it
+# read the rest of the message each time: Categories.NaturalTransformation.Dinatural,
+# 2 minutes a round, 93% of them here; 2026-11-05)
+def tcp.q.at2.go(e: List<&2, U32>, o: List<&2, U32>, +qs: List<&2, List<&2, U32>>, same: Bool) -> List<&2, List<&2, U32>>:
+  match e o same:
+    case a <> +s b <> +t True{}:
+      tcp.q.at2.go(s, t, qs, tcp.q.same(s, t))
+    case e2 o2 False{}:
+      tcp.q.at2.at(e2, o2, qs)
+    case _ _ _:
       Nil{}
+
+def tcp.q.at2(+e: List<&2, U32>, +o: List<&2, U32>, +qs: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  tcp.q.at2.go(e, o, qs, tcp.q.same(e, o))
 
 # the text after "expected : " or "observed : " (both are 11 long)
 def tcp.q.past(m: Maybe<&2, Nat>, +w: List<&2, U32>) -> List<&2, U32>:
@@ -577,22 +603,23 @@ def tcp.q.names(+ps: List<&2, T.BParam>, +why: List<&2, U32>) -> List<&2, List<&
 # Type, ..>" (218 dependents in corpus-um16 at 1,123 modules) names l2 where
 # tgt.repair.kind's prefix test does not look.  Read at the first place the two
 # differ: the quantities that Kind( names go to &1 (2026-11-04).
-def tcp.q.upto(xs: List<&2, U32>) -> List<&2, U32>:
-  match xs:
-    case Nil{}:
-      Nil{}
-    case +c <> t:
-      Bool.pick(List<&2, U32>, U32.is_eq(c, 41), Nil{}, c <> tcp.q.upto(t))
+def tcp.q.upto(+xs: List<&2, U32>) -> List<&2, U32>:
+  S.until(xs, 41)
 
 def tcp.q.at1.at(+e: List<&2, U32>, +o: List<&2, U32>, +qs: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
   Bool.pick(List<&2, List<&2, U32>>, Bool.and(S.prefix(e, S.b("Kind(")), S.prefix(o, S.b("Type"))), tcp.q.cands(qs, Nil{}, tcp.q.upto(e)), Nil{})
 
-def tcp.q.at1(e: List<&2, U32>, o: List<&2, U32>, +qs: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
-  match e o:
-    case +a <> +s +b <> +t:
-      Bool.pick(List<&2, List<&2, U32>>, U32.is_eq(a, b), tcp.q.at1(s, t, qs), tcp.q.at1.at(a <> s, b <> t, qs))
-    case _ _:
+def tcp.q.at1.go(e: List<&2, U32>, o: List<&2, U32>, +qs: List<&2, List<&2, U32>>, same: Bool) -> List<&2, List<&2, U32>>:
+  match e o same:
+    case a <> +s b <> +t True{}:
+      tcp.q.at1.go(s, t, qs, tcp.q.same(s, t))
+    case e2 o2 False{}:
+      tcp.q.at1.at(e2, o2, qs)
+    case _ _ _:
       Nil{}
+
+def tcp.q.at1(+e: List<&2, U32>, +o: List<&2, U32>, +qs: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  tcp.q.at1.go(e, o, qs, tcp.q.same(e, o))
 
 def tcp.q.kinds(+ps: List<&2, T.BParam>, +why: List<&2, U32>) -> List<&2, List<&2, U32>>:
   +exp = tcp.exp.of(S.find(why, S.b("observed : "), 0n), why)
@@ -733,12 +760,20 @@ def tcp.data.or.q(m: Maybe<&2, T.BItem>, +it: T.BItem, +why: List<&2, U32>) -> M
 # weaker than the Agda original (Data carriers, Data relations), as the
 # user chose for quantities on 2026-10-20 (tcp.q.*).  A caller passing its
 # own quantity there is specialised by the gate (tcp.q.spec; 2026-10-30).
-def tcp.qd.var(+k: T.Bt, +qs: List<&2, List<&2, U32>>) -> List<&2, U32>:
-  match k:
-    case T.BtVar{+q}:
-      Bool.pick(List<&2, U32>, tcp.mem(q, qs), q, Nil{})
-    case _:
-      Nil{}
+# The kind may be a minimum of the def's quantities (a pair's, `(R_a <&> S_a)`:
+# ×-refl's implicit point is used live twice, and ×-isEquivalence calls it
+# under the lambda Reflexive is, so 85 of the standard library were held back
+# by it, 2026-11-05): all of them are specialised, or none.
+def tcp.qd.all(xs: List<&2, List<&2, U32>>, +qs: List<&2, List<&2, U32>>) -> Bool:
+  match xs:
+    case Nil{}:
+      True{}
+    case +x <> t:
+      Bool.and(tcp.mem(x, qs), tcp.qd.all(t, qs))
+
+def tcp.qd.parts(+k: T.Bt, +qs: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  +as : List<&2, List<&2, U32>> = QF.tqf.atoms(k)
+  Bool.pick(List<&2, List<&2, U32>>, tcp.qd.all(as, qs), as, Nil{})
 
 # a function type, its head's type-valued definitions opened (¬ A is
 # `A -> ⊥`): never Data, whatever its level says (the level is Agda's,
@@ -795,12 +830,12 @@ def tcp.qd.rec1(+t: T.Bt, +ctx: List<&2, T.BParam>, +qe: QF.TqEnv) -> Bool:
     case _:
       False{}
 
-# the quantity parameter of the def's (ctx) that ty's values' kind is, or empty
-def tcp.qd.of(+ty: T.Bt, +ctx: List<&2, T.BParam>, +qe: QF.TqEnv) -> List<&2, U32>:
+# the quantity parameters of the def's (ctx) that ty's values' kind is, or none
+def tcp.qd.of(+ty: T.Bt, +ctx: List<&2, T.BParam>, +qe: QF.TqEnv) -> List<&2, List<&2, U32>>:
   +w = QF.tqf.whnf(16n, ty, qe)
-  Bool.pick(List<&2, U32>, Bool.or(tcp.qd.fun(w), tcp.qd.rec1(w, ctx, qe)), Nil{}, tcp.qd.var(QF.tqf.kind(8n, ty, ctx, qe), tcp.q.params(ctx)))
+  Bool.pick(List<&2, List<&2, U32>>, Bool.or(tcp.qd.fun(w), tcp.qd.rec1(w, ctx, qe)), Nil{}, tcp.qd.parts(QF.tqf.kind(8n, ty, ctx, qe), tcp.q.params(ctx)))
 
-def tcp.qd.nil(q: List<&2, U32>) -> Bool:
+def tcp.qd.nil(q: List<&2, List<&2, U32>>) -> Bool:
   match q:
     case Nil{}:
       True{}
@@ -810,8 +845,12 @@ def tcp.qd.nil(q: List<&2, U32>) -> Bool:
 def tcp.qd.is(+ty: T.Bt, +ctx: List<&2, T.BParam>, +qe: QF.TqEnv) -> Bool:
   Bool.not(tcp.qd.nil(tcp.qd.of(ty, ctx, qe)))
 
-def tcp.qd.add(+q: List<&2, U32>, +acc: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
-  Bool.pick(List<&2, List<&2, U32>>, Bool.or(tcp.qd.nil(q), tcp.mem(q, acc)), acc, q <> acc)
+def tcp.qd.add(qs: List<&2, List<&2, U32>>, +acc: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  match qs:
+    case Nil{}:
+      acc
+    case +q <> t:
+      tcp.qd.add(t, Bool.pick(List<&2, List<&2, U32>>, tcp.mem(q, acc), acc, q <> acc))
 
 # the quantities the copied parameters' kinds are
 def tcp.qd.qs(ps: List<&2, T.BParam>, +ctx: List<&2, T.BParam>, +qe: QF.TqEnv) -> List<&2, List<&2, U32>>:

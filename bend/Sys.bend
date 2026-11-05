@@ -99,6 +99,20 @@ def head.is(+xs: List<&2, U32>, +c: U32) -> Bool:
     case Nil{}:
       False{}
 
+# xs up to its first c.  Bool.pick is strict, both its branches run: a walk
+# written `pick(h == c, Nil, h <> walk(t))` goes to the end of xs whatever it
+# finds, and a caller at each position makes it quadratic (bend's messages run to
+# megabytes; 2026-11-05).  So the flag is worked out before the call, and matched.
+def until.go(xs: List<&2, U32>, +c: U32, stop: Bool) -> List<&2, U32>:
+  match xs stop:
+    case h <> +t False{}:
+      h <> until.go(t, c, head.is(t, c))
+    case _ _:
+      Nil{}
+
+def until(+xs: List<&2, U32>, +c: U32) -> List<&2, U32>:
+  until.go(xs, c, head.is(xs, c))
+
 # xs with every occurrence of p replaced by r, left to right, the way
 # `sed s|p|r|g` does it: skip counts the bytes of a match still to drop,
 # hit is whether p starts here

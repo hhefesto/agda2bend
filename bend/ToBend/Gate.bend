@@ -306,12 +306,15 @@ def tgt.deps(+why: List<&2, U32>, st: TgtSt) -> TgtSt:
 def tgt.line.after(+l: List<&2, U32>, +p: List<&2, U32>) -> Maybe<&2, List<&2, U32>>:
   Bool.pick(Maybe<&2, List<&2, U32>>, S.prefix(l, p), Some{S.strip(l, p)}, None{})
 
-def tgt.trim(xs: List<&2, U32>) -> List<&2, U32>:
-  match xs:
-    case +h <> +t:
-      Bool.pick(List<&2, U32>, U32.is_eq(h, 32), tgt.trim(t), h <> t)
-    case Nil{}:
-      Nil{}
+def tgt.trim.go(xs: List<&2, U32>, sp: Bool) -> List<&2, U32>:
+  match xs sp:
+    case h <> +t True{}:
+      tgt.trim.go(t, S.head.is(t, 32))
+    case ys _:
+      ys
+
+def tgt.trim(+xs: List<&2, U32>) -> List<&2, U32>:
+  tgt.trim.go(xs, S.head.is(xs, 32))
 
 # the name after `Location:` on its line, if any
 def tgt.location(ls: List<&2, List<&2, U32>>) -> List<&2, U32>:
@@ -419,12 +422,8 @@ def tgt.cols.take(n: Nat, xs: List<&2, U32>) -> List<&2, U32>:
       Nil{}
 
 # the span up to its first space (Bend marks a binder with the space after it)
-def tgt.word(xs: List<&2, U32>) -> List<&2, U32>:
-  match xs:
-    case Nil{}:
-      Nil{}
-    case +h <> t:
-      Bool.pick(List<&2, U32>, U32.is_eq(h, 32), Nil{}, h <> tgt.word(t))
+def tgt.word(+xs: List<&2, U32>) -> List<&2, U32>:
+  S.until(xs, 32)
 
 def tgt.span.at(+ml: List<&2, U32>, +cl: List<&2, U32>) -> List<&2, U32>:
   +k = tgt.lead(tgt.bar(cl), 32, True{})
@@ -465,14 +464,33 @@ def tgt.nls(xs: List<&2, U32>) -> Nat:
 
 # the item whose printed lines hold line l: items are printed after the
 # header (start lines) and each after a blank line
-def tgt.at.line(its: List<&2, T.BItem>, +start: Nat, +l: Nat) -> List<&2, U32>:
+def tgt.at.n(+its: List<&2, T.BItem>) -> Nat:
   match its:
-    case Nil{}:
-      Nil{}
     case +it <> t:
-      +first = Nat.add(start, 1n)
-      +n = tgt.nls(P.tpr.item(it, Nil{}))
-      Bool.pick(List<&2, U32>, Bool.and(Nat.is_gt(l, first), Nat.is_le(l, Nat.add(first, n))), tgt.name(it), tgt.at.line(t, Nat.add(first, n), l))
+      tgt.nls(P.tpr.item(it, Nil{}))
+    case Nil{}:
+      0n
+
+def tgt.at.in(+first: Nat, +n: Nat, +l: Nat) -> Bool:
+  Bool.and(Nat.is_gt(l, first), Nat.is_le(l, Nat.add(first, n)))
+
+# stops at the item it finds: a walk with a strict pick printed the whole module
+# again at every failure
+def tgt.at.go(its: List<&2, T.BItem>, +first: Nat, +n: Nat, +l: Nat, hit: Bool) -> List<&2, U32>:
+  match its hit:
+    case it <> t True{}:
+      tgt.name(it)
+    case it <> +t False{}:
+      +f2 = Nat.add(Nat.add(first, n), 1n)
+      +n2 = tgt.at.n(t)
+      tgt.at.go(t, f2, n2, l, tgt.at.in(f2, n2, l))
+    case _ _:
+      Nil{}
+
+def tgt.at.line(+its: List<&2, T.BItem>, +start: Nat, +l: Nat) -> List<&2, U32>:
+  +first = Nat.add(start, 1n)
+  +n = tgt.at.n(its)
+  tgt.at.go(its, first, n, l, tgt.at.in(first, n, l))
 
 def tgt.names(its: List<&2, T.BItem>) -> List<&2, List<&2, U32>>:
   match its:
@@ -490,12 +508,8 @@ def tgt.names(its: List<&2, T.BItem>) -> List<&2, List<&2, U32>>:
 # comm∧distrʳ⇒distrˡ, whose eta-expansion passes its lambda's variables to
 # Setoid's template points: "Location: anon.comm_and_distr_r_Arr_distr_l~0"
 # (2026-10-30).  A template of this module (f kept) keeps its line.
-def tgt.untilde(xs: List<&2, U32>) -> List<&2, U32>:
-  match xs:
-    case Nil{}:
-      Nil{}
-    case +h <> t:
-      Bool.pick(List<&2, U32>, U32.is_eq(h, 126), Nil{}, h <> tgt.untilde(t))
+def tgt.untilde(+xs: List<&2, U32>) -> List<&2, U32>:
+  S.until(xs, 126)
 
 def tgt.calls.base(+b: List<&2, U32>, rs: List<&2, List<&2, U32>>) -> Bool:
   match rs:
@@ -527,8 +541,15 @@ def tgt.first.caller(+b: List<&2, U32>, its: List<&2, T.BItem>) -> List<&2, U32>
     case +it <> t:
       Bool.pick(List<&2, U32>, tgt.calls.core(b, tgt.refs(it)), tgt.name(it), tgt.first.caller(b, t))
 
+def tgt.blame.or.go(none: Bool, +c: List<&2, U32>, +its: List<&2, T.BItem>, +start: Nat, +l: Nat) -> List<&2, U32>:
+  match none:
+    case True{}:
+      tgt.at.line(its, start, l)
+    case False{}:
+      c
+
 def tgt.blame.or(+c: List<&2, U32>, +its: List<&2, T.BItem>, +start: Nat, +l: Nat) -> List<&2, U32>:
-  Bool.pick(List<&2, U32>, S.eq(c, Nil{}), tgt.at.line(its, start, l), c)
+  tgt.blame.or.go(S.eq(c, Nil{}), c, its, start, l)
 
 def tgt.blame.tpl(other: Bool, +b: List<&2, U32>, +its: List<&2, T.BItem>, +start: Nat, +l: Nat) -> List<&2, U32>:
   match other:
@@ -643,14 +664,20 @@ def tgt.up.d(+h: U32, +prev: U32, +d: Nat) -> Nat:
   Bool.pick(Nat, Bool.or(U32.is_eq(h, 60), Bool.or(U32.is_eq(h, 123), Bool.or(U32.is_eq(h, 40), U32.is_eq(h, 91)))), 1n+d, Bool.pick(Nat, Bool.and(Bool.or(U32.is_eq(h, 62), Bool.or(U32.is_eq(h, 125), Bool.or(U32.is_eq(h, 41), U32.is_eq(h, 93)))), Bool.not(Bool.or(U32.is_eq(prev, 45), U32.is_eq(prev, 61)))), Nat.sub(d, 1n), d))
 
 # a type's arguments, split at its top-level commas (the > of -> and => closes nothing)
+def tgt.up.cut(c: Bool, +cur: List<&2, U32>, r: List<&2, List<&2, U32>>) -> List<&2, List<&2, U32>>:
+  match c:
+    case True{}:
+      tgt.trim(List.reverse(&2, U32, cur)) <> r
+    case False{}:
+      r
+
 def tgt.up.split(xs: List<&2, U32>, +d: Nat, +prev: U32, +cur: List<&2, U32>) -> List<&2, List<&2, U32>>:
   match xs:
     case Nil{}:
       [tgt.trim(List.reverse(&2, U32, cur))]
     case +h <> +t:
       +c = Bool.and(U32.is_eq(h, 44), Nat.is_eq(d, 0n))
-      +r = tgt.up.split(t, tgt.up.d(h, prev, d), h, Bool.pick(List<&2, U32>, c, Nil{}, h <> cur))
-      Bool.pick(List<&2, List<&2, U32>>, c, tgt.trim(List.reverse(&2, U32, cur)) <> r, r)
+      tgt.up.cut(c, cur, tgt.up.split(t, tgt.up.d(h, prev, d), h, Bool.pick(List<&2, U32>, c, Nil{}, h <> cur)))
 
 def tgt.up.last(xs: List<&2, U32>, +c: U32) -> Bool:
   match xs:
