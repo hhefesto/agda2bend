@@ -799,10 +799,29 @@ def tcp.q.kinds.or(m: Maybe<&2, T.BItem>, +it: T.BItem, +ps: List<&2, T.BParam>,
 # The item specialised in the quantities the failure names, or None: to &2
 # those the observed type names (a copy needs Data), to &1 those the
 # expected kind names (a Type fills a Kind(q): `_≉_ = λ x y → ¬ …`).
+def tcp.q.pi.params(t: T.Bt) -> List<&2, List<&2, U32>>:
+  match t:
+    case T.BtPi{m, +y, d, T.BtVar{+k}, b}:
+      tcp.ty.put(S.eq(k, S.b("Quant")), y, tcp.q.pi.params(b))
+    case T.BtPi{m, y, d, a, b}:
+      tcp.q.pi.params(b)
+    case T.BtExpr{e}:
+      tcp.q.pi.params(e)
+    case _:
+      Nil{}
+
+# (an assumption's type: its levels are binders, tcp.q.pi.params)
+def tcp.q.spec.pi(m: Maybe<&2, T.BItem>, +it: T.BItem, +body: T.Bt, +why: List<&2, U32>) -> Maybe<&2, T.BItem>:
+  match m:
+    case Some{x}:
+      Some{x}
+    case None{}:
+      tcp.q.done(tcp.q.cands(tcp.q.pi.params(body), tcp.exp.of(S.find(why, S.b("observed : "), 0n), why), tcp.obs(why)), it, S.b("&2"))
+
 def tcp.q.spec(+it: T.BItem, +why: List<&2, U32>) -> Maybe<&2, T.BItem>:
   match it:
-    case T.BiDef{n, +ps, ret, body, doc}:
-      tcp.q.kinds.or(tcp.q.done(tcp.q.names(ps, why), it, S.b("&2")), it, ps, why)
+    case T.BiDef{n, +ps, ret, +body, doc}:
+      tcp.q.spec.pi(tcp.q.kinds.or(tcp.q.done(tcp.q.names(ps, why), it, S.b("&2")), it, ps, why), it, body, why)
     case T.BiType{n, +ps, k, cs, doc}:
       tcp.q.kinds.or(tcp.q.done(tcp.q.names(ps, why), it, S.b("&2")), it, ps, why)
     case _:
@@ -881,11 +900,53 @@ def tcp.qf.or(m: Maybe<&2, T.BItem>, +it: T.BItem, +ps: List<&2, T.BParam>, +exp
     case None{}:
       tcp.qf.spec(tcp.qf.hits(ps, exp), it)
 
+# An assumption's type (a2b_axty_R) has its levels as binders of its body, not as
+# parameters, so the repairs found nothing to specialise: TypeTopology's Pi-is-prop,
+# `is_prop((u <&> v), Pi(u, v, X, A))`, a Type at Kind(u <&> v) (348 items of its and
+# the 400 that use them; 133 in the first GitHub shard).  A minimum the failure names
+# goes to &1 where it is written, which keeps the levels of the rest of the statement
+# for its users; a single level, as the binder it is, everywhere.
+# (reversed) from the last ')' on
+def tcp.q.to.paren(xs: List<&2, U32>) -> List<&2, U32>:
+  match xs:
+    case Nil{}:
+      Nil{}
+    case +h <> +t:
+      Bool.pick(List<&2, U32>, U32.is_eq(h, 41), h <> t, tcp.q.to.paren(t))
+
+# "expected : Kind(a <&> b) " -> "(a <&> b)", or nothing
+def tcp.q.kind.atom(+exp: List<&2, U32>) -> List<&2, U32>:
+  +s = List.reverse(&2, U32, tcp.q.to.paren(List.reverse(&2, U32, S.strip(exp, S.b("expected : Kind")))))
+  Bool.pick(List<&2, U32>, Bool.and(S.prefix(exp, S.b("expected : Kind(")), S.infix(s, S.b(" <&> "))), s, Nil{})
+
+def tcp.q.pi.pick(u: Bool, +atom: List<&2, U32>, +qs: List<&2, List<&2, U32>>, +it: T.BItem) -> Maybe<&2, T.BItem>:
+  match u:
+    case True{}:
+      Some{tcp.q.one(it, atom, S.b("&1"))}
+    case False{}:
+      tcp.q.done(qs, it, S.b("&1"))
+
+def tcp.q.pi.spec1(+it: T.BItem, +why: List<&2, U32>) -> Maybe<&2, T.BItem>:
+  match it:
+    case T.BiDef{n, ps, ret, +body, doc}:
+      +exp = tcp.exp.of(S.find(why, S.b("observed : "), 0n), why)
+      +atom = tcp.q.kind.atom(exp)
+      tcp.q.pi.pick(T.tba.item.uses(it, atom), atom, tcp.q.cands(tcp.q.pi.params(body), tcp.obs(why), exp), it)
+    case _:
+      None{}
+
+def tcp.q.pi.or(m: Maybe<&2, T.BItem>, +it: T.BItem, +why: List<&2, U32>) -> Maybe<&2, T.BItem>:
+  match m:
+    case Some{x}:
+      Some{x}
+    case None{}:
+      tcp.q.pi.spec1(it, why)
+
 def tcp.q.spec1(+it: T.BItem, +why: List<&2, U32>) -> Maybe<&2, T.BItem>:
   match it:
     case T.BiDef{n, +ps, ret, body, doc}:
       +exp = tcp.exp.of(S.find(why, S.b("observed : "), 0n), why)
-      tcp.qf.or(tcp.q.done(tcp.q.cands(tcp.q.params(ps), tcp.obs(why), exp), it, S.b("&1")), it, ps, exp)
+      tcp.q.pi.or(tcp.qf.or(tcp.q.done(tcp.q.cands(tcp.q.params(ps), tcp.obs(why), exp), it, S.b("&1")), it, ps, exp), it, why)
     case _:
       None{}
 

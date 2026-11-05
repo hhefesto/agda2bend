@@ -380,23 +380,139 @@ def a2b.rd.add(t: A.AgTop, ds: List<&2, A.AgDecl>) -> List<&2, A.AgDecl>:
     case _:
       ds
 
-def a2b.rd.got(ds: List<&2, A.AgDecl>, r: X.TsxRd & Maybe<&2, X.Sx>) -> IO(A2bRd):
+# A library's own BUILTIN NATURAL (TypeTopology's and PLFA's ℕ, and much of what is on
+# GitHub): Agda writes its literals (lit (nat n)), and Bend's literal is a Nat, which the
+# library's ℕ is not ("expected : MLTT_Natural_Numbers_Type.N observed : Nat", 200 items of
+# TypeTopology's and what they carry).  Under such a BUILTIN a literal is read as its
+# constructors, which the declaring module's header names: (builtin "ZERO" (term T)),
+# (builtin "SUC" (term T)).  Agda.Builtin.Nat's ℕ and agda-unimath's are Bend's Nat
+# (C.act.builtin), and a literal past 3 digits stays as it is.
+type A2bNat is Data:
+  A2bNat{z: X.Sx, s: X.Sx}
+
+def a2b.nb.or(m: Maybe<&2, X.Sx>, n: Maybe<&2, X.Sx>) -> Maybe<&2, X.Sx>:
+  match m n:
+    case None{} n:
+      n
+    case Some{x} _:
+      Some{x}
+
+def a2b.nb.find(+name: List<&2, U32>, x: X.Sx) -> Maybe<&2, X.Sx>:
+  match x:
+    case X.SxCons{X.SxAtom{+a}, X.SxCons{X.SxStr{+s}, X.SxCons{X.SxCons{X.SxAtom{+k}, X.SxCons{t, X.SxNil{}}}, X.SxNil{}}}}:
+      Bool.pick(Maybe<&2, X.Sx>, Bool.and(S.eq(a, S.b("builtin")), S.eq(s, name)), Some{t}, None{})
+    case X.SxCons{h, t}:
+      a2b.nb.or(a2b.nb.find(name, h), a2b.nb.find(name, t))
+    case _:
+      None{}
+
+def a2b.nb.pair(z: Maybe<&2, X.Sx>, s: Maybe<&2, X.Sx>) -> Maybe<&2, A2bNat>:
+  match z s:
+    case Some{a} Some{b}:
+      Some{A2bNat{a, b}}
+    case _ _:
+      None{}
+
+def a2b.nb.own(+m: List<&2, U32>, +x: X.Sx) -> Maybe<&2, A2bNat>:
+  Bool.pick(Maybe<&2, A2bNat>, Bool.or(S.eq(m, S.b("Agda.Builtin.Nat")), S.eq(m, S.b("elementary-number-theory.natural-numbers"))), None{}, a2b.nb.pair(a2b.nb.find(S.b("ZERO"), x), a2b.nb.find(S.b("SUC"), x)))
+
+def a2b.nb.of(+m: List<&2, U32>, h: Maybe<&2, X.Sx>) -> Maybe<&2, A2bNat>:
+  match h:
+    case Some{+x}:
+      a2b.nb.own(m, x)
+    case None{}:
+      None{}
+
+def a2b.nb.got(+m: List<&2, U32>, r: X.TsxRd & Maybe<&2, X.Sx>) -> IO(Maybe<&2, A2bNat>):
+  (rd, h) = r
+  do IO<Maybe<&2, A2bNat>>:
+    X.tsx.shut(rd)
+    return a2b.nb.of(m, h)
+
+# a module's own, off the first expression of its export
+def a2b.nb.read(+m: List<&2, U32>, +file: List<&2, U32>) -> IO(Maybe<&2, A2bNat>):
+  do IO<Maybe<&2, A2bNat>>:
+    rd : X.TsxRd <- X.tsx.open(S.str(file))
+    r : X.TsxRd & Maybe<&2, X.Sx> <- X.tsx.next(rd)
+    a2b.nb.got(m, r)
+
+def a2b.nb.first(m: Maybe<&2, A2bNat>, n: Maybe<&2, A2bNat>) -> Maybe<&2, A2bNat>:
+  match m n:
+    case None{} n:
+      n
+    case Some{x} _:
+      Some{x}
+
+def a2b.nb.val(r: Map<&2, Maybe<&2, A2bNat>> & Maybe<&2, A2bNat>) -> Maybe<&2, A2bNat>:
+  (m, v) = r
+  v
+
+# the one its imports are under
+def a2b.nb.imp(ims: List<&2, List<&2, U32>>, +nb: Map<&2, Maybe<&2, A2bNat>>) -> Maybe<&2, A2bNat>:
+  match ims:
+    case Nil{}:
+      None{}
+    case +h <> t:
+      a2b.nb.first(a2b.nb.val(Map.get(Maybe<&2, A2bNat>, None{}, nb, S.str(h))), a2b.nb.imp(t, nb))
+
+def a2b.lit.snoc(+y: X.Sx, x: X.Sx) -> X.Sx:
+  match x:
+    case X.SxCons{h, t}:
+      X.SxCons{h, a2b.lit.snoc(y, t)}
+    case _:
+      X.SxCons{y, X.SxNil{}}
+
+# (apply visible relevant w x)
+def a2b.lit.arg(+x: X.Sx) -> X.Sx:
+  X.SxCons{X.SxAtom{S.b("apply")}, X.SxCons{X.SxAtom{S.b("visible")}, X.SxCons{X.SxAtom{S.b("relevant")}, X.SxCons{X.SxAtom{S.b("w")}, X.SxCons{x, X.SxNil{}}}}}}
+
+def a2b.lit.chain(n: Nat, +z: X.Sx, +s: X.Sx) -> X.Sx:
+  match n:
+    case 0n:
+      z
+    case 1n+p:
+      a2b.lit.snoc(a2b.lit.arg(a2b.lit.chain(p, z, s)), s)
+
+def a2b.lit.num(ok: Bool, nb: A2bNat, +a: List<&2, U32>, +b: List<&2, U32>, +n: List<&2, U32>) -> X.Sx:
+  match ok nb:
+    case True{} A2bNat{+z, +s}:
+      a2b.lit.chain(C.act.ev.num.go(n, 0n), z, s)
+    case False{} _:
+      X.SxCons{X.SxAtom{a}, X.SxCons{X.SxCons{X.SxAtom{b}, X.SxCons{X.SxAtom{n}, X.SxNil{}}}, X.SxNil{}}}
+
+def a2b.lit.sx(+nb: A2bNat, x: X.Sx) -> X.Sx:
+  match x:
+    case X.SxCons{X.SxAtom{+a}, X.SxCons{X.SxCons{X.SxAtom{+b}, X.SxCons{X.SxAtom{+n}, X.SxNil{}}}, X.SxNil{}}}:
+      a2b.lit.num(Bool.and(Bool.and(S.eq(a, S.b("lit")), S.eq(b, S.b("nat"))), Nat.is_lt(List.length(&2, U32, n), 4n)), nb, a, b, n)
+    case X.SxCons{h, t}:
+      X.SxCons{a2b.lit.sx(nb, h), a2b.lit.sx(nb, t)}
+    case x:
+      x
+
+def a2b.lit.of(nb: Maybe<&2, A2bNat>, x: X.Sx) -> X.Sx:
+  match nb:
+    case None{}:
+      x
+    case Some{+n}:
+      a2b.lit.sx(n, x)
+
+def a2b.rd.got(+nb: Maybe<&2, A2bNat>, ds: List<&2, A.AgDecl>, r: X.TsxRd & Maybe<&2, X.Sx>) -> IO(A2bRd):
   (rd, m) = r
   match m:
     case Some{x}:
-      IO.pure(A2bRd, A2bRd{rd, a2b.rd.add(A.aas.top(x), ds), True{}})
+      IO.pure(A2bRd, A2bRd{rd, a2b.rd.add(A.aas.top(a2b.lit.of(nb, x)), ds), True{}})
     case None{}:
       IO.pure(A2bRd, A2bRd{rd, ds, False{}})
 
-def a2b.rd.step(rd: X.TsxRd, ds: List<&2, A.AgDecl>) -> IO(A2bRd):
+def a2b.rd.step(+nb: Maybe<&2, A2bNat>, rd: X.TsxRd, ds: List<&2, A.AgDecl>) -> IO(A2bRd):
   do IO<A2bRd>:
     r : X.TsxRd & Maybe<&2, X.Sx> <- X.tsx.next(rd)
-    a2b.rd.got(ds, r)
+    a2b.rd.got(nb, ds, r)
 
-def a2b.rd.go(fuel: Nat, s: A2bRd) -> IO(A2bRd):
+def a2b.rd.go(fuel: Nat, +nb: Maybe<&2, A2bNat>, s: A2bRd) -> IO(A2bRd):
   match fuel s:
     case 1n+p A2bRd{rd, ds, True{}}:
-      IO.bind(A2bRd, A2bRd, a2b.rd.step(rd, ds), a2b.rd.go(p))
+      IO.bind(A2bRd, A2bRd, a2b.rd.step(nb, rd, ds), a2b.rd.go(p, nb))
     case _ s:
       IO.pure(A2bRd, s)
 
@@ -407,11 +523,14 @@ def a2b.rd.fin(s: A2bRd) -> IO(List<&2, A.AgDecl>):
         X.tsx.shut(rd)
         return List.reverse(&2, A.AgDecl, ds)
 
-def a2b.decls(+file: List<&2, U32>) -> IO(List<&2, A.AgDecl>):
+def a2b.decls.nat(+nb: Maybe<&2, A2bNat>, +file: List<&2, U32>) -> IO(List<&2, A.AgDecl>):
   do IO<List<&2, A.AgDecl>>:
     rd : X.TsxRd <- X.tsx.open(S.str(file))
-    s : A2bRd <- a2b.rd.go(1000000n, A2bRd{rd, Nil{}, True{}})
+    s : A2bRd <- a2b.rd.go(1000000n, nb, A2bRd{rd, Nil{}, True{}})
     a2b.rd.fin(s)
+
+def a2b.decls(+file: List<&2, U32>) -> IO(List<&2, A.AgDecl>):
+  a2b.decls.nat(None{}, file)
 
 # A definition's Bend name, unique in its module: the second and later of
 # a name get _2, _3, ... (ToBend/Names.bend maps several Agda names to one).
@@ -1780,11 +1899,11 @@ def a2b.g.unf(g: A2bG) -> Map<&2, C.ActCopy>:
     case A2bG{tab, unf, kept, pj, qs, gone}:
       unf
 
-def a2b.em.mod(+out: String, +ms: Map<&2, A2bMod>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +m: List<&2, U32>, +g: A2bG) -> IO(A2bG):
+def a2b.em.mod(+out: String, +ms: Map<&2, A2bMod>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +m: List<&2, U32>, +nb: Maybe<&2, A2bNat>, +g: A2bG) -> IO(A2bG):
   do IO<A2bG>:
     +t0 : Nat <- IO.now()
     +asm : Map<&2, Bool> <- a2b.asm.read()
-    +ds0 : List<&2, A.AgDecl> <- a2b.decls(a2b.mod.file(a2b.mod.get(ms, m)))
+    +ds0 : List<&2, A.AgDecl> <- a2b.decls.nat(nb, a2b.mod.file(a2b.mod.get(ms, m)))
     +t1 : Nat <- a2b.lap(m, "read", t0)
     +fuel : Nat <- S.env.nat("A2B_AUTOASSUME", 0n)
     +g1 : A2bG <- a2b.em.pass(out, al, ral, m, ds0, asm, g)
@@ -1793,14 +1912,16 @@ def a2b.em.mod(+out: String, +ms: Map<&2, A2bMod>, +al: Map<&2, List<&2, U32>>, 
     S.add(out ++ "/ledger.tsv", led)
     return g2
 
-def a2b.em.mods(order: List<&2, List<&2, U32>>, +out: String, +ms: Map<&2, A2bMod>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, g: A2bG) -> IO(Unit):
+def a2b.em.mods(order: List<&2, List<&2, U32>>, +out: String, +ms: Map<&2, A2bMod>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +nb: Map<&2, Maybe<&2, A2bNat>>, g: A2bG) -> IO(Unit):
   match order:
     case Nil{}:
       IO.pure(Unit, Unit{})
-    case m <> t:
+    case +m <> t:
       do IO<Unit>:
-        g2 : A2bG <- a2b.em.mod(out, ms, al, ral, m, g)
-        a2b.em.mods(t, out, ms, al, ral, g2)
+        own : Maybe<&2, A2bNat> <- a2b.nb.read(m, a2b.mod.file(a2b.mod.get(ms, m)))
+        +cur : Maybe<&2, A2bNat> = a2b.nb.first(own, a2b.nb.imp(a2b.mod.imports(a2b.mod.get(ms, m)), nb))
+        g2 : A2bG <- a2b.em.mod(out, ms, al, ral, m, cur, g)
+        a2b.em.mods(t, out, ms, al, ral, Map.set(&2, Maybe<&2, A2bNat>, nb, S.str(m), cur), g2)
 
 # alias -> module, the reverse of the aliases
 def a2b.ral(ns: List<&2, List<&2, U32>>, +al: Map<&2, List<&2, U32>>, acc: Map<&2, List<&2, U32>>) -> Map<&2, List<&2, U32>>:
@@ -1825,7 +1946,7 @@ def a2b.emit.go(+out: String, roots: List<&2, List<&2, U32>>, +ms: Map<&2, A2bMo
   +al = a2b.aliases(order)
   do IO<Unit>:
     Ck.log("emit: " ++ Nat.show(List.length(&2, List<&2, U32>, order)) ++ " modules in import order, to " ++ out ++ "/src")
-    a2b.em.mods(order, out, ms, al, a2b.ral(order, al, Map.new(&2, List<&2, U32>)), A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
+    a2b.em.mods(order, out, ms, al, a2b.ral(order, al, Map.new(&2, List<&2, U32>)), Map.new(&2, Maybe<&2, A2bNat>), A2bG{Map.new(&2, C.ActSym), Map.new(&2, C.ActCopy), Map.new(&2, Bool), Map.new(&2, Q.TcpProj), Map.new(&2, QF.TqSig), Map.new(&2, Bool)})
 
 def a2b.strs(xs: List<String>) -> List<&2, List<&2, U32>>:
   match xs:
