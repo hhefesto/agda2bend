@@ -1441,6 +1441,7 @@ def at2.laws() -> IO(Unit):
     IO.print(verdict("a quantity on both sides of a failure, read where &2 is expected", Bool.and(S.mem(S.b("a"), both), Nat.is_eq(List.length(&2, List<&2, U32>, both), 1n))))
     IO.print(verdict("a quantity only the observed type names", Bool.and(S.mem(S.b("b"), one), Nat.is_eq(List.length(&2, List<&2, U32>, one), 1n))))
     IO.print(verdict("no repair where something other than &2 is expected", Nat.is_eq(List.length(&2, List<&2, U32>, other), 0n)))
+    IO.print(verdict("a level function the expected kind names is found, a plain quantity is not", Nat.is_eq(List.length(&2, T.BParam, Q.tcp.qf.hits([T.BParam{T.BmErased{}, S.b("l1"), T.BtVar{S.b("Quant")}}, T.BParam{T.BmErased{}, S.b("beta"), T.BtPi{T.BmErased{}, S.b("x"), False{}, T.BtVar{S.b("Quant")}, T.BtVar{S.b("Quant")}}}], S.b("expected : Kind(beta(l1)) observed : Type "))), 1n)))
 
 def main() -> IO(Unit):
   do IO<Unit>:

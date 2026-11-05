@@ -552,10 +552,84 @@ def tcp.q.spec(+it: T.BItem, +why: List<&2, U32>) -> Maybe<&2, T.BItem>:
     case _:
       None{}
 
+# A level function (agda-unimath's Large-Relation-Prop, `β : Level → Level →
+# Level`): a Prop's first projection is a Type, so "expected Kind(beta(l1, l2))
+# observed Type", with no quantity parameter to specialise (is-reflexive-
+# Large-Relation-Prop, 665 dependents in corpus-um16 at 827 modules; the module
+# checks with β as &1).  The parameter stays, its callers still pass it; its uses
+# are the constant function to &1 (2026-11-04).
+def tcp.qf.end(t: T.Bt) -> Bool:
+  match t:
+    case T.BtPi{m, y, d, a, b}:
+      tcp.qf.end(b)
+    case T.BtVar{+k}:
+      S.eq(k, S.b("Quant"))
+    case _:
+      False{}
+
+def tcp.qf.is(t: T.Bt) -> Bool:
+  match t:
+    case T.BtPi{m, y, d, a, b}:
+      tcp.qf.end(b)
+    case _:
+      False{}
+
+def tcp.qf.lam(t: T.Bt) -> T.Bt:
+  match t:
+    case T.BtPi{m, +y, d, a, b}:
+      T.BtLam{T.BmLive{}, y, tcp.qf.lam(b)}
+    case _:
+      T.BtVar{S.b("&1")}
+
+# the level functions a text names
+def tcp.qf.hits(ps: List<&2, T.BParam>, +w: List<&2, U32>) -> List<&2, T.BParam>:
+  match ps:
+    case Nil{}:
+      Nil{}
+    case T.BParam{+m, +x, +ty} <> +t:
+      Bool.pick(List<&2, T.BParam>, Bool.and(tcp.qf.is(ty), tcp.tok.in(w, x, True{})), T.BParam{m, x, ty} <> tcp.qf.hits(t, w), tcp.qf.hits(t, w))
+
+def tcp.qf.sub.ps(ps: List<&2, T.BParam>, +x: List<&2, U32>, +v: T.Bt) -> List<&2, T.BParam>:
+  match ps:
+    case Nil{}:
+      Nil{}
+    case T.BParam{m, y, ty} <> t:
+      T.BParam{m, y, T.tba.subst(ty, x, v)} <> tcp.qf.sub.ps(t, x, v)
+
+def tcp.qf.one(it: T.BItem, p: T.BParam) -> T.BItem:
+  match it p:
+    case T.BiDef{n, ps, ret, body, doc} T.BParam{m, +x, +ty}:
+      +v : T.Bt = T.BtAnn{tcp.qf.lam(ty), ty}
+      T.BiDef{n, tcp.qf.sub.ps(ps, x, v), T.tba.subst(ret, x, v), T.tba.subst(body, x, v), List.append(&2, List<&2, U32>, doc, [S.b("specialised: the level function " ++ S.str(x) ++ " is &1 (Type)")])}
+    case it p:
+      it
+
+def tcp.qf.all(ps: List<&2, T.BParam>, it: T.BItem) -> T.BItem:
+  match ps:
+    case Nil{}:
+      it
+    case +p <> t:
+      tcp.qf.all(t, tcp.qf.one(it, p))
+
+def tcp.qf.spec(ps: List<&2, T.BParam>, it: T.BItem) -> Maybe<&2, T.BItem>:
+  match ps:
+    case Nil{}:
+      None{}
+    case +p <> t:
+      Some{tcp.qf.all(p <> t, it)}
+
+def tcp.qf.or(m: Maybe<&2, T.BItem>, +it: T.BItem, +ps: List<&2, T.BParam>, +exp: List<&2, U32>) -> Maybe<&2, T.BItem>:
+  match m:
+    case Some{x}:
+      Some{x}
+    case None{}:
+      tcp.qf.spec(tcp.qf.hits(ps, exp), it)
+
 def tcp.q.spec1(+it: T.BItem, +why: List<&2, U32>) -> Maybe<&2, T.BItem>:
   match it:
     case T.BiDef{n, +ps, ret, body, doc}:
-      tcp.q.done(tcp.q.cands(tcp.q.params(ps), tcp.obs(why), tcp.exp.of(S.find(why, S.b("observed : "), 0n), why)), it, S.b("&1"))
+      +exp = tcp.exp.of(S.find(why, S.b("observed : "), 0n), why)
+      tcp.qf.or(tcp.q.done(tcp.q.cands(tcp.q.params(ps), tcp.obs(why), exp), it, S.b("&1")), it, ps, exp)
     case _:
       None{}
 

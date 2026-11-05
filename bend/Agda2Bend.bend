@@ -1477,6 +1477,44 @@ def a2b.mod.file(m: A2bMod) -> List<&2, U32>:
     case A2bMod{n, f, im}:
       f
 
+# A2B_ASSUME=FILE: Agda names, one a line, read as postulates, so they go in as
+# assumptions (Agda2Bend/Ax.bend) like funext (2026-11-04).  A lemma Bend cannot
+# state a proof of takes everything that uses it along: agda-unimath's is-contr-Π,
+# whose proof copies a function-valued record at a lambda's variable, held back
+# 1,849 of 11,100 dependents in corpus-um16 at 827 modules.  With it assumed, what
+# uses it says what it proves under it.  Unset: nothing changes.
+def a2b.asm.set(on: Bool, d: A.AgDecl) -> A.AgDecl:
+  match on d:
+    case True{} A.AgDecl{q, qn, md, f, l, l0, l1, k, m, fl, lang, ty, dd}:
+      A.AgDecl{q, qn, md, f, l, l0, l1, A.AkPostulate{}, m, fl, lang, ty, A.AgDPost{}}
+    case False{} d:
+      d
+
+def a2b.asm.hit(+asm: Map<&2, Bool>, d: A.AgDecl) -> Bool:
+  match d:
+    case A.AgDecl{q, qn, md, f, l, l0, l1, k, m, fl, lang, ty, dd}:
+      T.tba.has.got(Map.has(&2, Bool, asm, S.str(C.act.qs(q))))
+
+def a2b.asm.decls(ds: List<&2, A.AgDecl>, +asm: Map<&2, Bool>) -> List<&2, A.AgDecl>:
+  match ds:
+    case Nil{}:
+      Nil{}
+    case +d <> t:
+      a2b.asm.set(a2b.asm.hit(asm, d), d) <> a2b.asm.decls(t, asm)
+
+def a2b.asm.map(xs: List<&2, List<&2, U32>>, acc: Map<&2, Bool>) -> Map<&2, Bool>:
+  match xs:
+    case Nil{}:
+      acc
+    case x <> t:
+      a2b.asm.map(t, Map.set(&2, Bool, acc, S.str(x), True{}))
+
+def a2b.asm.read() -> IO(Map<&2, Bool>):
+  do IO<Map<&2, Bool>>:
+    p : String <- S.env("A2B_ASSUME", "")
+    +xs : List<&2, U32> <- S.read(p)
+    return a2b.asm.map(S.split.lines(xs), Map.new(&2, Bool))
+
 # one module: its definitions read, its symbols added, its file written;
 # the table with its symbols for the modules after it
 def a2b.em.mod(+out: String, +ms: Map<&2, A2bMod>, +al: Map<&2, List<&2, U32>>, +ral: Map<&2, List<&2, U32>>, +m: List<&2, U32>, g: A2bG) -> IO(A2bG):
@@ -1484,7 +1522,9 @@ def a2b.em.mod(+out: String, +ms: Map<&2, A2bMod>, +al: Map<&2, List<&2, U32>>, 
     case A2bG{tab, unf, +kept, pj, qs, +gone}:
       do IO<A2bG>:
         +t0 : Nat <- IO.now()
-        +ds : List<&2, A.AgDecl> <- a2b.decls(a2b.mod.file(a2b.mod.get(ms, m)))
+        +asm : Map<&2, Bool> <- a2b.asm.read()
+        +ds0 : List<&2, A.AgDecl> <- a2b.decls(a2b.mod.file(a2b.mod.get(ms, m)))
+        +ds : List<&2, A.AgDecl> = a2b.asm.decls(ds0, asm)
         +t1 : Nat <- a2b.lap(m, "read", t0)
         a2b.cop.go(out, m, al, ral, ds, kept, gone, a2b.syms(ds, m, al, A2bTabs{tab, unf, Map.new(&2, A.AgDecl), Nil{}, Map.new(&2, String), pj, qs}))
 
