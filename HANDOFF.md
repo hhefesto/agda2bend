@@ -2,6 +2,14 @@
 
 Working notes, so the work can continue from another machine or agent. Newest first. Times are UTC-6. agda2bend was split out of ana (github:hhefesto/ana) on 2026-10-22. ana's HANDOFF.md, before that date, has the rest of the history.
 
+## Closing the emits (2026-11-04 evening; the user's goal: close all Bend generation, then only the GPU rent is missing)
+
+- **1d12ae8, two bugs that dropped cones:**
+  - **Assumptions and Qfix:** Ax.bend adds `~a2b_ax_x` after the quantity passes, so another module's signature has them while a call Cata has just written does not. Qfix read the two side by side, each argument one parameter out: `trunc(l, k, x)` came out as `trunc(l, k, &1)`, x taken for l's quantity (every `, &1)` at the end of a call in corpus-um15's raw: trunc-Prop, unit-trunc-Prop, ε-operator-Hilbert). `tqf.sig.at`: a call without them reads the signature without them; the gate's calls have them and read it whole. Fixture /tmp/bx/axp (A2bAxa, A2bAxb): `trP = tr z` across modules, 6 of 6 check.
+  - **A template's type's own binders:** tcp.tpl.names took every name a template's type mentions as a parameter to raise, so `~x_5: @n:Nat -> P(n) -> P(1n+n)` made the parameter n a template, and ind-ℕ a match on one (`cannot infer`). `tba.frees`. natural-numbers' cone, 55 modules: ind-ℕ and rec-ℕ check, nothing lost.
+- **Runs (bin/agda2bend-O2-*, /tmp/bx/a2p/run2.sh, run/a2b):** corpus-plfa16 (f7, only plfa.* as roots: 254 modules, 5,218 checked, 30 min; **plfa15 had the same 1,590 standard-library modules as std15**, export-plfa holds them all, stopped), corpus-std15 (f5, running, kept: these fixes change little there), corpus-um16 (h3 = 1d12ae8, in um15's place; um15 stopped at 1,680 modules at 9 GB). ana's run/v8/run5c.sh takes the three.
+- **What still blocks agda-unimath most (corpus-um15's ledger, /tmp/bx/a2p/roots.py, items depending on each root):** `is_contr_Π` 1,671: "a template argument mentions a local variable". `contraction(~l, ~A, ~c, x)` uses c twice, so c is a template, and is-contr-Π calls it at `x(x_6)` under a lambda. Inlining does not help: x_6 is then used twice at an abstract type, which Bend cannot copy (`+` needs Data). Not cheap; 101 drops of this kind. Then "expected Data observed Type" (134 drops, a level at `Kind(l)` read as `Type`), too-wide lines (61), fewer-Pis gaps (67). Left, as the goal asks for the cheap bits only.
+
 ## Making emit fast (2026-11-04; the user: "can you work on making agda2bend more optimal/parallel?", "olimpo is under utilized")
 
 - **Where the time went (um13, agda-unimath, 12 h for 1,127 of 2,934 modules):** 614 of those modules checked nothing and took 6.5 h, translating items the gate then dropped as dependents; a slow module's whole time was `tba.subst.in` (a list of names per binder); `bend --check-only` re-reads and re-checks every import, so a check costs its whole cone: 77% of um14's first modules' time was the gate.
