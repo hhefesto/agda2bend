@@ -4,6 +4,9 @@
 # checks every import: 2-4 s, where a daemon holding the imports takes 30-150 ms.  The file goes beside its module in
 # the tree the daemons hold ($A2B_TREE), under a name of its own, to the daemon its directory hashes to (one slow
 # module holds up that daemon alone).  What it prints and how it exits are the command's.  Anything else: the real bend.
+# (11-05: a daemon can be killed for its memory, by run/v8/checkd-cap.sh in ana: a unit of plutus-metatheory took one to
+# 24 G in 2.5 minutes.  Then this waits for it to come back, not a real bend each, ten of which stopped the night, and a unit
+# whose daemon went away is asked again once, since it may only have been behind the one that did it.)
 [ "${2:-}" = --check-only ] || exec "$A2B_BEND" "$@"
 case "$PWD" in
   */src/mods|*/src/mods/*) r=${PWD##*/src/mods} ;;
@@ -11,15 +14,33 @@ case "$PWD" in
 esac
 h=$(printf %s "$r" | cksum | cut -d' ' -f1)
 s=$A2B_CHECKD_BASE.$(( h % A2B_CHECKD_N ))
-exec 3<>"/dev/tcp/127.0.0.1/$(cat "$s/port")" 2>/dev/null || exec "$A2B_BEND" "$@"
+connect() {
+  local i
+  for ((i = 0; i < 90; i++)); do
+    exec 3<>"/dev/tcp/127.0.0.1/$(cat "$s/port")" 2>/dev/null && return 0
+    sleep 2
+  done
+  return 1
+}
+connect || exec "$A2B_BEND" "$@"
 t=$A2B_TREE/mods$r/Unit_$$_$RANDOM.bend
 cp "$1" "$t" || exec "$A2B_BEND" "$@"
 trap 'rm -f "$t"' EXIT
-printf '%s\n' "$t" >&3
-if IFS=' ' read -r -t "${A2B_CHECKD_SECS:-880}" tag rc <&3 && [ "$tag" = RC ]; then
-  cat <&3
-  exit "$rc"
-fi
-kill -9 "$(cat "$s/pid")" 2>/dev/null
-echo "Error: the check took more than ${A2B_CHECKD_SECS:-880} s"
+for try in 1 2; do
+  printf '%s\n' "$t" >> "$s/sent"
+  printf '%s\n' "$t" >&3
+  IFS=' ' read -r -t "${A2B_CHECKD_SECS:-880}" tag rc <&3; st=$?
+  if [ $st = 0 ] && [ "$tag" = RC ]; then
+    cat <&3
+    exit "$rc"
+  fi
+  if [ $st -gt 128 ]; then  # the time limit
+    kill -9 "$(cat "$s/pid")" 2>/dev/null
+    echo "Error: the check took more than ${A2B_CHECKD_SECS:-880} s"
+    exit 124
+  fi
+  exec 3<&- 3>&-
+  [ $try = 1 ] && { connect || break; }
+done
+echo "Error: the check took more than the daemon's memory"
 exit 124
