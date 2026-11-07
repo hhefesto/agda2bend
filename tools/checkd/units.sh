@@ -3,7 +3,9 @@
 # TREE/mods/...), on ports PORT.., each restarted if it dies.  BEND: the real bend.
 H=$(cd "$(dirname "$0")" && pwd)
 S=$1; TREE=$(realpath "$2"); PORT=$3; N=$4; shift 4
-BUN=${BUN:-$(ls -d /nix/store/*-bun-1.4.2/bin/bun | head -1)}
+# (11-07: bun 1.4.2 left the store, and every daemon since was `"" checkd.js` in a loop, bendu waiting 180 s a unit: run/a2b/gcroot-bun holds it.)
+BUN=${BUN:-$(ls -d "$H"/../../run/a2b/gcroot-bun/bin/bun /nix/store/*-bun-1.4.2/bin/bun 2>/dev/null | head -1)}
+[ -x "$BUN" ] || { echo "units.sh: no bun (nix build nixpkgs#bun -o run/a2b/gcroot-bun)" >&2; exit 1; }
 sups=
 for ((i = 0; i < N; i++)); do
   d=$S.$i; mkdir -p "$d"
