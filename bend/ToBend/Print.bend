@@ -129,6 +129,10 @@ def tpr.t(t: T.Bt, k: TpK, +ind: Nat, acc: List<&2, U32>) -> List<&2, U32>:
       40 <> 37 <> tpr.b(x, 64 <> tpr.t(v, TpHead{}, 0n, tpr.s(" : ", tpr.t(p, TpLoose{}, 0n, tpr.s("; ", tpr.t(b, TpLoose{}, 0n, 41 <> acc))))))
     case T.BtLet{x, v, b} TpStmt{}:
       tpr.spaces(ind, tpr.b(x, tpr.s(" = ", tpr.t(v, TpLoose{}, 0n, 10 <> tpr.t(b, TpStmt{}, ind, acc)))))
+    # a let inside a term (a partial call's bind, Fold.bend's fd.pt): a
+    # parenthesized body
+    case T.BtLet{x, v, b} _:
+      40 <> tpr.b(x, tpr.s(" = ", tpr.t(v, TpLoose{}, 0n, tpr.s("; ", tpr.t(b, TpLoose{}, 0n, 41 <> acc)))))
     case T.BtExpr{e} TpStmt{}:
       tpr.spaces(ind, tpr.t(e, TpLoose{}, 0n, 10 <> acc))
     case T.BtExpr{e} _:
